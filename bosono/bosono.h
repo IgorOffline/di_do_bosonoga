@@ -1,0 +1,7 @@
+#ifndef BOSONO_BOSONO_H
+#define BOSONO_BOSONO_H
+
+#define BOSONO_LIMIT 4097
+#define BOSONO_STRING_LIMIT 128
+
+#endif

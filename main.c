@@ -12,6 +12,9 @@
 #include <time.h>
 #endif
 
+#include "bosono/parser.h"
+#include "bosono/tokenizer.h"
+
 #if defined(__APPLE__)
 #define SOKOL_METAL
 #else
@@ -35,7 +38,7 @@
 #include "gfx.h"
 #include "gfx.glsl.h"
 // clang-format on
-#define PROGRAM_MAX_BYTES 4096
+#define PROGRAM_MAX_BYTES (BOSONO_LIMIT - 1)
 #define RULE_COUNT 8
 #define RULE_INFO_COUNT 4
 #define WINDOW_WIDTH 1152
@@ -465,8 +468,34 @@ int main(void) {
     fprintf(stderr, "Unable to open main.bosonoga (error %d)\n", program_error);
     return EXIT_FAILURE;
   }
+  char* program_content = malloc(BOSONO_LIMIT);
+  if (!program_content) {
+    fprintf(stderr, "Unable to allocate program buffer\n");
+    (void)fclose(program_file);
+    return EXIT_FAILURE;
+  }
+  size_t const program_length =
+      fread(program_content, 1, PROGRAM_MAX_BYTES, program_file);
+  int const extra_char = fgetc(program_file);
+  if (ferror(program_file)) {
+    fprintf(stderr, "Unable to read main.bosonoga\n");
+    (void)fclose(program_file);
+    free(program_content);
+    return EXIT_FAILURE;
+  }
   (void)fclose(program_file);
-  // Deliberately assume the script's content until parsing is implemented.
+  if (extra_char != EOF) {
+    fprintf(stderr, "main.bosonoga exceeds %d bytes\n", PROGRAM_MAX_BYTES);
+    free(program_content);
+    return EXIT_FAILURE;
+  }
+  program_content[program_length] = '\0';
+  Tokens tokens = {0};
+  int const tokenize_result = tokenize(&program_content, &tokens);
+  if (tokenize_result < 0) {
+    return EXIT_FAILURE;
+  }
+  printf("%d\n", parse(&tokens) + tokenize_result);
   rules[0] = (Rule){.key = SAPP_KEYCODE_W, .info = {"[W]"}, .info_count = 1};
   rules[1] = (Rule){.key = SAPP_KEYCODE_S, .info = {"[S]"}, .info_count = 1};
   rules[2] = (Rule){.key = SAPP_KEYCODE_Q, .info = {"[Q]"}, .info_count = 1};
