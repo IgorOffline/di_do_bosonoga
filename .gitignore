@@ -1,0 +1,5 @@
+.idea/
+main.exe
+main.pdb
+report_*.txt
+*.obj
