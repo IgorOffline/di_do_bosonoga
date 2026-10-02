@@ -1,0 +1,19 @@
+press_w
+di
+  info "[W]"
+do
+
+press_s
+di
+  info "[S]"
+do
+
+press_q
+di
+  info "[Q]"
+do
+
+press_e
+di
+  info "[E]"
+do
