@@ -12,6 +12,9 @@
 #include <time.h>
 #endif
 
+#include "bosono/parser.h"
+#include "bosono/tokenizer.h"
+
 #if defined(__APPLE__)
 #define SOKOL_METAL
 #else
@@ -35,9 +38,7 @@
 #include "gfx.h"
 #include "gfx.glsl.h"
 // clang-format on
-#define PROGRAM_MAX_BYTES 4096
-#define RULE_COUNT 8
-#define RULE_INFO_COUNT 4
+#define PROGRAM_MAX_BYTES (BOSONO_LIMIT - 1)
 #define WINDOW_WIDTH 1152
 #define WINDOW_HEIGHT 648
 #define RECT_X 546.0f
@@ -140,7 +141,6 @@ static void pace_frame(void) {
 #endif
     now = frame_clock();
   }
-  // Reset after a stall instead of issuing catch-up frames above the cap.
   next_frame = now + 1.0 / 60.0;
 }
 
@@ -174,7 +174,6 @@ int main(void) {
     float position[3];
     float color[4];
   } Vertex;
-  // Each rectangle owns its geometry and GPU resources independently.
   typedef struct {
     Vertex vertices[RECT_VERTEX_COUNT];
     sg_shader shader;
@@ -213,15 +212,8 @@ int main(void) {
   static bool camera_dirty;
   static bool camera_left;
   static bool camera_right;
-  // Stand-in for the parser output: held-key blocks containing info lines.
-  typedef struct {
-    sapp_keycode key;
-    bool held;
-    char const* info[RULE_INFO_COUNT];
-    size_t info_count;
-  } Rule;
-  static Rule rules[RULE_COUNT];
-  static size_t rule_count;
+  static BosonoProgram script;
+  static bool rule_held[BOSONO_RULE_LIMIT];
 
   if (main_phase == PHASE_EVENT) {
     if (main_event.type == SAPP_EVENTTYPE_KEY_DOWN ||
@@ -229,14 +221,17 @@ int main(void) {
       bool const down = main_event.type == SAPP_EVENTTYPE_KEY_DOWN;
       if (main_event.key_code == SAPP_KEYCODE_A) camera_left = down;
       if (main_event.key_code == SAPP_KEYCODE_D) camera_right = down;
-      for (size_t rule = 0; rule < rule_count; rule++)
-        if (rules[rule].key == main_event.key_code) rules[rule].held = down;
+      for (size_t rule = 0; rule < script.rule_count; rule++) {
+        sapp_keycode const key =
+            (sapp_keycode)(SAPP_KEYCODE_A + script.rules[rule].key - 'a');
+        if (key == main_event.key_code) rule_held[rule] = down;
+      }
     } else if (main_event.type == SAPP_EVENTTYPE_UNFOCUSED) {
       camera_left = false;
       camera_right = false;
-      for (size_t rule = 0; rule < rule_count; rule++) rules[rule].held = false;
+      for (size_t rule = 0; rule < script.rule_count; rule++)
+        rule_held[rule] = false;
     }
-    // Physical top-row keys have distinct codes from SAPP_KEYCODE_KP_1..4.
     if (main_event.type == SAPP_EVENTTYPE_KEY_DOWN && !main_event.key_repeat &&
         main_event.key_code >= SAPP_KEYCODE_1 &&
         main_event.key_code <= SAPP_KEYCODE_4) {
@@ -250,6 +245,8 @@ int main(void) {
   }
 
   if (main_phase == PHASE_CLEANUP) {
+    script = (BosonoProgram){0};
+    memset(rule_held, 0, sizeof rule_held);
     if (text_ready) snk_shutdown();
     if (font_atlas.temporary.alloc) nk_font_atlas_clear(&font_atlas);
     sg_shutdown();
@@ -262,10 +259,10 @@ int main(void) {
     }
     pace_frame();
     bool printed = false;
-    for (size_t rule = 0; rule < rule_count; rule++) {
-      if (!rules[rule].held) continue;
-      for (size_t line = 0; line < rules[rule].info_count; line++) {
-        (void)printf("%s\n", rules[rule].info[line]);
+    for (size_t rule = 0; rule < script.rule_count; rule++) {
+      if (!rule_held[rule]) continue;
+      for (size_t line = 0; line < script.rules[rule].info_count; line++) {
+        (void)printf("%s\n", script.rules[rule].info[line]);
         printed = true;
       }
     }
@@ -282,7 +279,6 @@ int main(void) {
       camera_dirty = true;
     }
     bool const vertices_dirty = theme_dirty || camera_dirty;
-    // Coalesce key events and upload each world's colors once per frame.
     if (theme_dirty) {
       Theme const* const theme = &themes[selected_theme];
       for (size_t channel = 0; channel < 3; channel++) {
@@ -330,8 +326,6 @@ int main(void) {
               CAMERA_BATCH_WIDTH);
     if (current_batch >= CAMERA_BATCH_COUNT)
       current_batch = CAMERA_BATCH_COUNT - 1;
-    // Render the union of the current and valid neighboring batch ranges.
-    // Membership changes only when CURRENT_BATCH changes; overlap draws once.
     int const first_batch = current_batch > 0 ? current_batch - 1 : 0;
     int const last_batch = current_batch + 1 < CAMERA_BATCH_COUNT
                                ? current_batch + 1
@@ -343,7 +337,6 @@ int main(void) {
         (float)(last_batch - CAMERA_START_BATCH) * CAMERA_BATCH_WIDTH +
         CAMERA_RENDER_HALF_WIDTH;
     unsigned int triangle_batches = 0;
-    // Submit associated rectangles regardless of visibility.
     for (size_t world = 0; world < WORLD_COUNT; world++) {
       float const world_x = RECT_X + (float)world * RECT_SPACING;
       if (world_x + RECT_WIDTH <= render_left || world_x >= render_right)
@@ -353,7 +346,6 @@ int main(void) {
       sg_draw(0, RECT_VERTEX_COUNT, 1);
       triangle_batches++;
     }
-    // Count scene batches, excluding the diagnostic overlay itself.
     char label[96];
     (void)snprintf(label, sizeof label, "CB: %d RB: %u CX: (%.1f)",
                    current_batch, triangle_batches, (double)camera_x);
@@ -465,13 +457,36 @@ int main(void) {
     fprintf(stderr, "Unable to open main.bosonoga (error %d)\n", program_error);
     return EXIT_FAILURE;
   }
+  char* program_content = malloc(BOSONO_LIMIT);
+  if (!program_content) {
+    fprintf(stderr, "Unable to allocate program buffer\n");
+    (void)fclose(program_file);
+    return EXIT_FAILURE;
+  }
+  size_t const program_length =
+      fread(program_content, 1, PROGRAM_MAX_BYTES, program_file);
+  int const extra_char = fgetc(program_file);
+  if (ferror(program_file)) {
+    fprintf(stderr, "Unable to read main.bosonoga\n");
+    (void)fclose(program_file);
+    free(program_content);
+    return EXIT_FAILURE;
+  }
   (void)fclose(program_file);
-  // Deliberately assume the script's content until parsing is implemented.
-  rules[0] = (Rule){.key = SAPP_KEYCODE_W, .info = {"[W]"}, .info_count = 1};
-  rules[1] = (Rule){.key = SAPP_KEYCODE_S, .info = {"[S]"}, .info_count = 1};
-  rules[2] = (Rule){.key = SAPP_KEYCODE_Q, .info = {"[Q]"}, .info_count = 1};
-  rules[3] = (Rule){.key = SAPP_KEYCODE_E, .info = {"[E]"}, .info_count = 1};
-  rule_count = 4;
+  if (extra_char != EOF) {
+    fprintf(stderr, "main.bosonoga exceeds %d bytes\n", PROGRAM_MAX_BYTES);
+    free(program_content);
+    return EXIT_FAILURE;
+  }
+  program_content[program_length] = '\0';
+  Tokens tokens = {0};
+  int const tokenize_result = tokenize(&program_content, &tokens);
+  if (tokenize_result != EXIT_SUCCESS) {
+    return EXIT_FAILURE;
+  }
+  if (parse(&tokens, &script) != EXIT_SUCCESS) {
+    return EXIT_FAILURE;
+  }
 
   uint32_t const* const colors = themes[selected_theme].rectangles;
   for (size_t channel = 0; channel < 3; channel++) {
@@ -517,8 +532,6 @@ int main(void) {
                         .logger.func = slog_func});
   return graphics_failed ? EXIT_FAILURE : EXIT_SUCCESS;
 }
-
-// third-party
 #define SOKOL_IMPL
 // clang-format off
 #include "sokol_app.h"
