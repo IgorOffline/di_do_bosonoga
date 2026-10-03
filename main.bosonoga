@@ -19,6 +19,18 @@ di
   var echo is 50_i32
   set echo to_subtract echo 1_i32 echo 2_i32 echo 3_i32
   info "[9]" echo
+  if alpha eq 10
+  di
+    info "EQ_10"
+  do
+  if alpha eq 20
+  di
+    info "EQ_20"
+  do
+  else
+  di
+    info "NOT_EQ_20"
+  do
 do
 
 press_0
