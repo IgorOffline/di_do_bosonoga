@@ -175,7 +175,9 @@ static int parse_variable(Tokens const* tokens, size_t* position,
       !copy_theme_name(&tokens->items[*position], variable->name) ||
       matches(tokens, *position, "var") || matches(tokens, *position, "info") ||
       matches(tokens, *position, "start") || matches(tokens, *position, "do") ||
-      matches(tokens, *position, "is")) {
+      matches(tokens, *position, "is") || matches(tokens, *position, "set") ||
+      matches(tokens, *position, "to_add") ||
+      matches(tokens, *position, "to_subtract")) {
     return syntax_error(tokens, *position, "Expected a variable name");
   }
   for (size_t index = 0; index < *count; index++) {
@@ -198,6 +200,64 @@ static int parse_variable(Tokens const* tokens, size_t* position,
   return EXIT_SUCCESS;
 }
 
+static size_t find_variable(Token const* token, Variable const* variables,
+                            size_t count) {
+  for (size_t index = 0; index < count; index++) {
+    size_t const length = strlen(variables[index].name);
+    if (token->length == length &&
+        memcmp(token->text, variables[index].name, length) == 0)
+      return index;
+  }
+  return count;
+}
+
+static bool read_operand(Token const* token, Variable const* variables,
+                         size_t count, int32_t* value) {
+  size_t const index = find_variable(token, variables, count);
+  if (index < count) {
+    *value = variables[index].value;
+    return true;
+  }
+  return parse_i32(token, value);
+}
+
+static int parse_set(Tokens const* tokens, size_t* position,
+                     Variable* variables, size_t count) {
+  (*position)++;
+  if (*position >= tokens->count) {
+    return syntax_error(tokens, *position, "Expected assignment target");
+  }
+  size_t const target =
+      find_variable(&tokens->items[*position], variables, count);
+  if (target == count) {
+    return syntax_error(tokens, *position, "Unknown assignment target");
+  }
+  (*position)++;
+  bool const addition = matches(tokens, *position, "to_add");
+  if (!addition && !matches(tokens, *position, "to_subtract")) {
+    return syntax_error(tokens, *position, "Expected to_add or to_subtract");
+  }
+  (*position)++;
+  int32_t operands[2];
+  for (size_t index = 0; index < 2; index++) {
+    if (*position >= tokens->count ||
+        !read_operand(&tokens->items[*position], variables, count,
+                      &operands[index])) {
+      return syntax_error(tokens, *position,
+                          "Expected a declared variable or _i32 integer");
+    }
+    (*position)++;
+  }
+  int64_t const result = addition ? (int64_t)operands[0] + (int64_t)operands[1]
+                                  : (int64_t)operands[0] - (int64_t)operands[1];
+  if (result < INT32_MIN || result > INT32_MAX) {
+    return syntax_error(tokens, *position - 1,
+                        "Assignment result exceeds signed 32-bit range");
+  }
+  variables[target].value = (int32_t)result;
+  return EXIT_SUCCESS;
+}
+
 static int parse_info(Tokens const* tokens, size_t* position,
                       Variable const* variables, size_t variable_count,
                       char output[static BOSONO_STRING_LIMIT]) {
@@ -206,6 +266,7 @@ static int parse_info(Tokens const* tokens, size_t* position,
   (*position)++;
   while (*position < tokens->count && !matches(tokens, *position, "info") &&
          !matches(tokens, *position, "var") &&
+         !matches(tokens, *position, "set") &&
          !matches(tokens, *position, "start") &&
          !matches(tokens, *position, "do")) {
     Token const* const token = &tokens->items[*position];
@@ -296,7 +357,15 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
     size_t variable_count = 0;
     while (matches(tokens, position, "info") ||
            matches(tokens, position, "start") ||
-           matches(tokens, position, "var")) {
+           matches(tokens, position, "var") ||
+           matches(tokens, position, "set")) {
+      if (matches(tokens, position, "set")) {
+        if (parse_set(tokens, &position, variables, variable_count) !=
+            EXIT_SUCCESS) {
+          return EXIT_FAILURE;
+        }
+        continue;
+      }
       if (matches(tokens, position, "var")) {
         if (parse_variable(tokens, &position, variables, &variable_count) !=
             EXIT_SUCCESS) {
@@ -330,7 +399,7 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
     if (!matches(tokens, position, "do")) {
       return syntax_error(
           tokens, position,
-          "Expected info, var, start, or do to close key block");
+          "Expected info, var, set, start, or do to close key block");
     }
     position++;
     output->rule_count++;
