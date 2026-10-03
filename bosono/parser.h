@@ -50,10 +50,19 @@ typedef struct BosonoVariables {
 typedef struct BosonoTheme {
   char name[BOSONO_THEME_NAME_LIMIT];
   uint32_t rectangles[BOSONO_THEME_COLOR_COUNT];
+  size_t assets[BOSONO_THEME_COLOR_COUNT];
+  bool uses_assets;
   uint32_t background;
 } BosonoTheme;
 
+typedef struct BosonoAsset {
+  char name[BOSONO_THEME_NAME_LIMIT];
+  char filename[BOSONO_ASSET_PATH_LIMIT];
+} BosonoAsset;
+
 typedef struct BosonoProgram {
+  BosonoAsset assets[BOSONO_ASSET_LIMIT];
+  size_t asset_count;
   BosonoTheme themes[BOSONO_THEME_LIMIT];
   size_t theme_count;
   BosonoRule rules[BOSONO_RULE_LIMIT];

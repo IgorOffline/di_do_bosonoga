@@ -102,6 +102,47 @@ static bool parse_color(Token const* token, uint32_t* output) {
   return true;
 }
 
+static int parse_asset(Tokens const* tokens, size_t* position,
+                       BosonoProgram* output) {
+  if (output->asset_count >= BOSONO_ASSET_LIMIT) {
+    return syntax_error(tokens, *position, "Too many assets");
+  }
+  BosonoAsset* const asset = &output->assets[output->asset_count];
+  (*position)++;
+  if (*position >= tokens->count ||
+      !copy_theme_name(&tokens->items[*position], asset->name)) {
+    return syntax_error(tokens, *position, "Expected an asset name");
+  }
+  for (size_t index = 0; index < output->asset_count; index++) {
+    if (strcmp(output->assets[index].name, asset->name) == 0) {
+      return syntax_error(tokens, *position, "Duplicate asset name");
+    }
+  }
+  (*position)++;
+  if (*position >= tokens->count) {
+    return syntax_error(tokens, *position, "Expected a PNG filename in asset/");
+  }
+  Token const* const path = &tokens->items[*position];
+  if (path->length < 5 || path->length >= sizeof asset->filename ||
+      memcmp(path->text + path->length - 4, ".png", 4) != 0) {
+    return syntax_error(tokens, *position, "Expected a PNG filename in asset/");
+  }
+  for (size_t index = 0; index < path->length; index++) {
+    char const value = path->text[index];
+    if (!((value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
+          (value >= '0' && value <= '9') || value == '_' || value == '-' ||
+          value == '.')) {
+      return syntax_error(tokens, *position,
+                          "Expected a PNG filename in asset/");
+    }
+  }
+  memcpy(asset->filename, path->text, path->length);
+  asset->filename[path->length] = '\0';
+  (*position)++;
+  output->asset_count++;
+  return EXIT_SUCCESS;
+}
+
 static int parse_theme(Tokens const* tokens, size_t* position,
                        BosonoProgram* output) {
   if (output->theme_count >= BOSONO_THEME_LIMIT) {
@@ -121,12 +162,32 @@ static int parse_theme(Tokens const* tokens, size_t* position,
     }
   }
   (*position)++;
+  theme->uses_assets = false;
   for (size_t index = 0; index < BOSONO_THEME_COLOR_COUNT + 1; index++) {
     uint32_t* const color = index < BOSONO_THEME_COLOR_COUNT
                                 ? &theme->rectangles[index]
                                 : &theme->background;
-    if (*position >= tokens->count ||
-        !parse_color(&tokens->items[*position], color)) {
+    if (*position >= tokens->count) {
+      return syntax_error(tokens, *position, "Incomplete theme declaration");
+    }
+    bool const is_color = parse_color(&tokens->items[*position], color);
+    if (index == 0) theme->uses_assets = !is_color;
+    if (index < BOSONO_THEME_COLOR_COUNT && theme->uses_assets) {
+      Token const* const name = &tokens->items[*position];
+      size_t asset_index = 0;
+      for (; asset_index < output->asset_count; asset_index++) {
+        size_t const length = strlen(output->assets[asset_index].name);
+        if (name->length == length &&
+            memcmp(name->text, output->assets[asset_index].name, length) == 0)
+          break;
+      }
+      if (asset_index == output->asset_count) {
+        return syntax_error(tokens, *position,
+                            "Expected an asset declared before the theme");
+      }
+      theme->assets[index] = asset_index;
+      theme->rectangles[index] = UINT32_C(0xffffff);
+    } else if (!is_color) {
       return syntax_error(tokens, *position, "Expected RGB color HEX_RRGGBBU");
     }
     (*position)++;
@@ -500,6 +561,11 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
                        BosonoVariables* storage) {
   size_t position = 0;
   while (position < tokens->count) {
+    if (matches(tokens, position, "asset")) {
+      if (parse_asset(tokens, &position, output) != EXIT_SUCCESS)
+        return EXIT_FAILURE;
+      continue;
+    }
     if (matches(tokens, position, "theme")) {
       if (parse_theme(tokens, &position, output) != EXIT_SUCCESS) {
         return EXIT_FAILURE;
@@ -556,6 +622,7 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
 int parse(Tokens const* tokens, BosonoProgram* output,
           BosonoVariables* variables) {
   variables->count = 0;
+  output->asset_count = 0;
   output->theme_count = 0;
   output->rule_count = 0;
   int result = parse_rules(tokens, output, variables);
@@ -565,6 +632,7 @@ int parse(Tokens const* tokens, BosonoProgram* output,
                               BOSONO_THEME_MIN) " theme declaration");
   }
   if (result != EXIT_SUCCESS) {
+    output->asset_count = 0;
     variables->count = 0;
     output->rule_count = 0;
     output->theme_count = 0;

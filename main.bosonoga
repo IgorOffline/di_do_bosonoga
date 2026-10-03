@@ -1,7 +1,8 @@
-// theme latte HEX_D20F39U HEX_40A02BU HEX_1E66F5U HEX_ACB0BEU
-theme frappe HEX_E78284U HEX_A6D189U HEX_8CAAEEU HEX_626880U
-// theme macchiato HEX_ED8796U HEX_A6DA95U HEX_8AADF4U HEX_626880U
-// theme mocha HEX_F38BA8U HEX_A6E3A1U HEX_89B4FAU HEX_585B70U
+asset alpha alpha.png
+asset bravo bravo.png
+asset charlie charlie.png
+
+theme frappe alpha bravo charlie HEX_626880U
 
 press_9
 di
