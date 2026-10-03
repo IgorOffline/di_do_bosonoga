@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -134,6 +135,119 @@ static int parse_theme(Tokens const* tokens, size_t* position,
   return EXIT_SUCCESS;
 }
 
+typedef struct Variable {
+  char name[BOSONO_VARIABLE_NAME_LIMIT];
+  int32_t value;
+} Variable;
+
+static bool parse_i32(Token const* token, int32_t* output) {
+  if (token->length <= 4 ||
+      memcmp(token->text + token->length - 4, "_i32", 4) != 0)
+    return false;
+  size_t position = 0;
+  size_t const end = token->length - 4;
+  bool const negative = token->text[0] == '-';
+  if (negative || token->text[0] == '+') position++;
+  if (position == end) return false;
+  uint32_t const limit = negative ? UINT32_C(2147483648) : INT32_MAX;
+  uint32_t magnitude = 0;
+  for (; position < end; position++) {
+    char const digit = token->text[position];
+    if (digit < '0' || digit > '9') return false;
+    uint32_t const value = (uint32_t)(digit - '0');
+    if (magnitude > (limit - value) / 10U) return false;
+    magnitude = magnitude * 10U + value;
+  }
+  *output = negative ? (magnitude == UINT32_C(2147483648) ? INT32_MIN
+                                                          : -(int32_t)magnitude)
+                     : (int32_t)magnitude;
+  return true;
+}
+
+static int parse_variable(Tokens const* tokens, size_t* position,
+                          Variable* variables, size_t* count) {
+  if (*count >= BOSONO_VARIABLE_LIMIT) {
+    return syntax_error(tokens, *position, "Too many variables in key block");
+  }
+  (*position)++;
+  Variable* const variable = &variables[*count];
+  if (*position >= tokens->count ||
+      !copy_theme_name(&tokens->items[*position], variable->name) ||
+      matches(tokens, *position, "var") || matches(tokens, *position, "info") ||
+      matches(tokens, *position, "start") || matches(tokens, *position, "do") ||
+      matches(tokens, *position, "is")) {
+    return syntax_error(tokens, *position, "Expected a variable name");
+  }
+  for (size_t index = 0; index < *count; index++) {
+    if (strcmp(variables[index].name, variable->name) == 0) {
+      return syntax_error(tokens, *position, "Duplicate variable declaration");
+    }
+  }
+  (*position)++;
+  if (!matches(tokens, *position, "is")) {
+    return syntax_error(tokens, *position, "Expected is after variable name");
+  }
+  (*position)++;
+  if (*position >= tokens->count ||
+      !parse_i32(&tokens->items[*position], &variable->value)) {
+    return syntax_error(tokens, *position,
+                        "Expected a signed 32-bit integer with _i32 suffix");
+  }
+  (*position)++;
+  (*count)++;
+  return EXIT_SUCCESS;
+}
+
+static int parse_info(Tokens const* tokens, size_t* position,
+                      Variable const* variables, size_t variable_count,
+                      char output[static BOSONO_STRING_LIMIT]) {
+  size_t length = 0;
+  size_t argument_count = 0;
+  (*position)++;
+  while (*position < tokens->count && !matches(tokens, *position, "info") &&
+         !matches(tokens, *position, "var") &&
+         !matches(tokens, *position, "start") &&
+         !matches(tokens, *position, "do")) {
+    Token const* const token = &tokens->items[*position];
+    char fragment[BOSONO_STRING_LIMIT];
+    if (token->length != 0 && token->text[0] == '"') {
+      if (!copy_string(token, fragment)) {
+        return syntax_error(tokens, *position,
+                            "Expected a valid quoted UTF-8 string");
+      }
+    } else {
+      size_t index = 0;
+      for (; index < variable_count; index++) {
+        size_t const name_length = strlen(variables[index].name);
+        if (token->length == name_length &&
+            memcmp(token->text, variables[index].name, name_length) == 0)
+          break;
+      }
+      if (index == variable_count) {
+        return syntax_error(tokens, *position,
+                            "Unknown variable in info statement");
+      }
+      (void)snprintf(fragment, sizeof fragment, "%" PRId32,
+                     variables[index].value);
+    }
+    size_t const fragment_length = strlen(fragment);
+    if (fragment_length > BOSONO_STRING_MAX_BYTES - length) {
+      return syntax_error(tokens, *position,
+                          "Concatenated info text exceeds string limit");
+    }
+    memcpy(output + length, fragment, fragment_length);
+    length += fragment_length;
+    argument_count++;
+    (*position)++;
+  }
+  if (argument_count == 0) {
+    return syntax_error(tokens, *position,
+                        "Expected a string or variable after info");
+  }
+  output[length] = '\0';
+  return EXIT_SUCCESS;
+}
+
 static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
   size_t position = 0;
   while (position < tokens->count) {
@@ -178,8 +292,18 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
       return syntax_error(tokens, position, "Expected di after key trigger");
     }
     position++;
+    Variable variables[BOSONO_VARIABLE_LIMIT];
+    size_t variable_count = 0;
     while (matches(tokens, position, "info") ||
-           matches(tokens, position, "start")) {
+           matches(tokens, position, "start") ||
+           matches(tokens, position, "var")) {
+      if (matches(tokens, position, "var")) {
+        if (parse_variable(tokens, &position, variables, &variable_count) !=
+            EXIT_SUCCESS) {
+          return EXIT_FAILURE;
+        }
+        continue;
+      }
       if (matches(tokens, position, "start")) {
         if (rule->start) {
           return syntax_error(tokens, position, "Duplicate start action");
@@ -193,25 +317,20 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
                             "Too many info lines (maximum " BOSONO_TEXT(
                                 BOSONO_RULE_INFO_LIMIT) ")");
       }
-      position++;
-      if (position >= tokens->count ||
-          !copy_string(&tokens->items[position],
-                       rule->info[rule->info_count])) {
-        return syntax_error(tokens, position,
-                            "Expected a quoted UTF-8 string of at most "
-                            BOSONO_TEXT(BOSONO_STRING_MAX_BYTES) " bytes with "
-                            "valid escapes");
+      if (parse_info(tokens, &position, variables, variable_count,
+                     rule->info[rule->info_count]) != EXIT_SUCCESS) {
+        return EXIT_FAILURE;
       }
       rule->info_count++;
-      position++;
     }
     if (rule->info_count == 0 && !rule->start) {
       return syntax_error(tokens, position,
                           "Expected at least one info or start statement");
     }
     if (!matches(tokens, position, "do")) {
-      return syntax_error(tokens, position,
-                          "Expected info, start, or do to close key block");
+      return syntax_error(
+          tokens, position,
+          "Expected info, var, start, or do to close key block");
     }
     position++;
     output->rule_count++;

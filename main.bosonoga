@@ -6,7 +6,8 @@ theme frappe HEX_E78284U HEX_A6D189U HEX_8CAAEEU HEX_626880U
 press_0
 di
   start
-  info "[0]"
+  var alpha is 10_i32
+  info "[0]" alpha "...again..." alpha
 do
 
 down_w
