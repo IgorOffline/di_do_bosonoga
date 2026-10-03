@@ -135,11 +135,6 @@ static int parse_theme(Tokens const* tokens, size_t* position,
   return EXIT_SUCCESS;
 }
 
-typedef struct Variable {
-  char name[BOSONO_VARIABLE_NAME_LIMIT];
-  int32_t value;
-} Variable;
-
 static bool parse_i32(Token const* token, int32_t* output) {
   if (token->length <= 4 ||
       memcmp(token->text + token->length - 4, "_i32", 4) != 0)
@@ -165,17 +160,20 @@ static bool parse_i32(Token const* token, int32_t* output) {
 }
 
 static int parse_variable(Tokens const* tokens, size_t* position,
-                          Variable* variables, size_t* count) {
-  if (*count >= BOSONO_VARIABLE_LIMIT) {
-    return syntax_error(tokens, *position, "Too many variables in key block");
+                          BosonoVariable* variables, size_t* count,
+                          size_t capacity) {
+  if (*count >= capacity) {
+    return syntax_error(tokens, *position, "Regina variable storage is full");
   }
   (*position)++;
-  Variable* const variable = &variables[*count];
+  BosonoVariable* const variable = &variables[*count];
   if (*position >= tokens->count ||
       !copy_theme_name(&tokens->items[*position], variable->name) ||
       matches(tokens, *position, "var") || matches(tokens, *position, "info") ||
       matches(tokens, *position, "start") || matches(tokens, *position, "do") ||
-      matches(tokens, *position, "is")) {
+      matches(tokens, *position, "is") || matches(tokens, *position, "set") ||
+      matches(tokens, *position, "to_add") ||
+      matches(tokens, *position, "to_subtract")) {
     return syntax_error(tokens, *position, "Expected a variable name");
   }
   for (size_t index = 0; index < *count; index++) {
@@ -198,14 +196,73 @@ static int parse_variable(Tokens const* tokens, size_t* position,
   return EXIT_SUCCESS;
 }
 
+static size_t find_variable(Token const* token, BosonoVariable const* variables,
+                            size_t count) {
+  for (size_t index = 0; index < count; index++) {
+    size_t const length = strlen(variables[index].name);
+    if (token->length == length &&
+        memcmp(token->text, variables[index].name, length) == 0)
+      return index;
+  }
+  return count;
+}
+
+static bool read_operand(Token const* token, BosonoVariable const* variables,
+                         size_t count, int32_t* value) {
+  size_t const index = find_variable(token, variables, count);
+  if (index < count) {
+    *value = variables[index].value;
+    return true;
+  }
+  return parse_i32(token, value);
+}
+
+static int parse_set(Tokens const* tokens, size_t* position,
+                     BosonoVariable* variables, size_t count) {
+  (*position)++;
+  if (*position >= tokens->count) {
+    return syntax_error(tokens, *position, "Expected assignment target");
+  }
+  size_t const target =
+      find_variable(&tokens->items[*position], variables, count);
+  if (target == count) {
+    return syntax_error(tokens, *position, "Unknown assignment target");
+  }
+  (*position)++;
+  bool const addition = matches(tokens, *position, "to_add");
+  if (!addition && !matches(tokens, *position, "to_subtract")) {
+    return syntax_error(tokens, *position, "Expected to_add or to_subtract");
+  }
+  (*position)++;
+  int32_t operands[2];
+  for (size_t index = 0; index < 2; index++) {
+    if (*position >= tokens->count ||
+        !read_operand(&tokens->items[*position], variables, count,
+                      &operands[index])) {
+      return syntax_error(tokens, *position,
+                          "Expected a declared variable or _i32 integer");
+    }
+    (*position)++;
+  }
+  int64_t const result = addition ? (int64_t)operands[0] + (int64_t)operands[1]
+                                  : (int64_t)operands[0] - (int64_t)operands[1];
+  if (result < INT32_MIN || result > INT32_MAX) {
+    return syntax_error(tokens, *position - 1,
+                        "Assignment result exceeds signed 32-bit range");
+  }
+  variables[target].value = (int32_t)result;
+  return EXIT_SUCCESS;
+}
+
 static int parse_info(Tokens const* tokens, size_t* position,
-                      Variable const* variables, size_t variable_count,
+                      BosonoVariable const* variables, size_t variable_count,
                       char output[static BOSONO_STRING_LIMIT]) {
   size_t length = 0;
   size_t argument_count = 0;
   (*position)++;
   while (*position < tokens->count && !matches(tokens, *position, "info") &&
          !matches(tokens, *position, "var") &&
+         !matches(tokens, *position, "set") &&
          !matches(tokens, *position, "start") &&
          !matches(tokens, *position, "do")) {
     Token const* const token = &tokens->items[*position];
@@ -248,7 +305,8 @@ static int parse_info(Tokens const* tokens, size_t* position,
   return EXIT_SUCCESS;
 }
 
-static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
+static int parse_rules(Tokens const* tokens, BosonoProgram* output,
+                       BosonoVariables* storage) {
   size_t position = 0;
   while (position < tokens->count) {
     if (matches(tokens, position, "theme")) {
@@ -292,16 +350,29 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
       return syntax_error(tokens, position, "Expected di after key trigger");
     }
     position++;
-    Variable variables[BOSONO_VARIABLE_LIMIT];
+    rule->variable_start = storage->count;
+    rule->variable_count = 0;
+    BosonoVariable* const variables = storage->items + storage->count;
+    size_t const variable_capacity = BOSONO_VARIABLE_LIMIT - storage->count;
     size_t variable_count = 0;
     while (matches(tokens, position, "info") ||
            matches(tokens, position, "start") ||
-           matches(tokens, position, "var")) {
-      if (matches(tokens, position, "var")) {
-        if (parse_variable(tokens, &position, variables, &variable_count) !=
+           matches(tokens, position, "var") ||
+           matches(tokens, position, "set")) {
+      if (matches(tokens, position, "set")) {
+        if (parse_set(tokens, &position, variables, variable_count) !=
             EXIT_SUCCESS) {
           return EXIT_FAILURE;
         }
+        continue;
+      }
+      if (matches(tokens, position, "var")) {
+        if (parse_variable(tokens, &position, variables, &variable_count,
+                           variable_capacity) != EXIT_SUCCESS) {
+          return EXIT_FAILURE;
+        }
+        storage->count = rule->variable_start + variable_count;
+        rule->variable_count = variable_count;
         continue;
       }
       if (matches(tokens, position, "start")) {
@@ -330,7 +401,7 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
     if (!matches(tokens, position, "do")) {
       return syntax_error(
           tokens, position,
-          "Expected info, var, start, or do to close key block");
+          "Expected info, var, set, start, or do to close key block");
     }
     position++;
     output->rule_count++;
@@ -338,16 +409,19 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
   return EXIT_SUCCESS;
 }
 
-int parse(Tokens const* tokens, BosonoProgram* output) {
+int parse(Tokens const* tokens, BosonoProgram* output,
+          BosonoVariables* variables) {
+  variables->count = 0;
   output->theme_count = 0;
   output->rule_count = 0;
-  int result = parse_rules(tokens, output);
+  int result = parse_rules(tokens, output, variables);
   if (result == EXIT_SUCCESS && output->theme_count < BOSONO_THEME_MIN) {
     result = syntax_error(tokens, tokens->count,
                           "Expected at least " BOSONO_TEXT(
                               BOSONO_THEME_MIN) " theme declaration");
   }
   if (result != EXIT_SUCCESS) {
+    variables->count = 0;
     output->rule_count = 0;
     output->theme_count = 0;
   }

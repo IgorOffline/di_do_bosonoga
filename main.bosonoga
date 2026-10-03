@@ -3,11 +3,22 @@ theme frappe HEX_E78284U HEX_A6D189U HEX_8CAAEEU HEX_626880U
 // theme macchiato HEX_ED8796U HEX_A6DA95U HEX_8AADF4U HEX_626880U
 // theme mocha HEX_F38BA8U HEX_A6E3A1U HEX_89B4FAU HEX_585B70U
 
+press_9
+di
+  var alpha is 10_i32
+  info "[9]" alpha "...again..." alpha
+  var bravo is 20_i32
+  set bravo to_add bravo 1_i32
+  info "[9]" bravo
+  var charlie is 30_i32
+  set charlie to_subtract charlie 1_i32
+  info "[9]" charlie
+do
+
 press_0
 di
   start
-  var alpha is 10_i32
-  info "[0]" alpha "...again..." alpha
+  info "[0]"
 do
 
 down_w
