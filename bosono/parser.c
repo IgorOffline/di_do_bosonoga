@@ -159,6 +159,49 @@ static bool parse_i32(Token const* token, int32_t* output) {
   return true;
 }
 
+static size_t find_variable(Token const* token, BosonoVariable const* variables,
+                            size_t count) {
+  for (size_t index = 0; index < count; index++) {
+    size_t const length = strlen(variables[index].name);
+    if (token->length == length &&
+        memcmp(token->text, variables[index].name, length) == 0)
+      return index;
+  }
+  return count;
+}
+
+static bool read_operand(Token const* token, BosonoVariable const* variables,
+                         size_t count, int32_t* value) {
+  size_t const index = find_variable(token, variables, count);
+  if (index < count) {
+    if (variables[index].value.kind != BOSONO_VALUE_I32) return false;
+    *value = variables[index].value.i32;
+    return true;
+  }
+  return parse_i32(token, value);
+}
+
+static bool read_flags(Token const* token, BosonoVariable const* variables,
+                       size_t count, uint32_t* flags) {
+  size_t const index = find_variable(token, variables, count);
+  if (index < count) {
+    if (variables[index].value.kind != BOSONO_VALUE_FLAGS) return false;
+    *flags = variables[index].value.flags;
+    return true;
+  }
+  if (token->length < 7 || token->length > 8 ||
+      memcmp(token->text, "shift_", 6) != 0)
+    return false;
+  unsigned int bit = 0;
+  for (size_t digit = 6; digit < token->length; digit++) {
+    if (token->text[digit] < '0' || token->text[digit] > '9') return false;
+    bit = bit * 10U + (unsigned int)(token->text[digit] - '0');
+  }
+  if (bit >= 32) return false;
+  *flags = UINT32_C(1) << bit;
+  return true;
+}
+
 static int parse_variable(Tokens const* tokens, size_t* position,
                           BosonoVariable* variables, size_t* count,
                           size_t capacity) {
@@ -175,7 +218,9 @@ static int parse_variable(Tokens const* tokens, size_t* position,
       matches(tokens, *position, "to_add") ||
       matches(tokens, *position, "to_subtract") ||
       matches(tokens, *position, "if") || matches(tokens, *position, "else") ||
-      matches(tokens, *position, "eq") || matches(tokens, *position, "di")) {
+      matches(tokens, *position, "eq") || matches(tokens, *position, "di") ||
+      matches(tokens, *position, "shift_or") ||
+      matches(tokens, *position, "shift_eq")) {
     return syntax_error(tokens, *position, "Expected a variable name");
   }
   for (size_t index = 0; index < *count; index++) {
@@ -188,35 +233,38 @@ static int parse_variable(Tokens const* tokens, size_t* position,
     return syntax_error(tokens, *position, "Expected is after variable name");
   }
   (*position)++;
-  if (*position >= tokens->count ||
-      !parse_i32(&tokens->items[*position], &variable->value)) {
-    return syntax_error(tokens, *position,
-                        "Expected a signed 32-bit integer with _i32 suffix");
+  if (*position >= tokens->count) {
+    return syntax_error(tokens, *position, "Expected a variable initializer");
   }
-  (*position)++;
+  int32_t integer;
+  uint32_t flags;
+  if (parse_i32(&tokens->items[*position], &integer)) {
+    variable->value.kind = BOSONO_VALUE_I32;
+    variable->value.i32 = integer;
+    (*position)++;
+  } else if (read_flags(&tokens->items[*position], variables, *count, &flags)) {
+    variable->value.kind = BOSONO_VALUE_FLAGS;
+    (*position)++;
+    while (matches(tokens, *position, "shift_or")) {
+      (*position)++;
+      uint32_t operand;
+      if (*position >= tokens->count ||
+          !read_flags(&tokens->items[*position], variables, *count, &operand)) {
+        return syntax_error(
+            tokens, *position,
+            "Expected a flag variable or shift_0 through shift_31");
+      }
+      flags |= operand;
+      (*position)++;
+    }
+    variable->value.flags = flags;
+  } else {
+    return syntax_error(
+        tokens, *position,
+        "Expected an _i32 integer, flag variable, or shift_0 through shift_31");
+  }
   (*count)++;
   return EXIT_SUCCESS;
-}
-
-static size_t find_variable(Token const* token, BosonoVariable const* variables,
-                            size_t count) {
-  for (size_t index = 0; index < count; index++) {
-    size_t const length = strlen(variables[index].name);
-    if (token->length == length &&
-        memcmp(token->text, variables[index].name, length) == 0)
-      return index;
-  }
-  return count;
-}
-
-static bool read_operand(Token const* token, BosonoVariable const* variables,
-                         size_t count, int32_t* value) {
-  size_t const index = find_variable(token, variables, count);
-  if (index < count) {
-    *value = variables[index].value;
-    return true;
-  }
-  return parse_i32(token, value);
 }
 
 static int parse_set(Tokens const* tokens, size_t* position,
@@ -229,6 +277,10 @@ static int parse_set(Tokens const* tokens, size_t* position,
       find_variable(&tokens->items[*position], variables, count);
   if (target == count) {
     return syntax_error(tokens, *position, "Unknown assignment target");
+  }
+  if (variables[target].value.kind != BOSONO_VALUE_I32) {
+    return syntax_error(tokens, *position,
+                        "Arithmetic assignment requires an _i32 target");
   }
   (*position)++;
   bool const addition = matches(tokens, *position, "to_add");
@@ -267,7 +319,7 @@ static int parse_set(Tokens const* tokens, size_t* position,
     return syntax_error(tokens, *position,
                         "Expected at least two arithmetic operands");
   }
-  if (active) variables[target].value = (int32_t)result;
+  if (active) variables[target].value.i32 = (int32_t)result;
   return EXIT_SUCCESS;
 }
 
@@ -303,8 +355,13 @@ static int parse_info(Tokens const* tokens, size_t* position,
         return syntax_error(tokens, *position,
                             "Unknown variable in info statement");
       }
-      (void)snprintf(fragment, sizeof fragment, "%" PRId32,
-                     variables[index].value);
+      if (variables[index].value.kind == BOSONO_VALUE_FLAGS) {
+        (void)snprintf(fragment, sizeof fragment, "%" PRIu32,
+                       variables[index].value.flags);
+      } else {
+        (void)snprintf(fragment, sizeof fragment, "%" PRId32,
+                       variables[index].value.i32);
+      }
     }
     size_t const fragment_length = strlen(fragment);
     if (fragment_length > BOSONO_STRING_MAX_BYTES - length) {
@@ -348,22 +405,32 @@ static int parse_statements(Tokens const* tokens, size_t* position,
   while (*position < tokens->count && !matches(tokens, *position, "do")) {
     if (matches(tokens, *position, "if")) {
       (*position)++;
-      int32_t left;
-      int32_t right;
+      bool const flag_comparison = matches(tokens, *position + 1, "shift_eq");
+      int32_t left = 0;
+      int32_t right = 0;
+      uint32_t left_flags = 0;
+      uint32_t right_flags = 0;
       if (*position >= tokens->count ||
-          !read_condition_value(&tokens->items[*position], variables,
-                                *variable_count, &left)) {
+          !(flag_comparison
+                ? read_flags(&tokens->items[*position], variables,
+                             *variable_count, &left_flags)
+                : read_condition_value(&tokens->items[*position], variables,
+                                       *variable_count, &left))) {
         return syntax_error(tokens, *position,
                             "Expected a variable or integer after if");
       }
       (*position)++;
-      if (!matches(tokens, *position, "eq")) {
-        return syntax_error(tokens, *position, "Expected eq in condition");
+      if (!matches(tokens, *position, flag_comparison ? "shift_eq" : "eq")) {
+        return syntax_error(tokens, *position,
+                            "Expected eq or shift_eq in condition");
       }
       (*position)++;
       if (*position >= tokens->count ||
-          !read_condition_value(&tokens->items[*position], variables,
-                                *variable_count, &right)) {
+          !(flag_comparison
+                ? read_flags(&tokens->items[*position], variables,
+                             *variable_count, &right_flags)
+                : read_condition_value(&tokens->items[*position], variables,
+                                       *variable_count, &right))) {
         return syntax_error(tokens, *position,
                             "Expected a variable or integer after eq");
       }
@@ -372,7 +439,9 @@ static int parse_statements(Tokens const* tokens, size_t* position,
         return syntax_error(tokens, *position, "Expected di after condition");
       }
       (*position)++;
-      bool const condition = left == right;
+      bool const condition = flag_comparison
+                                 ? (left_flags & right_flags) == right_flags
+                                 : left == right;
       size_t const saved_count = *variable_count;
       if (parse_statements(tokens, position, rule, storage, variable_count,
                            active && condition, depth + 1) != EXIT_SUCCESS)

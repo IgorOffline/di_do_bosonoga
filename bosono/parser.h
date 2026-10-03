@@ -21,9 +21,22 @@ typedef struct BosonoRule {
   size_t variable_count;
 } BosonoRule;
 
+typedef enum BosonoValueKind {
+  BOSONO_VALUE_I32,
+  BOSONO_VALUE_FLAGS
+} BosonoValueKind;
+
+typedef struct BosonoValue {
+  BosonoValueKind kind;
+  union {
+    int32_t i32;
+    uint32_t flags;
+  };
+} BosonoValue;
+
 typedef struct BosonoVariable {
   char name[BOSONO_VARIABLE_NAME_LIMIT];
-  int32_t value;
+  BosonoValue value;
 } BosonoVariable;
 
 #define BOSONO_VARIABLE_LIMIT \
