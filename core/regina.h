@@ -75,17 +75,28 @@ struct Regina {
     };
     unsigned char state_slab[REGINA_STATE_BYTES];
   };
+  union {
+    BosonoVariables variables;
+    unsigned char variable_slab[BOSONO_VARIABLE_BYTES];
+  };
   Token tokens[BOSONO_TOKEN_LIMIT];
   char source[BOSONO_LIMIT];
 };
 
-_Static_assert(offsetof(Regina, tokens) == REGINA_STATE_BYTES,
+_Static_assert(offsetof(Regina, variables) == REGINA_STATE_BYTES,
                "Regina's state must fit its 64 MiB slab");
-_Static_assert(sizeof(Token[BOSONO_TOKEN_LIMIT]) == 134217728,
-               "Regina's tokens must fill their 128 MiB slab");
-_Static_assert(BOSONO_LIMIT == 67108864,
-               "Regina's source must fill its 64 MiB slab");
+_Static_assert(BOSONO_VARIABLE_BYTES == REGINA_BYTES / 2,
+               "Variables must reserve half of Regina");
+_Static_assert(sizeof(BosonoVariables) <= BOSONO_VARIABLE_BYTES,
+               "Typed variable storage must fit its reserved slab");
+_Static_assert(offsetof(Regina, tokens) ==
+                   REGINA_STATE_BYTES + BOSONO_VARIABLE_BYTES,
+               "Regina's variables must fill their 120 MiB slab");
+_Static_assert(sizeof(Token[BOSONO_TOKEN_LIMIT]) == 40U * 1024U * 1024U,
+               "Regina's tokens must fill their 40 MiB slab");
+_Static_assert(BOSONO_LIMIT == 16U * 1024U * 1024U,
+               "Regina's source must fill its 16 MiB slab");
 _Static_assert(sizeof(Regina) == REGINA_BYTES,
-               "Regina's byte budget must sum to exactly 256 MiB");
+               "Regina's byte budget must sum to exactly 240 MiB");
 
 #endif

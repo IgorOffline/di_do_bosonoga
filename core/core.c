@@ -215,6 +215,7 @@ static void core_cleanup(void* user_data) {
   Regina* const regina = user_data;
   regina->script.rule_count = 0;
   regina->script.theme_count = 0;
+  regina->variables.count = 0;
   memset(regina->rule_held, 0, sizeof regina->rule_held);
   if (regina->text_ready) snk_shutdown();
   if (regina->font_atlas.temporary.alloc)
@@ -374,6 +375,17 @@ static void core_frame(void* user_data) {
 static void core_init(void* user_data) {
   Regina* const regina = user_data;
   printf_vulkan_metadata();
+  size_t const mib = 1024U * 1024U;
+  printf(
+      "Regina memory: %zu MiB total\n"
+      "  Variables: %zu MiB\n"
+      "  Application state: %zu MiB\n"
+      "  Tokens: %zu MiB\n"
+      "  Source text: %zu MiB\n",
+      sizeof *regina / mib, sizeof regina->variable_slab / mib,
+      sizeof regina->state_slab / mib, sizeof regina->tokens / mib,
+      sizeof regina->source / mib);
+  (void)fflush(stdout);
   sg_setup(&(sg_desc){.environment = sglue_environment(),
                       .allocator = {.alloc_fn = counted_alloc,
                                     .free_fn = counted_free,
@@ -500,7 +512,7 @@ int core(Regina* regina) {
   if (tokenize(regina->source, &tokens) != EXIT_SUCCESS) {
     return EXIT_FAILURE;
   }
-  if (parse(&tokens, &regina->script) != EXIT_SUCCESS) {
+  if (parse(&tokens, &regina->script, &regina->variables) != EXIT_SUCCESS) {
     return EXIT_FAILURE;
   }
 

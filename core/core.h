@@ -1,7 +1,7 @@
 #ifndef CORE_CORE_H
 #define CORE_CORE_H
 
-#define REGINA_BYTES 268435456
+#define REGINA_BYTES (240U * 1024U * 1024U)
 
 typedef struct Regina Regina;
 
