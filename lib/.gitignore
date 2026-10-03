@@ -4,3 +4,4 @@ sokol_gfx.h
 sokol_glue.h
 sokol_log.h
 sokol_nuklear.h
+stb_image.h

@@ -14,6 +14,8 @@
 #include <time.h>
 #endif
 
+#include <stb_image.h>
+
 #include "regina.h"
 
 #if defined(SOKOL_VULKAN)
@@ -92,31 +94,92 @@
   ((void)puts("Graphics backend: Metal; Vulkan metadata does not apply"))
 #endif
 
-typedef struct {
-  _Alignas(16) size_t bytes;
-} CountedBlock;
+typedef struct PoolBlock {
+  _Alignas(max_align_t) size_t bytes;
+  size_t next;
+  bool available;
+} PoolBlock;
+
+static PoolBlock* pool_block(Regina* regina, size_t offset) {
+  return (PoolBlock*)(void*)(regina->runtime_pool + offset);
+}
+
+static void initialize_pool(Regina* regina) {
+  PoolBlock* const first = pool_block(regina, 0);
+  *first = (PoolBlock){.bytes = REGINA_RUNTIME_BYTES - sizeof *first,
+                       .next = SIZE_MAX,
+                       .available = true};
+  regina->runtime_bytes = 0;
+  regina->runtime_peak_bytes = 0;
+}
 
 static void* counted_alloc(size_t size, void* user_data) {
   Regina* const regina = user_data;
-  if (size > SIZE_MAX - sizeof(CountedBlock)) return NULL;
-  CountedBlock* const block = malloc(sizeof *block + size);
-  if (!block) return NULL;
-  block->bytes = sizeof *block + size;
-  regina->malloc_bytes += block->bytes;
-  return block + 1;
+  size_t const alignment = _Alignof(max_align_t);
+  if (size == 0) size = 1;
+  if (size > REGINA_RUNTIME_BYTES - alignment) return NULL;
+  size = (size + alignment - 1) / alignment * alignment;
+  for (size_t offset = 0; offset != SIZE_MAX;) {
+    PoolBlock* const block = pool_block(regina, offset);
+    if (block->available && block->bytes >= size) {
+      if (block->bytes - size >= sizeof(PoolBlock) + alignment) {
+        size_t const next_offset = offset + sizeof *block + size;
+        PoolBlock* const next = pool_block(regina, next_offset);
+        *next = (PoolBlock){.bytes = block->bytes - size - sizeof *next,
+                            .next = block->next,
+                            .available = true};
+        block->bytes = size;
+        block->next = next_offset;
+      }
+      block->available = false;
+      regina->runtime_bytes += block->bytes + sizeof *block;
+      if (regina->runtime_bytes > regina->runtime_peak_bytes)
+        regina->runtime_peak_bytes = regina->runtime_bytes;
+      return block + 1;
+    }
+    offset = block->next;
+  }
+  return NULL;
 }
 
 static void counted_free(void* pointer, void* user_data) {
   Regina* const regina = user_data;
   if (!pointer) return;
-  CountedBlock* const block = (CountedBlock*)pointer - 1;
-  regina->malloc_bytes -= block->bytes;
-  free(block);
+  PoolBlock* const block = (PoolBlock*)pointer - 1;
+  regina->runtime_bytes -= block->bytes + sizeof *block;
+  block->available = true;
+  for (size_t offset = 0; offset != SIZE_MAX;) {
+    PoolBlock* const current = pool_block(regina, offset);
+    if (current->available && current->next != SIZE_MAX) {
+      PoolBlock* const next = pool_block(regina, current->next);
+      if (next->available) {
+        current->bytes += sizeof *next + next->bytes;
+        current->next = next->next;
+        continue;
+      }
+    }
+    offset = current->next;
+  }
 }
 
+static void* counted_realloc(void* pointer, size_t size, Regina* regina) {
+  if (!pointer) return counted_alloc(size, regina);
+  if (size == 0) {
+    counted_free(pointer, regina);
+    return NULL;
+  }
+  PoolBlock const* const block = (PoolBlock*)pointer - 1;
+  if (size <= block->bytes) return pointer;
+  void* const replacement = counted_alloc(size, regina);
+  if (!replacement) return NULL;
+  memcpy(replacement, pointer, block->bytes);
+  counted_free(pointer, regina);
+  return replacement;
+}
+
+static Regina* image_regina;
 static void* counted_nk_alloc(nk_handle handle, void* old, nk_size size) {
-  (void)old;
-  return counted_alloc((size_t)size, handle.ptr);
+  return counted_realloc(old, (size_t)size, handle.ptr);
 }
 
 static void counted_nk_free(nk_handle handle, void* pointer) {
@@ -213,9 +276,18 @@ static void core_event(sapp_event const* event, void* user_data) {
 
 static void core_cleanup(void* user_data) {
   Regina* const regina = user_data;
+  for (size_t index = 0; index < regina->script.asset_count; index++) {
+    if (regina->assets[index].handle != 0)
+      snk_destroy_image((snk_image_t){.id = regina->assets[index].handle});
+    if (regina->assets[index].view.id != 0)
+      sg_destroy_view(regina->assets[index].view);
+    if (regina->assets[index].image.id != 0)
+      sg_destroy_image(regina->assets[index].image);
+  }
   regina->script.rule_count = 0;
   regina->script.theme_count = 0;
   regina->variables.count = 0;
+  regina->script.asset_count = 0;
   memset(regina->rule_held, 0, sizeof regina->rule_held);
   if (regina->text_ready) snk_shutdown();
   if (regina->font_atlas.temporary.alloc)
@@ -335,9 +407,11 @@ static void core_frame(void* user_data) {
     float const world_x = RECT_X + (float)world * RECT_SPACING;
     if (world_x + RECT_WIDTH <= render_left || world_x >= render_right)
       continue;
-    sg_apply_pipeline(regina->worlds[world].pipeline);
-    sg_apply_bindings(&regina->worlds[world].bindings);
-    sg_draw(0, RECT_VERTEX_COUNT, 1);
+    if (!regina->script.themes[regina->selected_theme].uses_assets) {
+      sg_apply_pipeline(regina->worlds[world].pipeline);
+      sg_apply_bindings(&regina->worlds[world].bindings);
+      sg_draw(0, RECT_VERTEX_COUNT, 1);
+    }
     triangle_batches++;
   }
   char label[96];
@@ -348,6 +422,31 @@ static void core_frame(void* user_data) {
     (void)snprintf(label, sizeof label, "Start?");
   }
   struct nk_context* ctx = snk_new_frame();
+  BosonoTheme const* const theme =
+      &regina->script.themes[regina->selected_theme];
+  if (regina->started && theme->uses_assets) {
+    if (nk_begin(ctx, "sprites",
+                 nk_rect(0, 0, (float)sapp_width(), (float)sapp_height()),
+                 NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BACKGROUND)) {
+      struct nk_command_buffer* const canvas = nk_window_get_canvas(ctx);
+      nk_push_scissor(canvas,
+                      nk_rect(0, 0, (float)sapp_width(), (float)sapp_height()));
+      for (size_t world = 0; world < WORLD_COUNT; world++) {
+        float const world_x = RECT_X + (float)world * RECT_SPACING;
+        if (world_x + RECT_WIDTH <= render_left || world_x >= render_right)
+          continue;
+        AssetImage const* const asset =
+            &regina->assets[theme->assets[world % RECT_COLOR_COUNT]];
+        struct nk_image const image =
+            nk_image_handle(snk_nkhandle((snk_image_t){.id = asset->handle}));
+        nk_draw_image(canvas,
+                      nk_rect(world_x - regina->camera_x, RECT_Y, RECT_WIDTH,
+                              RECT_HEIGHT),
+                      &image, nk_rgb(255, 255, 255));
+      }
+    }
+    nk_end(ctx);
+  }
   if (nk_begin(ctx, "batch-count", nk_rect(8, 8, 640, 44),
                NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BACKGROUND)) {
     nk_draw_text(nk_window_get_canvas(ctx), nk_rect(12, 10, 620, 32), label,
@@ -372,6 +471,81 @@ static void core_frame(void* user_data) {
   sg_commit();
 }
 
+static bool load_assets(Regina* regina) {
+  image_regina = regina;
+  for (size_t index = 0; index < regina->script.asset_count; index++) {
+    char path[BOSONO_ASSET_PATH_LIMIT + 16];
+    (void)snprintf(path, sizeof path, "asset/%s",
+                   regina->script.assets[index].filename);
+    FILE* file = NULL;
+#if defined(_WIN32)
+    (void)fopen_s(&file, path, "rb");
+#else
+    file = fopen(path, "rb");
+#endif
+    if (!file) {
+      fprintf(stderr, "Unable to open PNG asset %s\n", path);
+      return false;
+    }
+    size_t const length = fread(regina->source, 1, sizeof regina->source, file);
+    bool const failed = ferror(file) || fgetc(file) != EOF;
+    (void)fclose(file);
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    if (failed || length == 0 || length > INT_MAX ||
+        !stbi_info_from_memory((unsigned char const*)regina->source,
+                               (int)length, &width, &height, &channels) ||
+        width <= 0 || height <= 0 || width > 4096 || height > 4096) {
+      fprintf(stderr, "Invalid or oversized PNG asset %s\n", path);
+      return false;
+    }
+    size_t const bytes = (size_t)width * (size_t)height * 4U;
+    if (bytes > REGINA_ASSET_GPU_BYTES - regina->asset_gpu_bytes ||
+        bytes > REGINA_RUNTIME_BYTES - regina->runtime_bytes) {
+      fprintf(stderr, "PNG asset %s exceeds the asset memory budget\n", path);
+      return false;
+    }
+    unsigned char* pixels =
+        stbi_load_from_memory((unsigned char const*)regina->source, (int)length,
+                              &width, &height, &channels, 4);
+    if (!pixels) {
+      fprintf(stderr, "Unable to decode %s within Regina's memory budget\n",
+              path);
+      return false;
+    }
+    AssetImage* const asset = &regina->assets[index];
+    asset->width = width;
+    asset->height = height;
+    asset->image = sg_make_image(
+        &(sg_image_desc){.width = width,
+                         .height = height,
+                         .pixel_format = SG_PIXELFORMAT_RGBA8,
+                         .data.mip_levels[0] = {.ptr = pixels, .size = bytes},
+                         .label = path});
+    stbi_image_free(pixels);
+    if (sg_query_image_state(asset->image) != SG_RESOURCESTATE_VALID)
+      return false;
+    asset->view = sg_make_view(&(sg_view_desc){.texture.image = asset->image});
+    if (sg_query_view_state(asset->view) != SG_RESOURCESTATE_VALID)
+      return false;
+    snk_image_t const handle =
+        snk_make_image(&(snk_image_desc_t){.texture_view = asset->view});
+    asset->handle = handle.id;
+    if (asset->handle == 0) return false;
+    regina->asset_gpu_bytes += bytes;
+    printf("Asset %s: %dx%d, %zu RGBA bytes\n",
+           regina->script.assets[index].name, width, height, bytes);
+  }
+  printf(
+      "Asset GPU textures: %zu / %u bytes (separate from Regina)\n"
+      "Regina runtime pool: %zu / %u bytes; peak %zu bytes\n",
+      regina->asset_gpu_bytes, REGINA_ASSET_GPU_BYTES, regina->runtime_bytes,
+      REGINA_RUNTIME_BYTES, regina->runtime_peak_bytes);
+  (void)fflush(stdout);
+  return true;
+}
+
 static void core_init(void* user_data) {
   Regina* const regina = user_data;
   printf_vulkan_metadata();
@@ -380,8 +554,8 @@ static void core_init(void* user_data) {
       "Regina memory: %zu MiB total\n"
       "  Variables: %zu MiB\n"
       "  Application state: %zu MiB\n"
-      "  Tokens: %zu MiB\n"
-      "  Source text: %zu MiB\n",
+      "  Tokens / runtime asset-renderer pool: %zu MiB\n"
+      "  Source text / asset input: %zu MiB\n",
       sizeof *regina / mib, sizeof regina->variable_slab / mib,
       sizeof regina->state_slab / mib, sizeof regina->tokens / mib,
       sizeof regina->source / mib);
@@ -397,7 +571,8 @@ static void core_init(void* user_data) {
     return;
   }
   snk_setup(&(snk_desc_t){.no_default_font = true,
-                          .max_vertices = 1024,
+                          .max_vertices = 4096,
+                          .image_pool_size = BOSONO_ASSET_LIMIT + 8,
                           .dpi_scale = sapp_dpi_scale(),
                           .allocator = {.alloc_fn = counted_alloc,
                                         .free_fn = counted_free,
@@ -445,6 +620,11 @@ static void core_init(void* user_data) {
   if (sg_query_image_state(font_image) != SG_RESOURCESTATE_VALID ||
       sg_query_view_state(font_view) != SG_RESOURCESTATE_VALID) {
     regina->graphics_failed = true;
+  }
+  if (!regina->graphics_failed && !load_assets(regina)) {
+    regina->graphics_failed = true;
+    sapp_quit();
+    return;
   }
   char const* const buffer_labels[RECT_COLOR_COUNT] = {
       "red-world-vertices", "green-world-vertices", "blue-world-vertices"};
@@ -515,6 +695,7 @@ int core(Regina* regina) {
   if (parse(&tokens, &regina->script, &regina->variables) != EXIT_SUCCESS) {
     return EXIT_FAILURE;
   }
+  initialize_pool(regina);
 
   uint32_t const* const colors =
       regina->script.themes[regina->selected_theme].rectangles;
@@ -579,3 +760,15 @@ int core(Regina* regina) {
 #define NK_IMPLEMENTATION
 #include "nuklear.h"
 #include "sokol_nuklear.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#define STBI_NO_STDIO
+#define STBI_NO_LINEAR
+#define STBI_NO_HDR
+#define STBI_MAX_DIMENSIONS 4096
+#define STBI_MALLOC(size) counted_alloc((size), image_regina)
+#define STBI_REALLOC(pointer, size) \
+  counted_realloc((pointer), (size), image_regina)
+#define STBI_FREE(pointer) counted_free((pointer), image_regina)
+#include <stb_image.h>

@@ -29,6 +29,8 @@
 
 #define WORLD_COUNT 30
 #define RECT_VERTEX_COUNT 6
+#define REGINA_RUNTIME_BYTES (40U * 1024U * 1024U)
+#define REGINA_ASSET_GPU_BYTES REGINA_RUNTIME_BYTES
 
 #define REGINA_STATE_BYTES 67108864
 
@@ -44,10 +46,22 @@ typedef struct World {
   sg_bindings bindings;
 } World;
 
+typedef struct AssetImage {
+  sg_image image;
+  sg_view view;
+  int width;
+  int height;
+  uint32_t handle;
+} AssetImage;
+
 struct Regina {
   union {
     struct {
       size_t malloc_bytes;
+      size_t runtime_bytes;
+      size_t runtime_peak_bytes;
+      size_t asset_gpu_bytes;
+      AssetImage assets[BOSONO_ASSET_LIMIT];
 
       bool graphics_failed;
       bool text_ready;
@@ -79,7 +93,10 @@ struct Regina {
     BosonoVariables variables;
     unsigned char variable_slab[BOSONO_VARIABLE_BYTES];
   };
-  Token tokens[BOSONO_TOKEN_LIMIT];
+  union {
+    Token tokens[BOSONO_TOKEN_LIMIT];
+    _Alignas(max_align_t) unsigned char runtime_pool[REGINA_RUNTIME_BYTES];
+  };
   char source[BOSONO_LIMIT];
 };
 
