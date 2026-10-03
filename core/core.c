@@ -198,8 +198,10 @@ static void core_event(sapp_event const* event, void* user_data) {
     for (size_t rule = 0; rule < regina->script.rule_count; rule++)
       regina->rule_held[rule] = false;
   }
-  if (event->type == SAPP_EVENTTYPE_KEY_DOWN && !event->key_repeat &&
-      event->key_code >= SAPP_KEYCODE_1 && event->key_code <= SAPP_KEYCODE_4) {
+  if (regina->script.theme_count > 1 &&
+      event->type == SAPP_EVENTTYPE_KEY_DOWN && !event->key_repeat &&
+      event->key_code >= SAPP_KEYCODE_1 &&
+      event->key_code < SAPP_KEYCODE_1 + BOSONO_THEME_LIMIT) {
     size_t const requested = (size_t)(event->key_code - SAPP_KEYCODE_1);
     if (requested < regina->script.theme_count &&
         requested != regina->selected_theme) {
@@ -499,10 +501,6 @@ int core(Regina* regina) {
     return EXIT_FAILURE;
   }
   if (parse(&tokens, &regina->script) != EXIT_SUCCESS) {
-    return EXIT_FAILURE;
-  }
-  if (regina->script.theme_count == 0) {
-    fputs("main.bosonoga must declare at least one theme\n", stderr);
     return EXIT_FAILURE;
   }
 
