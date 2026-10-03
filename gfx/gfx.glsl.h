@@ -4,8 +4,6 @@
 // clang-format off
 #include "sokol_gfx.h"
 #if defined(SOKOL_METAL)
-// The same position/color shader as gfx.glsl, expressed as Metal source.
-// Sokol compiles this source at runtime on macOS; no shader tool is required.
 #define GFX_ATTR_POSITION 0
 #define GFX_ATTR_COLOR 1
 #define GFX_METAL_SOURCE \
