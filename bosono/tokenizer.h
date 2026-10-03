@@ -5,10 +5,8 @@
 
 #include "bosono.h"
 
-#define BOSONO_TOKEN_LIMIT (BOSONO_LIMIT / 2)
-
 typedef struct Token {
-  char* text;
+  char const* text;
   size_t length;
 } Token;
 
@@ -17,6 +15,6 @@ typedef struct Tokens {
   size_t count;
 } Tokens;
 
-int tokenize(char** program, Tokens* output);
+int tokenize(char const program[static BOSONO_LIMIT], Tokens* output);
 
 #endif

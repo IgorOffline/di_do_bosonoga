@@ -5,7 +5,6 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "validator.h"
 
@@ -58,43 +57,16 @@ static int tokenize_into(char const program[static BOSONO_LIMIT],
       fprintf(stderr, "Token capacity exceeded\n");
       return EXIT_FAILURE;
     }
-    size_t const token_length = position - start;
-    if (token_length >= BOSONO_LIMIT) {
-      fprintf(stderr, "Token text capacity exceeded\n");
-      return EXIT_FAILURE;
-    }
-    Token* const token = &output->items[output->count];
-    token->text = malloc(token_length + 1);
-    if (!token->text) {
-      fprintf(stderr, "Unable to allocate token text\n");
-      return EXIT_FAILURE;
-    }
-    memcpy(token->text, program + start, token_length);
-    token->text[token_length] = '\0';
-    token->length = token_length;
+    output->items[output->count] =
+        (Token){.text = program + start, .length = position - start};
     output->count++;
   }
   return EXIT_SUCCESS;
 }
 
-int tokenize(char** program, Tokens* output) {
-  char* const input = *program;
-  *program = NULL;
-  output->items = malloc(BOSONO_TOKEN_LIMIT * sizeof *output->items);
+int tokenize(char const program[static BOSONO_LIMIT], Tokens* output) {
   output->count = 0;
-  int result = EXIT_FAILURE;
-  if (output->items) {
-    result = tokenize_into(input, output);
-  } else {
-    fprintf(stderr, "Unable to allocate tokens\n");
-  }
-  free(input);
-  if (result != EXIT_SUCCESS || output->count == 0) {
-    for (size_t index = 0; index < output->count; index++) {
-      free(output->items[index].text);
-    }
-    free(output->items);
-    *output = (Tokens){0};
-  }
+  int const result = tokenize_into(program, output);
+  if (result != EXIT_SUCCESS) output->count = 0;
   return result;
 }
