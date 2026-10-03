@@ -68,15 +68,25 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
       return syntax_error(tokens, position, "Too many key blocks (maximum 8)");
     }
     Token const* const trigger = &tokens->items[position];
-    if (trigger->length != 7 || strncmp(trigger->text, "press_", 6) != 0 ||
-        trigger->text[6] < 'a' || trigger->text[6] > 'z') {
+    bool const is_press =
+        trigger->length == 7 && strncmp(trigger->text, "press_", 6) == 0;
+    bool const is_down =
+        trigger->length == 6 && strncmp(trigger->text, "down_", 5) == 0;
+    if (!is_press && !is_down) {
       return syntax_error(tokens, position,
-                          "Expected press_<lowercase letter>");
+                          "Expected press_<key> or down_<key>");
+    }
+    char const key = trigger->text[trigger->length - 1];
+    if (!((key >= 'a' && key <= 'z') || (key >= '0' && key <= '9'))) {
+      return syntax_error(tokens, position,
+                          "Expected a lowercase letter or digit");
     }
     BosonoRule* const rule = &output->rules[output->rule_count];
-    rule->key = trigger->text[6];
+    rule->key = key;
+    rule->trigger = is_press ? BOSONO_TRIGGER_PRESS : BOSONO_TRIGGER_DOWN;
     for (size_t index = 0; index < output->rule_count; index++) {
-      if (output->rules[index].key == rule->key) {
+      if (output->rules[index].key == rule->key &&
+          output->rules[index].trigger == rule->trigger) {
         return syntax_error(tokens, position, "Duplicate key block");
       }
     }
@@ -85,7 +95,16 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
       return syntax_error(tokens, position, "Expected di after key trigger");
     }
     position++;
-    while (matches(tokens, position, "info")) {
+    while (matches(tokens, position, "info") ||
+           matches(tokens, position, "start")) {
+      if (matches(tokens, position, "start")) {
+        if (rule->start) {
+          return syntax_error(tokens, position, "Duplicate start action");
+        }
+        rule->start = true;
+        position++;
+        continue;
+      }
       if (rule->info_count >= BOSONO_RULE_INFO_LIMIT) {
         return syntax_error(tokens, position,
                             "Too many info lines (maximum 4)");
@@ -101,13 +120,13 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
       rule->info_count++;
       position++;
     }
-    if (rule->info_count == 0) {
+    if (rule->info_count == 0 && !rule->start) {
       return syntax_error(tokens, position,
-                          "Expected at least one info statement");
+                          "Expected at least one info or start statement");
     }
     if (!matches(tokens, position, "do")) {
       return syntax_error(tokens, position,
-                          "Expected info or do to close key block");
+                          "Expected info, start, or do to close key block");
     }
     position++;
     output->rule_count++;

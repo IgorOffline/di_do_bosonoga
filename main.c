@@ -212,6 +212,10 @@ int main(void) {
   static bool camera_dirty;
   static bool camera_left;
   static bool camera_right;
+  static bool started;
+  static unsigned int fps_frames;
+  static double fps_started_at;
+  static char fps_label[32] = "FPS: 0";
   static BosonoProgram script;
   static bool rule_held[BOSONO_RULE_LIMIT];
 
@@ -222,9 +226,29 @@ int main(void) {
       if (main_event.key_code == SAPP_KEYCODE_A) camera_left = down;
       if (main_event.key_code == SAPP_KEYCODE_D) camera_right = down;
       for (size_t rule = 0; rule < script.rule_count; rule++) {
+        char const trigger = script.rules[rule].key;
         sapp_keycode const key =
-            (sapp_keycode)(SAPP_KEYCODE_A + script.rules[rule].key - 'a');
-        if (key == main_event.key_code) rule_held[rule] = down;
+            (sapp_keycode)(trigger >= '0' && trigger <= '9'
+                               ? SAPP_KEYCODE_0 + trigger - '0'
+                               : SAPP_KEYCODE_A + trigger - 'a');
+        if (key == main_event.key_code) {
+          if (down && !main_event.key_repeat && !rule_held[rule] &&
+              script.rules[rule].trigger == BOSONO_TRIGGER_PRESS) {
+            if (script.rules[rule].start) {
+              started = true;
+              camera_x = 0.0f;
+              camera_dirty = true;
+              camera_left = false;
+              camera_right = false;
+            }
+            for (size_t line = 0; line < script.rules[rule].info_count;
+                 line++) {
+              (void)printf("%s\n", script.rules[rule].info[line]);
+            }
+            if (script.rules[rule].info_count != 0) (void)fflush(stdout);
+          }
+          rule_held[rule] = down;
+        }
       }
     } else if (main_event.type == SAPP_EVENTTYPE_UNFOCUSED) {
       camera_left = false;
@@ -258,16 +282,35 @@ int main(void) {
       return EXIT_FAILURE;
     }
     pace_frame();
+    double const frame_time = frame_clock();
+    if (fps_frames == 0) fps_started_at = frame_time;
+    fps_frames++;
+    if (fps_frames == 24) {
+      double const elapsed = frame_time - fps_started_at;
+      if (elapsed > 0.0) {
+        (void)snprintf(fps_label, sizeof fps_label, "FPS: %.0f",
+                       23.0 / elapsed);
+      }
+      fps_frames = 0;
+    }
     bool printed = false;
     for (size_t rule = 0; rule < script.rule_count; rule++) {
-      if (!rule_held[rule]) continue;
+      if (!rule_held[rule] || script.rules[rule].trigger != BOSONO_TRIGGER_DOWN)
+        continue;
+      if (script.rules[rule].start) {
+        started = true;
+        camera_x = 0.0f;
+        camera_dirty = true;
+        camera_left = false;
+        camera_right = false;
+      }
       for (size_t line = 0; line < script.rules[rule].info_count; line++) {
         (void)printf("%s\n", script.rules[rule].info[line]);
         printed = true;
       }
     }
     if (printed) (void)fflush(stdout);
-    if (camera_left != camera_right) {
+    if (started && camera_left != camera_right) {
       float elapsed = (float)sapp_frame_duration();
       if (elapsed > 0.1f) elapsed = 0.1f;
       camera_x += (camera_right ? 960.0f : -960.0f) * elapsed;
@@ -338,6 +381,7 @@ int main(void) {
         CAMERA_RENDER_HALF_WIDTH;
     unsigned int triangle_batches = 0;
     for (size_t world = 0; world < WORLD_COUNT; world++) {
+      if (!started) break;
       float const world_x = RECT_X + (float)world * RECT_SPACING;
       if (world_x + RECT_WIDTH <= render_left || world_x >= render_right)
         continue;
@@ -347,14 +391,30 @@ int main(void) {
       triangle_batches++;
     }
     char label[96];
-    (void)snprintf(label, sizeof label, "CB: %d RB: %u CX: (%.1f)",
-                   current_batch, triangle_batches, (double)camera_x);
+    if (started) {
+      (void)snprintf(label, sizeof label, "CB: %d RB: %u CX: (%.1f)",
+                     current_batch, triangle_batches, (double)camera_x);
+    } else {
+      (void)snprintf(label, sizeof label, "Start?");
+    }
     struct nk_context* ctx = snk_new_frame();
     if (nk_begin(ctx, "batch-count", nk_rect(8, 8, 640, 44),
                  NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BACKGROUND)) {
       nk_draw_text(nk_window_get_canvas(ctx), nk_rect(12, 10, 620, 32), label,
                    (int)strlen(label), &label_font->handle, nk_rgba(0, 0, 0, 0),
                    nk_rgb(255, 255, 255));
+    }
+    nk_end(ctx);
+    float const fps_width = label_font->handle.width(
+        label_font->handle.userdata, label_font->handle.height, fps_label,
+        (int)strlen(fps_label));
+    float const fps_left = (float)sapp_width() - fps_width - 12.0f;
+    if (nk_begin(ctx, "fps", nk_rect(fps_left - 4.0f, 8, fps_width + 8.0f, 44),
+                 NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BACKGROUND)) {
+      nk_draw_text(nk_window_get_canvas(ctx),
+                   nk_rect(fps_left, 10, fps_width, 32), fps_label,
+                   (int)strlen(fps_label), &label_font->handle,
+                   nk_rgba(0, 0, 0, 0), nk_rgb(255, 255, 255));
     }
     nk_end(ctx);
     snk_render(sapp_width(), sapp_height());
