@@ -222,7 +222,12 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output) {
 int parse(Tokens const* tokens, BosonoProgram* output) {
   output->theme_count = 0;
   output->rule_count = 0;
-  int const result = parse_rules(tokens, output);
+  int result = parse_rules(tokens, output);
+  if (result == EXIT_SUCCESS && output->theme_count < BOSONO_THEME_MIN) {
+    result = syntax_error(tokens, tokens->count,
+                          "Expected at least " BOSONO_TEXT(
+                              BOSONO_THEME_MIN) " theme declaration");
+  }
   if (result != EXIT_SUCCESS) {
     output->rule_count = 0;
     output->theme_count = 0;

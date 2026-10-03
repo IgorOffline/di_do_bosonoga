@@ -16,13 +16,23 @@ static int tokenize_into(char const program[static BOSONO_LIMIT],
       position++;
       continue;
     }
+    if (program[position] == '/' && position + 1 < BOSONO_LIMIT &&
+        program[position + 1] == '/') {
+      while (position < BOSONO_LIMIT && program[position] != '\0' &&
+             program[position] != '\n' && program[position] != '\r') {
+        position++;
+      }
+      continue;
+    }
 
     size_t const start = position;
     bool in_quotes = false;
     size_t string_start = 0;
     while (position < BOSONO_LIMIT && program[position] != '\0') {
       char const current = program[position];
-      if (!in_quotes && isspace((unsigned char)current)) {
+      if (!in_quotes && (isspace((unsigned char)current) ||
+                         (current == '/' && position + 1 < BOSONO_LIMIT &&
+                          program[position + 1] == '/'))) {
         break;
       }
       if (in_quotes && current == '\\' && position + 1 < BOSONO_LIMIT &&
