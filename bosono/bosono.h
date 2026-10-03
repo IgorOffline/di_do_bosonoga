@@ -3,5 +3,7 @@
 
 #define BOSONO_LIMIT 4097
 #define BOSONO_STRING_LIMIT 128
+#define BOSONO_RULE_LIMIT 8
+#define BOSONO_RULE_INFO_LIMIT 4
 
 #endif
