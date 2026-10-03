@@ -234,21 +234,34 @@ static int parse_set(Tokens const* tokens, size_t* position,
     return syntax_error(tokens, *position, "Expected to_add or to_subtract");
   }
   (*position)++;
-  int32_t operands[2];
-  for (size_t index = 0; index < 2; index++) {
-    if (*position >= tokens->count ||
-        !read_operand(&tokens->items[*position], variables, count,
-                      &operands[index])) {
+  size_t operand_count = 0;
+  int64_t result = 0;
+  while (*position < tokens->count && !matches(tokens, *position, "info") &&
+         !matches(tokens, *position, "var") &&
+         !matches(tokens, *position, "set") &&
+         !matches(tokens, *position, "start") &&
+         !matches(tokens, *position, "do")) {
+    int32_t operand;
+    if (!read_operand(&tokens->items[*position], variables, count, &operand)) {
       return syntax_error(tokens, *position,
                           "Expected a declared variable or _i32 integer");
     }
+    if (operand_count == 0)
+      result = operand;
+    else if (addition)
+      result += operand;
+    else
+      result -= operand;
+    if (result < INT32_MIN || result > INT32_MAX) {
+      return syntax_error(tokens, *position,
+                          "Assignment result exceeds signed 32-bit range");
+    }
+    operand_count++;
     (*position)++;
   }
-  int64_t const result = addition ? (int64_t)operands[0] + (int64_t)operands[1]
-                                  : (int64_t)operands[0] - (int64_t)operands[1];
-  if (result < INT32_MIN || result > INT32_MAX) {
-    return syntax_error(tokens, *position - 1,
-                        "Assignment result exceeds signed 32-bit range");
+  if (operand_count < 2) {
+    return syntax_error(tokens, *position,
+                        "Expected at least two arithmetic operands");
   }
   variables[target].value = (int32_t)result;
   return EXIT_SUCCESS;

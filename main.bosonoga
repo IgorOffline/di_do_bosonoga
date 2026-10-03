@@ -13,6 +13,12 @@ di
   var charlie is 30_i32
   set charlie to_subtract charlie 1_i32
   info "[9]" charlie
+  var delta is 40_i32
+  set delta to_add delta 1_i32 delta 2_i32 delta 3_i32
+  info "[9]" delta
+  var echo is 50_i32
+  set echo to_subtract echo 1_i32 echo 2_i32 echo 3_i32
+  info "[9]" echo
 do
 
 press_0
