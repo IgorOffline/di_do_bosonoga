@@ -173,7 +173,9 @@ static int parse_variable(Tokens const* tokens, size_t* position,
       matches(tokens, *position, "start") || matches(tokens, *position, "do") ||
       matches(tokens, *position, "is") || matches(tokens, *position, "set") ||
       matches(tokens, *position, "to_add") ||
-      matches(tokens, *position, "to_subtract")) {
+      matches(tokens, *position, "to_subtract") ||
+      matches(tokens, *position, "if") || matches(tokens, *position, "else") ||
+      matches(tokens, *position, "eq") || matches(tokens, *position, "di")) {
     return syntax_error(tokens, *position, "Expected a variable name");
   }
   for (size_t index = 0; index < *count; index++) {
@@ -218,7 +220,7 @@ static bool read_operand(Token const* token, BosonoVariable const* variables,
 }
 
 static int parse_set(Tokens const* tokens, size_t* position,
-                     BosonoVariable* variables, size_t count) {
+                     BosonoVariable* variables, size_t count, bool active) {
   (*position)++;
   if (*position >= tokens->count) {
     return syntax_error(tokens, *position, "Expected assignment target");
@@ -240,7 +242,9 @@ static int parse_set(Tokens const* tokens, size_t* position,
          !matches(tokens, *position, "var") &&
          !matches(tokens, *position, "set") &&
          !matches(tokens, *position, "start") &&
-         !matches(tokens, *position, "do")) {
+         !matches(tokens, *position, "do") &&
+         !matches(tokens, *position, "if") &&
+         !matches(tokens, *position, "else")) {
     int32_t operand;
     if (!read_operand(&tokens->items[*position], variables, count, &operand)) {
       return syntax_error(tokens, *position,
@@ -252,7 +256,7 @@ static int parse_set(Tokens const* tokens, size_t* position,
       result += operand;
     else
       result -= operand;
-    if (result < INT32_MIN || result > INT32_MAX) {
+    if (active && (result < INT32_MIN || result > INT32_MAX)) {
       return syntax_error(tokens, *position,
                           "Assignment result exceeds signed 32-bit range");
     }
@@ -263,7 +267,7 @@ static int parse_set(Tokens const* tokens, size_t* position,
     return syntax_error(tokens, *position,
                         "Expected at least two arithmetic operands");
   }
-  variables[target].value = (int32_t)result;
+  if (active) variables[target].value = (int32_t)result;
   return EXIT_SUCCESS;
 }
 
@@ -277,7 +281,9 @@ static int parse_info(Tokens const* tokens, size_t* position,
          !matches(tokens, *position, "var") &&
          !matches(tokens, *position, "set") &&
          !matches(tokens, *position, "start") &&
-         !matches(tokens, *position, "do")) {
+         !matches(tokens, *position, "do") &&
+         !matches(tokens, *position, "if") &&
+         !matches(tokens, *position, "else")) {
     Token const* const token = &tokens->items[*position];
     char fragment[BOSONO_STRING_LIMIT];
     if (token->length != 0 && token->text[0] == '"') {
@@ -315,6 +321,109 @@ static int parse_info(Tokens const* tokens, size_t* position,
                         "Expected a string or variable after info");
   }
   output[length] = '\0';
+  return EXIT_SUCCESS;
+}
+
+static bool read_condition_value(Token const* token,
+                                 BosonoVariable const* variables, size_t count,
+                                 int32_t* value) {
+  if (read_operand(token, variables, count, value)) return true;
+  if (token->length == 0 || token->length > 11) return false;
+  char literal[16];
+  memcpy(literal, token->text, token->length);
+  memcpy(literal + token->length, "_i32", 4);
+  Token const integer = {.text = literal, .length = token->length + 4};
+  return parse_i32(&integer, value);
+}
+
+static int parse_statements(Tokens const* tokens, size_t* position,
+                            BosonoRule* rule, BosonoVariables* storage,
+                            size_t* variable_count, bool active, size_t depth) {
+  if (depth > BOSONO_CONDITION_DEPTH_LIMIT) {
+    return syntax_error(tokens, *position,
+                        "Conditional nesting limit exceeded");
+  }
+  BosonoVariable* const variables = storage->items + rule->variable_start;
+  size_t const capacity = BOSONO_VARIABLE_LIMIT - rule->variable_start;
+  while (*position < tokens->count && !matches(tokens, *position, "do")) {
+    if (matches(tokens, *position, "if")) {
+      (*position)++;
+      int32_t left;
+      int32_t right;
+      if (*position >= tokens->count ||
+          !read_condition_value(&tokens->items[*position], variables,
+                                *variable_count, &left)) {
+        return syntax_error(tokens, *position,
+                            "Expected a variable or integer after if");
+      }
+      (*position)++;
+      if (!matches(tokens, *position, "eq")) {
+        return syntax_error(tokens, *position, "Expected eq in condition");
+      }
+      (*position)++;
+      if (*position >= tokens->count ||
+          !read_condition_value(&tokens->items[*position], variables,
+                                *variable_count, &right)) {
+        return syntax_error(tokens, *position,
+                            "Expected a variable or integer after eq");
+      }
+      (*position)++;
+      if (!matches(tokens, *position, "di")) {
+        return syntax_error(tokens, *position, "Expected di after condition");
+      }
+      (*position)++;
+      bool const condition = left == right;
+      size_t const saved_count = *variable_count;
+      if (parse_statements(tokens, position, rule, storage, variable_count,
+                           active && condition, depth + 1) != EXIT_SUCCESS)
+        return EXIT_FAILURE;
+      if (!active || !condition) *variable_count = saved_count;
+      if (matches(tokens, *position, "else")) {
+        (*position)++;
+        if (!matches(tokens, *position, "di")) {
+          return syntax_error(tokens, *position, "Expected di after else");
+        }
+        (*position)++;
+        size_t const before_else = *variable_count;
+        if (parse_statements(tokens, position, rule, storage, variable_count,
+                             active && !condition, depth + 1) != EXIT_SUCCESS)
+          return EXIT_FAILURE;
+        if (!active || condition) *variable_count = before_else;
+      }
+    } else if (matches(tokens, *position, "set")) {
+      if (parse_set(tokens, position, variables, *variable_count, active) !=
+          EXIT_SUCCESS)
+        return EXIT_FAILURE;
+    } else if (matches(tokens, *position, "var")) {
+      if (parse_variable(tokens, position, variables, variable_count,
+                         capacity) != EXIT_SUCCESS)
+        return EXIT_FAILURE;
+    } else if (matches(tokens, *position, "start")) {
+      if (active && rule->start)
+        return syntax_error(tokens, *position, "Duplicate start action");
+      if (active) rule->start = true;
+      (*position)++;
+    } else if (matches(tokens, *position, "info")) {
+      if (active && rule->info_count >= BOSONO_RULE_INFO_LIMIT) {
+        return syntax_error(tokens, *position, "Too many info statements");
+      }
+      char ignored[BOSONO_STRING_LIMIT];
+      char* const text = active ? rule->info[rule->info_count] : ignored;
+      if (parse_info(tokens, position, variables, *variable_count, text) !=
+          EXIT_SUCCESS)
+        return EXIT_FAILURE;
+      if (active) rule->info_count++;
+    } else {
+      return syntax_error(tokens, *position,
+                          "Expected if, info, var, set, start, or do");
+    }
+    storage->count = rule->variable_start + *variable_count;
+    rule->variable_count = *variable_count;
+  }
+  if (!matches(tokens, *position, "do")) {
+    return syntax_error(tokens, *position, "Expected do to close block");
+  }
+  (*position)++;
   return EXIT_SUCCESS;
 }
 
@@ -365,58 +474,11 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
     position++;
     rule->variable_start = storage->count;
     rule->variable_count = 0;
-    BosonoVariable* const variables = storage->items + storage->count;
-    size_t const variable_capacity = BOSONO_VARIABLE_LIMIT - storage->count;
     size_t variable_count = 0;
-    while (matches(tokens, position, "info") ||
-           matches(tokens, position, "start") ||
-           matches(tokens, position, "var") ||
-           matches(tokens, position, "set")) {
-      if (matches(tokens, position, "set")) {
-        if (parse_set(tokens, &position, variables, variable_count) !=
-            EXIT_SUCCESS) {
-          return EXIT_FAILURE;
-        }
-        continue;
-      }
-      if (matches(tokens, position, "var")) {
-        if (parse_variable(tokens, &position, variables, &variable_count,
-                           variable_capacity) != EXIT_SUCCESS) {
-          return EXIT_FAILURE;
-        }
-        storage->count = rule->variable_start + variable_count;
-        rule->variable_count = variable_count;
-        continue;
-      }
-      if (matches(tokens, position, "start")) {
-        if (rule->start) {
-          return syntax_error(tokens, position, "Duplicate start action");
-        }
-        rule->start = true;
-        position++;
-        continue;
-      }
-      if (rule->info_count >= BOSONO_RULE_INFO_LIMIT) {
-        return syntax_error(tokens, position,
-                            "Too many info lines (maximum " BOSONO_TEXT(
-                                BOSONO_RULE_INFO_LIMIT) ")");
-      }
-      if (parse_info(tokens, &position, variables, variable_count,
-                     rule->info[rule->info_count]) != EXIT_SUCCESS) {
-        return EXIT_FAILURE;
-      }
-      rule->info_count++;
+    if (parse_statements(tokens, &position, rule, storage, &variable_count,
+                         true, 0) != EXIT_SUCCESS) {
+      return EXIT_FAILURE;
     }
-    if (rule->info_count == 0 && !rule->start) {
-      return syntax_error(tokens, position,
-                          "Expected at least one info or start statement");
-    }
-    if (!matches(tokens, position, "do")) {
-      return syntax_error(
-          tokens, position,
-          "Expected info, var, set, start, or do to close key block");
-    }
-    position++;
     output->rule_count++;
   }
   return EXIT_SUCCESS;
