@@ -85,6 +85,7 @@ struct Regina {
       World worlds[WORLD_COUNT];
 
       bool rule_held[BOSONO_RULE_LIMIT];
+      BosonoAliases aliases;
       BosonoProgram script;
     };
     unsigned char state_slab[REGINA_STATE_BYTES];

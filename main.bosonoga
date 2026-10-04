@@ -1,234 +1,246 @@
-asset alpha alpha.png
-asset bravo bravo.png
-asset charlie charlie.png
-
-theme frappe alpha bravo charlie HEX_626880U
-
-press_9
+var coin_flip is default_rand_binary
+if coin_flip eq true
 di
-  var alpha is 10_i32
-  info "[9]" alpha "...again..." alpha
-  var bravo is 20_i32
-  set bravo to_add bravo 1_i32
-  info "[9]" bravo
-  var charlie is 30_i32
-  set charlie to_subtract charlie 1_i32
-  info "[9]" charlie
-  var delta is 40_i32
-  set delta to_add delta 1_i32 delta 2_i32 delta 3_i32
-  info "[9]" delta
-  var echo is 50_i32
-  set echo to_subtract echo 1_i32 echo 2_i32 echo 3_i32
-  info "[9]" echo
-  if alpha eq 10
+  asset alpha "alpha.png"
+  asset bravo "bravo.png"
+  asset charlie "charlie.png"
+
+  theme "frappe" alpha bravo charlie HEX_626880U
+
+  press_9
   di
-    info "EQ_10"
+    var alpha is 10_i32
+    info "[9]" alpha "...again..." alpha
+    var bravo is 20_i32
+    set bravo to_add bravo 1_i32
+    info "[9]" bravo
+    var charlie is 30_i32
+    set charlie to_subtract charlie 1_i32
+    info "[9]" charlie
+    var delta is 40_i32
+    set delta to_add delta 1_i32 delta 2_i32 delta 3_i32
+    info "[9]" delta
+    var echo is 50_i32
+    set echo to_subtract echo 1_i32 echo 2_i32 echo 3_i32
+    info "[9]" echo
+    if alpha eq 10
+    di
+      info "alpha _bosonoga_eq 10"
+    do
+    if alpha not_eq 20
+    di
+      info "alpha _bosonoga_not_eq 20"
+    do
+    if alpha eq 20
+    di
+      info "alpha _bosonoga_eq 20"
+    do
+    else
+    di
+      info "alpha _bosonoga_not_eq 20"
+    do
+    var foxtrot is shift_0
+    var golf is shift_1
+    var hotel is foxtrot shift_or golf
+    if hotel shift_eq foxtrot
+    di
+      info "hotel _bosonoga_shift_eq foxtrot"
+    do
+    if hotel shift_eq golf
+    di
+      info "hotel _bosonoga_shift_eq golf"
+    do
+    var bit_0 is shift_0
+    var bit_1 is shift_1
+    var bit_2 is shift_2
+    var bit_3 is shift_3
+    var bit_4 is shift_4
+    var bit_5 is shift_5
+    var bit_6 is shift_6
+    var bit_7 is shift_7
+    var bit_8 is shift_8
+    var bit_9 is shift_9
+    var bit_10 is shift_10
+    var bit_11 is shift_11
+    var bit_12 is shift_12
+    var bit_13 is shift_13
+    var bit_14 is shift_14
+    var bit_15 is shift_15
+    var bit_16 is shift_16
+    var bit_17 is shift_17
+    var bit_18 is shift_18
+    var bit_19 is shift_19
+    var bit_20 is shift_20
+    var bit_21 is shift_21
+    var bit_22 is shift_22
+    var bit_23 is shift_23
+    var bit_24 is shift_24
+    var bit_25 is shift_25
+    var bit_26 is shift_26
+    var bit_27 is shift_27
+    var bit_28 is shift_28
+    var bit_29 is shift_29
+    var bit_30 is shift_30
+    var bit_31 is shift_31
+    var all_flags is bit_0 shift_or bit_1 shift_or bit_2 shift_or bit_3 shift_or bit_4 shift_or bit_5 shift_or bit_6 shift_or bit_7 shift_or bit_8 shift_or bit_9 shift_or bit_10 shift_or bit_11 shift_or bit_12 shift_or bit_13 shift_or bit_14 shift_or bit_15 shift_or bit_16 shift_or bit_17 shift_or bit_18 shift_or bit_19 shift_or bit_20 shift_or bit_21 shift_or bit_22 shift_or bit_23 shift_or bit_24 shift_or bit_25 shift_or bit_26 shift_or bit_27 shift_or bit_28 shift_or bit_29 shift_or bit_30 shift_or bit_31
+    info "all_flags _bosonoga_is " all_flags
+    if all_flags shift_eq bit_0
+    di
+      info "_bosonoga_shift_0 _bosonoga_is " bit_0
+    do
+    if all_flags shift_eq bit_1
+    di
+      info "_bosonoga_shift_1 _bosonoga_is " bit_1
+    do
+    if all_flags shift_eq bit_2
+    di
+      info "_bosonoga_shift_2 _bosonoga_is " bit_2
+    do
+    if all_flags shift_eq bit_3
+    di
+      info "_bosonoga_shift_3 _bosonoga_is " bit_3
+    do
+    if all_flags shift_eq bit_4
+    di
+      info "_bosonoga_shift_4 _bosonoga_is " bit_4
+    do
+    if all_flags shift_eq bit_5
+    di
+      info "_bosonoga_shift_5 _bosonoga_is " bit_5
+    do
+    if all_flags shift_eq bit_6
+    di
+      info "_bosonoga_shift_6 _bosonoga_is " bit_6
+    do
+    if all_flags shift_eq bit_7
+    di
+      info "_bosonoga_shift_7 _bosonoga_is " bit_7
+    do
+    if all_flags shift_eq bit_8
+    di
+      info "_bosonoga_shift_8 _bosonoga_is " bit_8
+    do
+    if all_flags shift_eq bit_9
+    di
+      info "_bosonoga_shift_9 _bosonoga_is " bit_9
+    do
+    if all_flags shift_eq bit_10
+    di
+      info "_bosonoga_shift_10 _bosonoga_is " bit_10
+    do
+    if all_flags shift_eq bit_11
+    di
+      info "_bosonoga_shift_11 _bosonoga_is " bit_11
+    do
+    if all_flags shift_eq bit_12
+    di
+      info "_bosonoga_shift_12 _bosonoga_is " bit_12
+    do
+    if all_flags shift_eq bit_13
+    di
+      info "_bosonoga_shift_13 _bosonoga_is " bit_13
+    do
+    if all_flags shift_eq bit_14
+    di
+      info "_bosonoga_shift_14 _bosonoga_is " bit_14
+    do
+    if all_flags shift_eq bit_15
+    di
+      info "_bosonoga_shift_15 _bosonoga_is " bit_15
+    do
+    if all_flags shift_eq bit_16
+    di
+      info "_bosonoga_shift_16 _bosonoga_is " bit_16
+    do
+    if all_flags shift_eq bit_17
+    di
+      info "_bosonoga_shift_17 _bosonoga_is " bit_17
+    do
+    if all_flags shift_eq bit_18
+    di
+      info "_bosonoga_shift_18 _bosonoga_is " bit_18
+    do
+    if all_flags shift_eq bit_19
+    di
+      info "_bosonoga_shift_19 _bosonoga_is " bit_19
+    do
+    if all_flags shift_eq bit_20
+    di
+      info "_bosonoga_shift_20 _bosonoga_is " bit_20
+    do
+    if all_flags shift_eq bit_21
+    di
+      info "_bosonoga_shift_21 _bosonoga_is " bit_21
+    do
+    if all_flags shift_eq bit_22
+    di
+      info "_bosonoga_shift_22 _bosonoga_is " bit_22
+    do
+    if all_flags shift_eq bit_23
+    di
+      info "_bosonoga_shift_23 _bosonoga_is " bit_23
+    do
+    if all_flags shift_eq bit_24
+    di
+      info "_bosonoga_shift_24 _bosonoga_is " bit_24
+    do
+    if all_flags shift_eq bit_25
+    di
+      info "_bosonoga_shift_25 _bosonoga_is " bit_25
+    do
+    if all_flags shift_eq bit_26
+    di
+      info "_bosonoga_shift_26 _bosonoga_is " bit_26
+    do
+    if all_flags shift_eq bit_27
+    di
+      info "_bosonoga_shift_27 _bosonoga_is " bit_27
+    do
+    if all_flags shift_eq bit_28
+    di
+      info "_bosonoga_shift_28 _bosonoga_is " bit_28
+    do
+    if all_flags shift_eq bit_29
+    di
+      info "_bosonoga_shift_29 _bosonoga_is " bit_29
+    do
+    if all_flags shift_eq bit_30
+    di
+      info "_bosonoga_shift_30 _bosonoga_is " bit_30
+    do
+    if all_flags shift_eq bit_31
+    di
+      info "_bosonoga_shift_31 _bosonoga_is " bit_31
+    do
   do
-  if alpha eq 20
+
+  press_0
   di
-    info "EQ_20"
+    start
+    info "[0]"
   do
-  else
+
+  down_w
   di
-    info "NOT_EQ_20"
+    info "[W]"
   do
-  var foxtrot is shift_0
-  var golf is shift_1
-  var hotel is foxtrot shift_or golf
-  if hotel shift_eq foxtrot
+
+  down_s
   di
-    info "hotel shift_eq foxtrot"
+    info "[S]"
   do
-  if hotel shift_eq golf
+
+  down_q
   di
-    info "hotel shift_eq golf"
+    info "[Q]"
   do
-  var bit_0 is shift_0
-  var bit_1 is shift_1
-  var bit_2 is shift_2
-  var bit_3 is shift_3
-  var bit_4 is shift_4
-  var bit_5 is shift_5
-  var bit_6 is shift_6
-  var bit_7 is shift_7
-  var bit_8 is shift_8
-  var bit_9 is shift_9
-  var bit_10 is shift_10
-  var bit_11 is shift_11
-  var bit_12 is shift_12
-  var bit_13 is shift_13
-  var bit_14 is shift_14
-  var bit_15 is shift_15
-  var bit_16 is shift_16
-  var bit_17 is shift_17
-  var bit_18 is shift_18
-  var bit_19 is shift_19
-  var bit_20 is shift_20
-  var bit_21 is shift_21
-  var bit_22 is shift_22
-  var bit_23 is shift_23
-  var bit_24 is shift_24
-  var bit_25 is shift_25
-  var bit_26 is shift_26
-  var bit_27 is shift_27
-  var bit_28 is shift_28
-  var bit_29 is shift_29
-  var bit_30 is shift_30
-  var bit_31 is shift_31
-  var all_flags is bit_0 shift_or bit_1 shift_or bit_2 shift_or bit_3 shift_or bit_4 shift_or bit_5 shift_or bit_6 shift_or bit_7 shift_or bit_8 shift_or bit_9 shift_or bit_10 shift_or bit_11 shift_or bit_12 shift_or bit_13 shift_or bit_14 shift_or bit_15 shift_or bit_16 shift_or bit_17 shift_or bit_18 shift_or bit_19 shift_or bit_20 shift_or bit_21 shift_or bit_22 shift_or bit_23 shift_or bit_24 shift_or bit_25 shift_or bit_26 shift_or bit_27 shift_or bit_28 shift_or bit_29 shift_or bit_30 shift_or bit_31
-  info "all_flags = " all_flags
-  if all_flags shift_eq bit_0
+
+  down_e
   di
-    info "shift_0 = " bit_0
-  do
-  if all_flags shift_eq bit_1
-  di
-    info "shift_1 = " bit_1
-  do
-  if all_flags shift_eq bit_2
-  di
-    info "shift_2 = " bit_2
-  do
-  if all_flags shift_eq bit_3
-  di
-    info "shift_3 = " bit_3
-  do
-  if all_flags shift_eq bit_4
-  di
-    info "shift_4 = " bit_4
-  do
-  if all_flags shift_eq bit_5
-  di
-    info "shift_5 = " bit_5
-  do
-  if all_flags shift_eq bit_6
-  di
-    info "shift_6 = " bit_6
-  do
-  if all_flags shift_eq bit_7
-  di
-    info "shift_7 = " bit_7
-  do
-  if all_flags shift_eq bit_8
-  di
-    info "shift_8 = " bit_8
-  do
-  if all_flags shift_eq bit_9
-  di
-    info "shift_9 = " bit_9
-  do
-  if all_flags shift_eq bit_10
-  di
-    info "shift_10 = " bit_10
-  do
-  if all_flags shift_eq bit_11
-  di
-    info "shift_11 = " bit_11
-  do
-  if all_flags shift_eq bit_12
-  di
-    info "shift_12 = " bit_12
-  do
-  if all_flags shift_eq bit_13
-  di
-    info "shift_13 = " bit_13
-  do
-  if all_flags shift_eq bit_14
-  di
-    info "shift_14 = " bit_14
-  do
-  if all_flags shift_eq bit_15
-  di
-    info "shift_15 = " bit_15
-  do
-  if all_flags shift_eq bit_16
-  di
-    info "shift_16 = " bit_16
-  do
-  if all_flags shift_eq bit_17
-  di
-    info "shift_17 = " bit_17
-  do
-  if all_flags shift_eq bit_18
-  di
-    info "shift_18 = " bit_18
-  do
-  if all_flags shift_eq bit_19
-  di
-    info "shift_19 = " bit_19
-  do
-  if all_flags shift_eq bit_20
-  di
-    info "shift_20 = " bit_20
-  do
-  if all_flags shift_eq bit_21
-  di
-    info "shift_21 = " bit_21
-  do
-  if all_flags shift_eq bit_22
-  di
-    info "shift_22 = " bit_22
-  do
-  if all_flags shift_eq bit_23
-  di
-    info "shift_23 = " bit_23
-  do
-  if all_flags shift_eq bit_24
-  di
-    info "shift_24 = " bit_24
-  do
-  if all_flags shift_eq bit_25
-  di
-    info "shift_25 = " bit_25
-  do
-  if all_flags shift_eq bit_26
-  di
-    info "shift_26 = " bit_26
-  do
-  if all_flags shift_eq bit_27
-  di
-    info "shift_27 = " bit_27
-  do
-  if all_flags shift_eq bit_28
-  di
-    info "shift_28 = " bit_28
-  do
-  if all_flags shift_eq bit_29
-  di
-    info "shift_29 = " bit_29
-  do
-  if all_flags shift_eq bit_30
-  di
-    info "shift_30 = " bit_30
-  do
-  if all_flags shift_eq bit_31
-  di
-    info "shift_31 = " bit_31
+    info "[E]"
   do
 do
-
-press_0
+else
 di
-  start
-  info "[0]"
-do
-
-down_w
-di
-  info "[W]"
-do
-
-down_s
-di
-  info "[S]"
-do
-
-down_q
-di
-  info "[Q]"
-do
-
-down_e
-di
-  info "[E]"
+  info "-coin_flip"
 do
