@@ -122,7 +122,14 @@ static int parse_asset(Tokens const* tokens, size_t* position,
   if (*position >= tokens->count) {
     return syntax_error(tokens, *position, "Expected a PNG filename in asset/");
   }
-  Token const* const path = &tokens->items[*position];
+  Token filename = tokens->items[*position];
+  if (filename.length < 2 || filename.text[0] != '"' ||
+      filename.text[filename.length - 1] != '"') {
+    return syntax_error(tokens, *position, "Expected a quoted PNG filename");
+  }
+  filename.text++;
+  filename.length -= 2;
+  Token const* const path = &filename;
   if (path->length < 5 || path->length >= sizeof asset->filename ||
       memcmp(path->text + path->length - 4, ".png", 4) != 0) {
     return syntax_error(tokens, *position, "Expected a PNG filename in asset/");
@@ -152,9 +159,19 @@ static int parse_theme(Tokens const* tokens, size_t* position,
   }
   BosonoTheme* const theme = &output->themes[output->theme_count];
   (*position)++;
-  if (*position >= tokens->count ||
-      !copy_theme_name(&tokens->items[*position], theme->name)) {
-    return syntax_error(tokens, *position, "Expected a lowercase theme name");
+  if (*position >= tokens->count) {
+    return syntax_error(tokens, *position, "Expected a quoted theme name");
+  }
+  Token quoted_name = tokens->items[*position];
+  if (quoted_name.length < 2 || quoted_name.text[0] != '"' ||
+      quoted_name.text[quoted_name.length - 1] != '"') {
+    return syntax_error(tokens, *position, "Expected a quoted theme name");
+  }
+  quoted_name.text++;
+  quoted_name.length -= 2;
+  if (!copy_theme_name(&quoted_name, theme->name)) {
+    return syntax_error(tokens, *position,
+                        "Expected a lowercase quoted theme name");
   }
   for (size_t index = 0; index < output->theme_count; index++) {
     if (strcmp(output->themes[index].name, theme->name) == 0) {
@@ -197,11 +214,13 @@ static int parse_theme(Tokens const* tokens, size_t* position,
 }
 
 static bool parse_i32(Token const* token, int32_t* output) {
-  if (token->length <= 4 ||
-      memcmp(token->text + token->length - 4, "_i32", 4) != 0)
+  size_t const suffix_length = sizeof "_bosonoga_i32" - 1;
+  if (token->length <= suffix_length ||
+      memcmp(token->text + token->length - suffix_length, "_bosonoga_i32",
+             suffix_length) != 0)
     return false;
   size_t position = 0;
-  size_t const end = token->length - 4;
+  size_t const end = token->length - suffix_length;
   bool const negative = token->text[0] == '-';
   if (negative || token->text[0] == '+') position++;
   if (position == end) return false;
@@ -250,11 +269,12 @@ static bool read_flags(Token const* token, BosonoVariable const* variables,
     *flags = variables[index].value.flags;
     return true;
   }
-  if (token->length < 7 || token->length > 8 ||
-      memcmp(token->text, "shift_", 6) != 0)
+  size_t const prefix_length = sizeof "_bosonoga_shift_" - 1;
+  if (token->length < prefix_length + 1 || token->length > prefix_length + 2 ||
+      memcmp(token->text, "_bosonoga_shift_", prefix_length) != 0)
     return false;
   unsigned int bit = 0;
-  for (size_t digit = 6; digit < token->length; digit++) {
+  for (size_t digit = prefix_length; digit < token->length; digit++) {
     if (token->text[digit] < '0' || token->text[digit] > '9') return false;
     bit = bit * 10U + (unsigned int)(token->text[digit] - '0');
   }
@@ -265,7 +285,7 @@ static bool read_flags(Token const* token, BosonoVariable const* variables,
 
 static int parse_variable(Tokens const* tokens, size_t* position,
                           BosonoVariable* variables, size_t* count,
-                          size_t capacity) {
+                          size_t capacity, bool random_binary) {
   if (*count >= capacity) {
     return syntax_error(tokens, *position, "Regina variable storage is full");
   }
@@ -273,15 +293,21 @@ static int parse_variable(Tokens const* tokens, size_t* position,
   BosonoVariable* const variable = &variables[*count];
   if (*position >= tokens->count ||
       !copy_theme_name(&tokens->items[*position], variable->name) ||
-      matches(tokens, *position, "var") || matches(tokens, *position, "info") ||
-      matches(tokens, *position, "start") || matches(tokens, *position, "do") ||
-      matches(tokens, *position, "is") || matches(tokens, *position, "set") ||
-      matches(tokens, *position, "to_add") ||
-      matches(tokens, *position, "to_subtract") ||
-      matches(tokens, *position, "if") || matches(tokens, *position, "else") ||
-      matches(tokens, *position, "eq") || matches(tokens, *position, "di") ||
-      matches(tokens, *position, "shift_or") ||
-      matches(tokens, *position, "shift_eq")) {
+      matches(tokens, *position, "_bosonoga_var") ||
+      matches(tokens, *position, "_bosonoga_info") ||
+      matches(tokens, *position, "_bosonoga_start") ||
+      matches(tokens, *position, "_bosonoga_do") ||
+      matches(tokens, *position, "_bosonoga_is") ||
+      matches(tokens, *position, "_bosonoga_set") ||
+      matches(tokens, *position, "_bosonoga_to_add") ||
+      matches(tokens, *position, "_bosonoga_to_subtract") ||
+      matches(tokens, *position, "_bosonoga_if") ||
+      matches(tokens, *position, "_bosonoga_else") ||
+      matches(tokens, *position, "_bosonoga_eq") ||
+      matches(tokens, *position, "_bosonoga_not_eq") ||
+      matches(tokens, *position, "_bosonoga_di") ||
+      matches(tokens, *position, "_bosonoga_shift_or") ||
+      matches(tokens, *position, "_bosonoga_shift_eq")) {
     return syntax_error(tokens, *position, "Expected a variable name");
   }
   for (size_t index = 0; index < *count; index++) {
@@ -290,7 +316,7 @@ static int parse_variable(Tokens const* tokens, size_t* position,
     }
   }
   (*position)++;
-  if (!matches(tokens, *position, "is")) {
+  if (!matches(tokens, *position, "_bosonoga_is")) {
     return syntax_error(tokens, *position, "Expected is after variable name");
   }
   (*position)++;
@@ -299,30 +325,38 @@ static int parse_variable(Tokens const* tokens, size_t* position,
   }
   int32_t integer;
   uint32_t flags;
-  if (parse_i32(&tokens->items[*position], &integer)) {
+  if (matches(tokens, *position, "default_rand_binary") ||
+      matches(tokens, *position, "true") ||
+      matches(tokens, *position, "false")) {
+    variable->value.kind = BOSONO_VALUE_BOOL;
+    variable->value.boolean = matches(tokens, *position, "default_rand_binary")
+                                  ? random_binary
+                                  : matches(tokens, *position, "true");
+    (*position)++;
+  } else if (parse_i32(&tokens->items[*position], &integer)) {
     variable->value.kind = BOSONO_VALUE_I32;
     variable->value.i32 = integer;
     (*position)++;
   } else if (read_flags(&tokens->items[*position], variables, *count, &flags)) {
     variable->value.kind = BOSONO_VALUE_FLAGS;
     (*position)++;
-    while (matches(tokens, *position, "shift_or")) {
+    while (matches(tokens, *position, "_bosonoga_shift_or")) {
       (*position)++;
       uint32_t operand;
       if (*position >= tokens->count ||
           !read_flags(&tokens->items[*position], variables, *count, &operand)) {
-        return syntax_error(
-            tokens, *position,
-            "Expected a flag variable or shift_0 through shift_31");
+        return syntax_error(tokens, *position,
+                            "Expected a flag variable or _bosonoga_shift_0 "
+                            "through _bosonoga_shift_31");
       }
       flags |= operand;
       (*position)++;
     }
     variable->value.flags = flags;
   } else {
-    return syntax_error(
-        tokens, *position,
-        "Expected an _i32 integer, flag variable, or shift_0 through shift_31");
+    return syntax_error(tokens, *position,
+                        "Expected a _bosonoga_i32 integer, flag variable, or "
+                        "_bosonoga_shift_0 through _bosonoga_shift_31");
   }
   (*count)++;
   return EXIT_SUCCESS;
@@ -340,28 +374,31 @@ static int parse_set(Tokens const* tokens, size_t* position,
     return syntax_error(tokens, *position, "Unknown assignment target");
   }
   if (variables[target].value.kind != BOSONO_VALUE_I32) {
-    return syntax_error(tokens, *position,
-                        "Arithmetic assignment requires an _i32 target");
+    return syntax_error(
+        tokens, *position,
+        "Arithmetic assignment requires a _bosonoga_i32 target");
   }
   (*position)++;
-  bool const addition = matches(tokens, *position, "to_add");
-  if (!addition && !matches(tokens, *position, "to_subtract")) {
+  bool const addition = matches(tokens, *position, "_bosonoga_to_add");
+  if (!addition && !matches(tokens, *position, "_bosonoga_to_subtract")) {
     return syntax_error(tokens, *position, "Expected to_add or to_subtract");
   }
   (*position)++;
   size_t operand_count = 0;
   int64_t result = 0;
-  while (*position < tokens->count && !matches(tokens, *position, "info") &&
-         !matches(tokens, *position, "var") &&
-         !matches(tokens, *position, "set") &&
-         !matches(tokens, *position, "start") &&
-         !matches(tokens, *position, "do") &&
-         !matches(tokens, *position, "if") &&
-         !matches(tokens, *position, "else")) {
+  while (*position < tokens->count &&
+         !matches(tokens, *position, "_bosonoga_info") &&
+         !matches(tokens, *position, "_bosonoga_var") &&
+         !matches(tokens, *position, "_bosonoga_set") &&
+         !matches(tokens, *position, "_bosonoga_start") &&
+         !matches(tokens, *position, "_bosonoga_do") &&
+         !matches(tokens, *position, "_bosonoga_if") &&
+         !matches(tokens, *position, "_bosonoga_else")) {
     int32_t operand;
     if (!read_operand(&tokens->items[*position], variables, count, &operand)) {
-      return syntax_error(tokens, *position,
-                          "Expected a declared variable or _i32 integer");
+      return syntax_error(
+          tokens, *position,
+          "Expected a declared variable or _bosonoga_i32 integer");
     }
     if (operand_count == 0)
       result = operand;
@@ -390,13 +427,14 @@ static int parse_info(Tokens const* tokens, size_t* position,
   size_t length = 0;
   size_t argument_count = 0;
   (*position)++;
-  while (*position < tokens->count && !matches(tokens, *position, "info") &&
-         !matches(tokens, *position, "var") &&
-         !matches(tokens, *position, "set") &&
-         !matches(tokens, *position, "start") &&
-         !matches(tokens, *position, "do") &&
-         !matches(tokens, *position, "if") &&
-         !matches(tokens, *position, "else")) {
+  while (*position < tokens->count &&
+         !matches(tokens, *position, "_bosonoga_info") &&
+         !matches(tokens, *position, "_bosonoga_var") &&
+         !matches(tokens, *position, "_bosonoga_set") &&
+         !matches(tokens, *position, "_bosonoga_start") &&
+         !matches(tokens, *position, "_bosonoga_do") &&
+         !matches(tokens, *position, "_bosonoga_if") &&
+         !matches(tokens, *position, "_bosonoga_else")) {
     Token const* const token = &tokens->items[*position];
     char fragment[BOSONO_STRING_LIMIT];
     if (token->length != 0 && token->text[0] == '"') {
@@ -416,7 +454,10 @@ static int parse_info(Tokens const* tokens, size_t* position,
         return syntax_error(tokens, *position,
                             "Unknown variable in info statement");
       }
-      if (variables[index].value.kind == BOSONO_VALUE_FLAGS) {
+      if (variables[index].value.kind == BOSONO_VALUE_BOOL) {
+        (void)snprintf(fragment, sizeof fragment, "%s",
+                       variables[index].value.boolean ? "true" : "false");
+      } else if (variables[index].value.kind == BOSONO_VALUE_FLAGS) {
         (void)snprintf(fragment, sizeof fragment, "%" PRIu32,
                        variables[index].value.flags);
       } else {
@@ -447,10 +488,12 @@ static bool read_condition_value(Token const* token,
                                  int32_t* value) {
   if (read_operand(token, variables, count, value)) return true;
   if (token->length == 0 || token->length > 11) return false;
-  char literal[16];
+  size_t const suffix_length = sizeof "_bosonoga_i32" - 1;
+  char literal[11 + sizeof "_bosonoga_i32"];
   memcpy(literal, token->text, token->length);
-  memcpy(literal + token->length, "_i32", 4);
-  Token const integer = {.text = literal, .length = token->length + 4};
+  memcpy(literal + token->length, "_bosonoga_i32", suffix_length);
+  Token const integer = {.text = literal,
+                         .length = token->length + suffix_length};
   return parse_i32(&integer, value);
 }
 
@@ -463,10 +506,13 @@ static int parse_statements(Tokens const* tokens, size_t* position,
   }
   BosonoVariable* const variables = storage->items + rule->variable_start;
   size_t const capacity = BOSONO_VARIABLE_LIMIT - rule->variable_start;
-  while (*position < tokens->count && !matches(tokens, *position, "do")) {
-    if (matches(tokens, *position, "if")) {
+  while (*position < tokens->count &&
+         !matches(tokens, *position, "_bosonoga_do")) {
+    if (matches(tokens, *position, "_bosonoga_if")) {
       (*position)++;
-      bool const flag_comparison = matches(tokens, *position + 1, "shift_eq");
+      bool const flag_comparison =
+          matches(tokens, *position + 1, "_bosonoga_shift_eq");
+      bool const not_equal = matches(tokens, *position + 1, "_bosonoga_not_eq");
       int32_t left = 0;
       int32_t right = 0;
       uint32_t left_flags = 0;
@@ -481,9 +527,13 @@ static int parse_statements(Tokens const* tokens, size_t* position,
                             "Expected a variable or integer after if");
       }
       (*position)++;
-      if (!matches(tokens, *position, flag_comparison ? "shift_eq" : "eq")) {
+      if (!matches(tokens, *position,
+                   flag_comparison ? "_bosonoga_shift_eq"
+                   : not_equal     ? "_bosonoga_not_eq"
+                                   : "_bosonoga_eq")) {
         return syntax_error(tokens, *position,
-                            "Expected eq or shift_eq in condition");
+                            "Expected _bosonoga_eq, _bosonoga_not_eq, or "
+                            "_bosonoga_shift_eq in condition");
       }
       (*position)++;
       if (*position >= tokens->count ||
@@ -496,21 +546,22 @@ static int parse_statements(Tokens const* tokens, size_t* position,
                             "Expected a variable or integer after eq");
       }
       (*position)++;
-      if (!matches(tokens, *position, "di")) {
+      if (!matches(tokens, *position, "_bosonoga_di")) {
         return syntax_error(tokens, *position, "Expected di after condition");
       }
       (*position)++;
       bool const condition = flag_comparison
                                  ? (left_flags & right_flags) == right_flags
-                                 : left == right;
+                             : not_equal ? left != right
+                                         : left == right;
       size_t const saved_count = *variable_count;
       if (parse_statements(tokens, position, rule, storage, variable_count,
                            active && condition, depth + 1) != EXIT_SUCCESS)
         return EXIT_FAILURE;
       if (!active || !condition) *variable_count = saved_count;
-      if (matches(tokens, *position, "else")) {
+      if (matches(tokens, *position, "_bosonoga_else")) {
         (*position)++;
-        if (!matches(tokens, *position, "di")) {
+        if (!matches(tokens, *position, "_bosonoga_di")) {
           return syntax_error(tokens, *position, "Expected di after else");
         }
         (*position)++;
@@ -520,20 +571,20 @@ static int parse_statements(Tokens const* tokens, size_t* position,
           return EXIT_FAILURE;
         if (!active || condition) *variable_count = before_else;
       }
-    } else if (matches(tokens, *position, "set")) {
+    } else if (matches(tokens, *position, "_bosonoga_set")) {
       if (parse_set(tokens, position, variables, *variable_count, active) !=
           EXIT_SUCCESS)
         return EXIT_FAILURE;
-    } else if (matches(tokens, *position, "var")) {
-      if (parse_variable(tokens, position, variables, variable_count,
-                         capacity) != EXIT_SUCCESS)
+    } else if (matches(tokens, *position, "_bosonoga_var")) {
+      if (parse_variable(tokens, position, variables, variable_count, capacity,
+                         false) != EXIT_SUCCESS)
         return EXIT_FAILURE;
-    } else if (matches(tokens, *position, "start")) {
+    } else if (matches(tokens, *position, "_bosonoga_start")) {
       if (active && rule->start)
         return syntax_error(tokens, *position, "Duplicate start action");
       if (active) rule->start = true;
       (*position)++;
-    } else if (matches(tokens, *position, "info")) {
+    } else if (matches(tokens, *position, "_bosonoga_info")) {
       if (active && rule->info_count >= BOSONO_RULE_INFO_LIMIT) {
         return syntax_error(tokens, *position, "Too many info statements");
       }
@@ -550,7 +601,7 @@ static int parse_statements(Tokens const* tokens, size_t* position,
     storage->count = rule->variable_start + *variable_count;
     rule->variable_count = *variable_count;
   }
-  if (!matches(tokens, *position, "do")) {
+  if (!matches(tokens, *position, "_bosonoga_do")) {
     return syntax_error(tokens, *position, "Expected do to close block");
   }
   (*position)++;
@@ -558,15 +609,78 @@ static int parse_statements(Tokens const* tokens, size_t* position,
 }
 
 static int parse_rules(Tokens const* tokens, BosonoProgram* output,
-                       BosonoVariables* storage) {
+                       BosonoVariables* storage, bool random_binary,
+                       size_t depth) {
+  if (depth > BOSONO_CONDITION_DEPTH_LIMIT)
+    return syntax_error(tokens, 0, "Conditional nesting limit exceeded");
   size_t position = 0;
   while (position < tokens->count) {
-    if (matches(tokens, position, "asset")) {
+    if (matches(tokens, position, "_bosonoga_var")) {
+      if (parse_variable(tokens, &position, storage->items, &storage->count,
+                         BOSONO_VARIABLE_LIMIT, random_binary) != EXIT_SUCCESS)
+        return EXIT_FAILURE;
+      continue;
+    }
+    if (matches(tokens, position, "_bosonoga_info")) {
+      position++;
+      if (output->startup_info_count >= 16 || position >= tokens->count ||
+          !copy_string(&tokens->items[position],
+                       output->startup_info[output->startup_info_count]))
+        return syntax_error(tokens, position, "Expected a startup info string");
+      output->startup_info_count++;
+      position++;
+      continue;
+    }
+    if (matches(tokens, position, "_bosonoga_if")) {
+      position++;
+      if (position >= tokens->count)
+        return syntax_error(tokens, position, "Expected a boolean variable");
+      size_t index = find_variable(&tokens->items[position], storage->items,
+                                   storage->count);
+      if (index == storage->count ||
+          storage->items[index].value.kind != BOSONO_VALUE_BOOL)
+        return syntax_error(tokens, position, "Expected a boolean variable");
+      position++;
+      if (!matches(tokens, position++, "_bosonoga_eq"))
+        return syntax_error(tokens, position - 1,
+                            "Expected eq in boolean condition");
+      bool expected = matches(tokens, position, "true");
+      if (!expected && !matches(tokens, position, "false"))
+        return syntax_error(tokens, position, "Expected true or false");
+      position++;
+      bool condition = storage->items[index].value.boolean == expected;
+      for (size_t branch = 0; branch < 2; branch++) {
+        if (!matches(tokens, position, "_bosonoga_di"))
+          return syntax_error(tokens, position, "Expected di");
+        size_t start = ++position;
+        size_t nesting = 1;
+        while (position < tokens->count && nesting) {
+          if (matches(tokens, position, "_bosonoga_di")) nesting++;
+          if (matches(tokens, position, "_bosonoga_do")) nesting--;
+          if (nesting) position++;
+        }
+        if (nesting) return syntax_error(tokens, position, "Expected do");
+        if (condition == (branch == 0)) {
+          Tokens selected = {.items = tokens->items + start,
+                             .count = position - start};
+          if (parse_rules(&selected, output, storage, random_binary,
+                          depth + 1) != EXIT_SUCCESS)
+            return EXIT_FAILURE;
+        }
+        position++;
+        if (branch == 0 && matches(tokens, position, "_bosonoga_else"))
+          position++;
+        else
+          break;
+      }
+      continue;
+    }
+    if (matches(tokens, position, "_bosonoga_asset")) {
       if (parse_asset(tokens, &position, output) != EXIT_SUCCESS)
         return EXIT_FAILURE;
       continue;
     }
-    if (matches(tokens, position, "theme")) {
+    if (matches(tokens, position, "_bosonoga_theme")) {
       if (parse_theme(tokens, &position, output) != EXIT_SUCCESS) {
         return EXIT_FAILURE;
       }
@@ -578,13 +692,16 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
           "Too many key blocks (maximum " BOSONO_TEXT(BOSONO_RULE_LIMIT) ")");
     }
     Token const* const trigger = &tokens->items[position];
-    bool const is_press =
-        trigger->length == 7 && strncmp(trigger->text, "press_", 6) == 0;
-    bool const is_down =
-        trigger->length == 6 && strncmp(trigger->text, "down_", 5) == 0;
+    bool const is_press = trigger->length == sizeof "_bosonoga_press_" &&
+                          memcmp(trigger->text, "_bosonoga_press_",
+                                 sizeof "_bosonoga_press_" - 1) == 0;
+    bool const is_down = trigger->length == sizeof "_bosonoga_down_" &&
+                         memcmp(trigger->text, "_bosonoga_down_",
+                                sizeof "_bosonoga_down_" - 1) == 0;
     if (!is_press && !is_down) {
-      return syntax_error(tokens, position,
-                          "Expected press_<key> or down_<key>");
+      return syntax_error(
+          tokens, position,
+          "Expected _bosonoga_press_<key> or _bosonoga_down_<key>");
     }
     char const key = trigger->text[trigger->length - 1];
     if (!((key >= 'a' && key <= 'z') || (key >= '0' && key <= '9'))) {
@@ -603,7 +720,7 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
       }
     }
     position++;
-    if (!matches(tokens, position, "di")) {
+    if (!matches(tokens, position, "_bosonoga_di")) {
       return syntax_error(tokens, position, "Expected di after key trigger");
     }
     position++;
@@ -620,13 +737,16 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
 }
 
 int parse(Tokens const* tokens, BosonoProgram* output,
-          BosonoVariables* variables) {
+          BosonoVariables* variables, bool random_binary) {
   variables->count = 0;
   output->asset_count = 0;
   output->theme_count = 0;
   output->rule_count = 0;
-  int result = parse_rules(tokens, output, variables);
-  if (result == EXIT_SUCCESS && output->theme_count < BOSONO_THEME_MIN) {
+  output->startup_info_count = 0;
+  int result = parse_rules(tokens, output, variables, random_binary, 0);
+  if (result == EXIT_SUCCESS && output->theme_count < BOSONO_THEME_MIN &&
+      (output->asset_count != 0 || output->rule_count != 0 ||
+       output->startup_info_count == 0)) {
     result = syntax_error(tokens, tokens->count,
                           "Expected at least " BOSONO_TEXT(
                               BOSONO_THEME_MIN) " theme declaration");

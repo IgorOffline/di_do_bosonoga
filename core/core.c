@@ -549,6 +549,8 @@ static bool load_assets(Regina* regina) {
 static void core_init(void* user_data) {
   Regina* const regina = user_data;
   printf_vulkan_metadata();
+  for (size_t i = 0; i < regina->script.startup_info_count; i++)
+    printf("%s\n", regina->script.startup_info[i]);
   size_t const mib = 1024U * 1024U;
   printf(
       "Regina memory: %zu MiB total\n"
@@ -663,6 +665,29 @@ int core(Regina* regina) {
   regina->theme_dirty = true;
   label_fps(regina, 0.0);
 
+  Tokens alias_tokens = {.items = regina->tokens};
+  FILE* alias_file = NULL;
+#if defined(_WIN32)
+  (void)fopen_s(&alias_file, "aka.bosonoga", "rb");
+#else
+  alias_file = fopen("aka.bosonoga", "rb");
+#endif
+  if (!alias_file) {
+    fprintf(stderr, "Unable to open aka.bosonoga\n");
+    return EXIT_FAILURE;
+  }
+  size_t alias_length = fread(regina->source, 1, PROGRAM_MAX_BYTES, alias_file);
+  bool alias_failed = ferror(alias_file) != 0;
+  int alias_extra = fgetc(alias_file);
+  alias_failed = alias_failed || ferror(alias_file) != 0;
+  (void)fclose(alias_file);
+  regina->source[alias_length] = '\0';
+  if (alias_failed || alias_extra != EOF ||
+      tokenize(regina->source, &alias_tokens) != EXIT_SUCCESS ||
+      load_aliases(&alias_tokens, &regina->aliases) != EXIT_SUCCESS) {
+    fprintf(stderr, "Invalid aka.bosonoga\n");
+    return EXIT_FAILURE;
+  }
   FILE* program_file = NULL;
 #if defined(_WIN32)
   int const program_error = fopen_s(&program_file, "main.bosonoga", "rb");
@@ -692,8 +717,33 @@ int core(Regina* regina) {
   if (tokenize(regina->source, &tokens) != EXIT_SUCCESS) {
     return EXIT_FAILURE;
   }
-  if (parse(&tokens, &regina->script, &regina->variables) != EXIT_SUCCESS) {
+  if (apply_aliases(regina->source, &tokens, &regina->aliases) !=
+      EXIT_SUCCESS) {
+    fprintf(stderr, "Alias expansion exceeds the source budget\n");
     return EXIT_FAILURE;
+  }
+#if defined(_WIN32)
+  LARGE_INTEGER counter;
+  (void)QueryPerformanceCounter(&counter);
+  uint64_t entropy = (uint64_t)counter.QuadPart;
+#else
+  struct timespec instant;
+  (void)timespec_get(&instant, TIME_UTC);
+  uint64_t entropy = (uint64_t)instant.tv_sec ^ (uint64_t)instant.tv_nsec;
+#endif
+  entropy ^= entropy >> 12;
+  entropy ^= entropy << 25;
+  entropy ^= entropy >> 27;
+  bool random_binary = ((entropy * UINT64_C(2685821657736338717)) >> 63) != 0;
+  if (parse(&tokens, &regina->script, &regina->variables, random_binary) !=
+      EXIT_SUCCESS) {
+    return EXIT_FAILURE;
+  }
+  if (regina->script.theme_count == 0) {
+    for (size_t index = 0; index < regina->script.startup_info_count; index++)
+      printf("%s\n", regina->script.startup_info[index]);
+    (void)fflush(stdout);
+    return EXIT_SUCCESS;
   }
   initialize_pool(regina);
 

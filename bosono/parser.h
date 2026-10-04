@@ -23,7 +23,8 @@ typedef struct BosonoRule {
 
 typedef enum BosonoValueKind {
   BOSONO_VALUE_I32,
-  BOSONO_VALUE_FLAGS
+  BOSONO_VALUE_FLAGS,
+  BOSONO_VALUE_BOOL
 } BosonoValueKind;
 
 typedef struct BosonoValue {
@@ -31,6 +32,7 @@ typedef struct BosonoValue {
   union {
     int32_t i32;
     uint32_t flags;
+    bool boolean;
   };
 } BosonoValue;
 
@@ -61,6 +63,8 @@ typedef struct BosonoAsset {
 } BosonoAsset;
 
 typedef struct BosonoProgram {
+  char startup_info[16][BOSONO_STRING_LIMIT];
+  size_t startup_info_count;
   BosonoAsset assets[BOSONO_ASSET_LIMIT];
   size_t asset_count;
   BosonoTheme themes[BOSONO_THEME_LIMIT];
@@ -70,6 +74,6 @@ typedef struct BosonoProgram {
 } BosonoProgram;
 
 int parse(Tokens const* tokens, BosonoProgram* output,
-          BosonoVariables* variables);
+          BosonoVariables* variables, bool random_binary);
 
 #endif
