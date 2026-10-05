@@ -76,4 +76,8 @@ typedef struct BosonoProgram {
 int parse(Tokens const* tokens, BosonoProgram* output,
           BosonoVariables* variables, bool random_binary);
 
+int parse_with_aliases(Tokens const* tokens, BosonoProgram* output,
+                       BosonoVariables* variables, bool random_binary,
+                       BosonoAliases const* aliases);
+
 #endif

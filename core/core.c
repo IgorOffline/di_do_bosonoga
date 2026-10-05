@@ -757,8 +757,8 @@ int core(Regina* regina) {
   entropy ^= entropy << 25;
   entropy ^= entropy >> 27;
   bool random_binary = ((entropy * UINT64_C(2685821657736338717)) >> 63) != 0;
-  if (parse(&tokens, &regina->script, &regina->variables, random_binary) !=
-      EXIT_SUCCESS) {
+  if (parse_with_aliases(&tokens, &regina->script, &regina->variables,
+                         random_binary, &regina->aliases) != EXIT_SUCCESS) {
     return EXIT_FAILURE;
   }
   if (regina->script.theme_count == 0) {

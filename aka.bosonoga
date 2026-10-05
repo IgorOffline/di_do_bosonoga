@@ -23,3 +23,7 @@ aka _bosonoga_down_ down_
 aka _bosonoga_gt gt
 aka _bosonoga_lt lt
 aka _bosonoga_nihil nihil
+aka _bosonoga_raw_import_and_execute raw_import_and_execute
+aka _bosonoga_return return
+aka _bosonoga_exit_success exit_success
+aka _bosonoga_exit_failure exit_failure
