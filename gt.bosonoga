@@ -1,0 +1,6 @@
+var test_gt is 10_i32
+if test_gt gt 1
+di
+  return exit_success
+do
+return exit_failure

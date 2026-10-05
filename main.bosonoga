@@ -7,7 +7,7 @@ di
 
   theme "frappe" alpha bravo charlie HEX_626880U
 
-  press_9
+  press_8
   di
     var alpha is 10_i32
     info "[9]" alpha "...again..." alpha
@@ -224,6 +224,21 @@ di
     di
       info "_bosonoga_shift_31 _bosonoga_is " bit_31
     do
+  do
+
+  press_9
+  di
+    var test_count_raw is 0_i32
+    var test_result is 0_i32
+    var test_gt is raw_import_and_execute "gt.bosonoga"
+    set test_result to_add test_result test_gt
+    set test_count_raw to_add test_count_raw 1_i32
+    var test_lt is raw_import_and_execute "lt.bosonoga"
+    set test_result to_add test_result test_lt
+    set test_count_raw to_add test_count_raw 1_i32
+    var test_count_passed is 0_i32
+    set test_count_passed to_subtract test_count_raw test_result
+    info "press_9 tests: " test_count_passed "/" test_count_raw
   do
 
   press_0

@@ -1,0 +1,6 @@
+var test_lt is 10_i32
+if test_lt lt 99
+di
+  return exit_success
+do
+return exit_failure
