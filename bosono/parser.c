@@ -307,7 +307,10 @@ static int parse_variable(Tokens const* tokens, size_t* position,
       matches(tokens, *position, "_bosonoga_not_eq") ||
       matches(tokens, *position, "_bosonoga_di") ||
       matches(tokens, *position, "_bosonoga_shift_or") ||
-      matches(tokens, *position, "_bosonoga_shift_eq")) {
+      matches(tokens, *position, "_bosonoga_shift_eq") ||
+      matches(tokens, *position, "_bosonoga_gt") ||
+      matches(tokens, *position, "_bosonoga_lt") ||
+      matches(tokens, *position, "_bosonoga_nihil")) {
     return syntax_error(tokens, *position, "Expected a variable name");
   }
   for (size_t index = 0; index < *count; index++) {
@@ -393,7 +396,8 @@ static int parse_set(Tokens const* tokens, size_t* position,
          !matches(tokens, *position, "_bosonoga_start") &&
          !matches(tokens, *position, "_bosonoga_do") &&
          !matches(tokens, *position, "_bosonoga_if") &&
-         !matches(tokens, *position, "_bosonoga_else")) {
+         !matches(tokens, *position, "_bosonoga_else") &&
+         !matches(tokens, *position, "_bosonoga_nihil")) {
     int32_t operand;
     if (!read_operand(&tokens->items[*position], variables, count, &operand)) {
       return syntax_error(
@@ -434,7 +438,8 @@ static int parse_info(Tokens const* tokens, size_t* position,
          !matches(tokens, *position, "_bosonoga_start") &&
          !matches(tokens, *position, "_bosonoga_do") &&
          !matches(tokens, *position, "_bosonoga_if") &&
-         !matches(tokens, *position, "_bosonoga_else")) {
+         !matches(tokens, *position, "_bosonoga_else") &&
+         !matches(tokens, *position, "_bosonoga_nihil")) {
     Token const* const token = &tokens->items[*position];
     char fragment[BOSONO_STRING_LIMIT];
     if (token->length != 0 && token->text[0] == '"') {
@@ -510,50 +515,46 @@ static int parse_statements(Tokens const* tokens, size_t* position,
          !matches(tokens, *position, "_bosonoga_do")) {
     if (matches(tokens, *position, "_bosonoga_if")) {
       (*position)++;
-      bool const flag_comparison =
-          matches(tokens, *position + 1, "_bosonoga_shift_eq");
-      bool const not_equal = matches(tokens, *position + 1, "_bosonoga_not_eq");
-      int32_t left = 0;
-      int32_t right = 0;
-      uint32_t left_flags = 0;
-      uint32_t right_flags = 0;
-      if (*position >= tokens->count ||
-          !(flag_comparison
-                ? read_flags(&tokens->items[*position], variables,
-                             *variable_count, &left_flags)
-                : read_condition_value(&tokens->items[*position], variables,
-                                       *variable_count, &left))) {
-        return syntax_error(tokens, *position,
-                            "Expected a variable or integer after if");
-      }
-      (*position)++;
-      if (!matches(tokens, *position,
-                   flag_comparison ? "_bosonoga_shift_eq"
-                   : not_equal     ? "_bosonoga_not_eq"
-                                   : "_bosonoga_eq")) {
-        return syntax_error(tokens, *position,
-                            "Expected _bosonoga_eq, _bosonoga_not_eq, or "
-                            "_bosonoga_shift_eq in condition");
-      }
-      (*position)++;
-      if (*position >= tokens->count ||
-          !(flag_comparison
-                ? read_flags(&tokens->items[*position], variables,
-                             *variable_count, &right_flags)
-                : read_condition_value(&tokens->items[*position], variables,
-                                       *variable_count, &right))) {
-        return syntax_error(tokens, *position,
-                            "Expected a variable or integer after eq");
-      }
-      (*position)++;
-      if (!matches(tokens, *position, "_bosonoga_di")) {
+      bool condition = false;
+      do {
+        if (matches(tokens, *position, "or")) (*position)++;
+        bool const flags = matches(tokens, *position + 1, "_bosonoga_shift_eq");
+        int32_t left = 0, right = 0;
+        uint32_t left_flags = 0, right_flags = 0;
+        if (*position >= tokens->count ||
+            !(flags ? read_flags(&tokens->items[*position], variables,
+                                 *variable_count, &left_flags)
+                    : read_condition_value(&tokens->items[*position], variables,
+                                           *variable_count, &left)))
+          return syntax_error(tokens, *position,
+                              "Expected a variable or integer in condition");
+        (*position)++;
+        bool const eq = matches(tokens, *position, "_bosonoga_eq");
+        bool const ne = matches(tokens, *position, "_bosonoga_not_eq");
+        bool const gt = matches(tokens, *position, "_bosonoga_gt");
+        bool const lt = matches(tokens, *position, "_bosonoga_lt");
+        if (!(eq || ne || gt || lt || flags))
+          return syntax_error(tokens, *position,
+                              "Expected eq, not_eq, gt, lt, or shift_eq");
+        (*position)++;
+        if (*position >= tokens->count ||
+            !(flags ? read_flags(&tokens->items[*position], variables,
+                                 *variable_count, &right_flags)
+                    : read_condition_value(&tokens->items[*position], variables,
+                                           *variable_count, &right)))
+          return syntax_error(tokens, *position,
+                              "Expected a variable or integer in condition");
+        (*position)++;
+        bool comparison = flags ? (left_flags & right_flags) == right_flags
+                          : ne  ? left != right
+                          : gt  ? left > right
+                          : lt  ? left < right
+                                : left == right;
+        condition = condition || comparison;
+      } while (matches(tokens, *position, "or"));
+      if (!matches(tokens, *position, "_bosonoga_di"))
         return syntax_error(tokens, *position, "Expected di after condition");
-      }
       (*position)++;
-      bool const condition = flag_comparison
-                                 ? (left_flags & right_flags) == right_flags
-                             : not_equal ? left != right
-                                         : left == right;
       size_t const saved_count = *variable_count;
       if (parse_statements(tokens, position, rule, storage, variable_count,
                            active && condition, depth + 1) != EXIT_SUCCESS)
@@ -571,6 +572,8 @@ static int parse_statements(Tokens const* tokens, size_t* position,
           return EXIT_FAILURE;
         if (!active || condition) *variable_count = before_else;
       }
+    } else if (matches(tokens, *position, "_bosonoga_nihil")) {
+      (*position)++;
     } else if (matches(tokens, *position, "_bosonoga_set")) {
       if (parse_set(tokens, position, variables, *variable_count, active) !=
           EXIT_SUCCESS)
@@ -615,6 +618,10 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
     return syntax_error(tokens, 0, "Conditional nesting limit exceeded");
   size_t position = 0;
   while (position < tokens->count) {
+    if (matches(tokens, position, "_bosonoga_nihil")) {
+      position++;
+      continue;
+    }
     if (matches(tokens, position, "_bosonoga_var")) {
       if (parse_variable(tokens, &position, storage->items, &storage->count,
                          BOSONO_VARIABLE_LIMIT, random_binary) != EXIT_SUCCESS)
