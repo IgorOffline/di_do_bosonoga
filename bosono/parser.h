@@ -24,7 +24,8 @@ typedef struct BosonoRule {
 typedef enum BosonoValueKind {
   BOSONO_VALUE_I32,
   BOSONO_VALUE_FLAGS,
-  BOSONO_VALUE_BOOL
+  BOSONO_VALUE_BOOL,
+  BOSONO_VALUE_PATH
 } BosonoValueKind;
 
 typedef struct BosonoValue {
@@ -33,6 +34,7 @@ typedef struct BosonoValue {
     int32_t i32;
     uint32_t flags;
     bool boolean;
+    char path[BOSONO_STRING_LIMIT];
   };
 } BosonoValue;
 

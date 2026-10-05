@@ -27,3 +27,5 @@ lega _bosonoga_raw_import_and_execute
 lega _bosonoga_return
 lega _bosonoga_exit_success
 lega _bosonoga_exit_failure
+lega _bosonoga_dir_from_current
+lega _bosonoga_file

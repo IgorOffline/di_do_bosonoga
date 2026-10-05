@@ -27,3 +27,5 @@ aka _bosonoga_raw_import_and_execute raw_import_and_execute
 aka _bosonoga_return return
 aka _bosonoga_exit_success exit_success
 aka _bosonoga_exit_failure exit_failure
+aka _bosonoga_dir_from_current dir_from_current
+aka _bosonoga_file file

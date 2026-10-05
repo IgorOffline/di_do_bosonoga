@@ -326,7 +326,9 @@ static int parse_variable(Tokens const* tokens, size_t* position,
       matches(tokens, *position, "_bosonoga_raw_import_and_execute") ||
       matches(tokens, *position, "_bosonoga_return") ||
       matches(tokens, *position, "_bosonoga_exit_success") ||
-      matches(tokens, *position, "_bosonoga_exit_failure")) {
+      matches(tokens, *position, "_bosonoga_exit_failure") ||
+      matches(tokens, *position, "_bosonoga_dir_from_current") ||
+      matches(tokens, *position, "_bosonoga_file")) {
     return syntax_error(tokens, *position, "Expected a variable name");
   }
   for (size_t index = 0; index < *count; index++) {
@@ -344,12 +346,50 @@ static int parse_variable(Tokens const* tokens, size_t* position,
   }
   int32_t integer;
   uint32_t flags;
-  if (matches(tokens, *position, "_bosonoga_raw_import_and_execute")) {
+  if (matches(tokens, *position, "_bosonoga_dir_from_current")) {
     (*position)++;
+    char directory[BOSONO_STRING_LIMIT];
     char filename[BOSONO_STRING_LIMIT];
     if (*position >= tokens->count ||
+        !copy_string(&tokens->items[*position], directory) || !directory[0])
+      return syntax_error(tokens, *position, "Expected a quoted directory");
+    (*position)++;
+    if (!matches(tokens, *position, "_bosonoga_file"))
+      return syntax_error(tokens, *position, "Expected file after directory");
+    (*position)++;
+    if (*position >= tokens->count ||
         !copy_string(&tokens->items[*position], filename) || !filename[0])
-      return syntax_error(tokens, *position, "Expected an import filename");
+      return syntax_error(tokens, *position, "Expected a quoted filename");
+    size_t const directory_length = strlen(directory);
+    size_t const filename_length = strlen(filename);
+    bool const separator = directory[directory_length - 1] != '/' &&
+                           directory[directory_length - 1] != '\\';
+    size_t const joined_length = directory_length + (separator ? 1U : 0U);
+    if (filename_length >= BOSONO_STRING_LIMIT - joined_length)
+      return syntax_error(tokens, *position,
+                          "Import path exceeds string limit");
+    variable->value.kind = BOSONO_VALUE_PATH;
+    memcpy(variable->value.path, directory, directory_length);
+    if (separator) variable->value.path[directory_length] = '/';
+    memcpy(variable->value.path + joined_length, filename, filename_length + 1);
+    (*position)++;
+  } else if (matches(tokens, *position, "_bosonoga_raw_import_and_execute")) {
+    (*position)++;
+    char filename[BOSONO_STRING_LIMIT];
+    if (*position >= tokens->count)
+      return syntax_error(tokens, *position, "Expected an import path");
+    size_t const path_index =
+        find_variable(&tokens->items[*position], variables, *count);
+    if (path_index < *count) {
+      if (variables[path_index].value.kind != BOSONO_VALUE_PATH)
+        return syntax_error(tokens, *position, "Expected a path variable");
+      memcpy(filename, variables[path_index].value.path,
+             strlen(variables[path_index].value.path) + 1);
+    } else if (!copy_string(&tokens->items[*position], filename) ||
+               !filename[0]) {
+      return syntax_error(tokens, *position,
+                          "Expected a path variable or quoted import filename");
+    }
     variable->value.kind = BOSONO_VALUE_I32;
     variable->value.i32 = 0;
     if (active && execute_import(filename, execution, &variable->value.i32) !=
@@ -496,6 +536,9 @@ static int parse_info(Tokens const* tokens, size_t* position,
       } else if (variables[index].value.kind == BOSONO_VALUE_FLAGS) {
         (void)snprintf(fragment, sizeof fragment, "%" PRIu32,
                        variables[index].value.flags);
+      } else if (variables[index].value.kind == BOSONO_VALUE_PATH) {
+        memcpy(fragment, variables[index].value.path,
+               strlen(variables[index].value.path) + 1);
       } else {
         (void)snprintf(fragment, sizeof fragment, "%" PRId32,
                        variables[index].value.i32);

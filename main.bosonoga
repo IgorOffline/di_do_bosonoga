@@ -230,10 +230,12 @@ di
   di
     var test_count_raw is 0_i32
     var test_result is 0_i32
-    var test_gt is raw_import_and_execute "gt.bosonoga"
+    var uri_gt is dir_from_current "test" file "gt.bosonoga"
+    var test_gt is raw_import_and_execute uri_gt
     set test_result to_add test_result test_gt
     set test_count_raw to_add test_count_raw 1_i32
-    var test_lt is raw_import_and_execute "lt.bosonoga"
+    var uri_lt is dir_from_current "test" file "lt.bosonoga"
+    var test_lt is raw_import_and_execute uri_lt
     set test_result to_add test_result test_lt
     set test_count_raw to_add test_count_raw 1_i32
     var test_count_passed is 0_i32
