@@ -39,6 +39,18 @@ di
     di
       info "alpha _bosonoga_not_eq 20"
     do
+    if alpha gt 1
+    di
+      info "alpha gt 1"
+    do
+    if alpha lt 99
+    di
+      info "alpha lt 99"
+    do
+    if alpha gt 1 or alpha lt 99
+    di
+      nihil
+    do
     var foxtrot is shift_0
     var golf is shift_1
     var hotel is foxtrot shift_or golf

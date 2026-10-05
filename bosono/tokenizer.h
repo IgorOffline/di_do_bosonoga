@@ -26,6 +26,7 @@ typedef struct BosonoAliases {
   size_t count;
 } BosonoAliases;
 int load_aliases(Tokens const* tokens, BosonoAliases* aliases);
+int validate_aliases(Tokens const* legal, BosonoAliases const* aliases);
 int apply_aliases(char program[static BOSONO_LIMIT], Tokens* tokens,
                   BosonoAliases const* aliases);
 

@@ -688,6 +688,28 @@ int core(Regina* regina) {
     fprintf(stderr, "Invalid aka.bosonoga\n");
     return EXIT_FAILURE;
   }
+  FILE* legal_file = NULL;
+#if defined(_WIN32)
+  (void)fopen_s(&legal_file, "lega.bosonoga", "rb");
+#else
+  legal_file = fopen("lega.bosonoga", "rb");
+#endif
+  if (!legal_file) {
+    fprintf(stderr, "Unable to open lega.bosonoga\n");
+    return EXIT_FAILURE;
+  }
+  size_t legal_length = fread(regina->source, 1, PROGRAM_MAX_BYTES, legal_file);
+  bool legal_failed = ferror(legal_file) != 0;
+  int legal_extra = fgetc(legal_file);
+  legal_failed = legal_failed || ferror(legal_file) != 0;
+  (void)fclose(legal_file);
+  regina->source[legal_length] = '\0';
+  if (legal_failed || legal_extra != EOF ||
+      tokenize(regina->source, &alias_tokens) != EXIT_SUCCESS ||
+      validate_aliases(&alias_tokens, &regina->aliases) != EXIT_SUCCESS) {
+    fprintf(stderr, "Invalid lega.bosonoga or alias whitelist\n");
+    return EXIT_FAILURE;
+  }
   FILE* program_file = NULL;
 #if defined(_WIN32)
   int const program_error = fopen_s(&program_file, "main.bosonoga", "rb");

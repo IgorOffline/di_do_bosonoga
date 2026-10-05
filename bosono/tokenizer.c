@@ -162,3 +162,21 @@ int apply_aliases(char program[static BOSONO_LIMIT], Tokens* tokens,
   }
   return EXIT_SUCCESS;
 }
+
+int validate_aliases(Tokens const* legal, BosonoAliases const* aliases) {
+  for (size_t i = 0; i < aliases->count; i++) {
+    char const* original = aliases->items[i].original;
+    size_t length = strlen(original);
+    bool found = false;
+    for (size_t j = 0; j < legal->count; j++)
+      if (legal->items[j].length == length &&
+          memcmp(legal->items[j].text, original, length) == 0)
+        found = true;
+    if (!found) {
+      fprintf(stderr, "Alias original %s is not enabled in lega.bosonoga\n",
+              original);
+      return EXIT_FAILURE;
+    }
+  }
+  return EXIT_SUCCESS;
+}
