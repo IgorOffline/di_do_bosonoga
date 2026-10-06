@@ -7,8 +7,8 @@
 #include "tokenizer.h"
 
 typedef enum BosonoTrigger {
-  BOSONO_TRIGGER_PRESS,
-  BOSONO_TRIGGER_DOWN
+  BOSONO_TRIGGER_INPUT_KEY_PRESS,
+  BOSONO_TRIGGER_INPUT_KEY_DOWN
 } BosonoTrigger;
 
 typedef struct BosonoRule {

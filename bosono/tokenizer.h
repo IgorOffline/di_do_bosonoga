@@ -17,7 +17,14 @@ typedef struct Tokens {
 
 #define BOSONO_ALIAS_LIMIT 64
 #define BOSONO_ALIAS_NAME_LIMIT 64
+typedef enum BosonoAliasKind {
+  BOSONO_ALIAS_EXACT,
+  BOSONO_ALIAS_PREFIX,
+  BOSONO_ALIAS_SUFFIX
+} BosonoAliasKind;
+
 typedef struct BosonoAlias {
+  BosonoAliasKind kind;
   char original[BOSONO_ALIAS_NAME_LIMIT];
   char shorter[BOSONO_ALIAS_NAME_LIMIT];
 } BosonoAlias;

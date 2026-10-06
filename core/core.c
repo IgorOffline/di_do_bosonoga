@@ -238,7 +238,8 @@ static void core_event(sapp_event const* event, void* user_data) {
                              : SAPP_KEYCODE_A + trigger - 'a');
       if (key == event->key_code) {
         if (down && !event->key_repeat && !regina->rule_held[rule] &&
-            regina->script.rules[rule].trigger == BOSONO_TRIGGER_PRESS) {
+            regina->script.rules[rule].trigger ==
+                BOSONO_TRIGGER_INPUT_KEY_PRESS) {
           if (regina->script.rules[rule].start) {
             regina->started = true;
             regina->camera_x = 0.0f;
@@ -313,7 +314,7 @@ static void core_frame(void* user_data) {
   bool printed = false;
   for (size_t rule = 0; rule < regina->script.rule_count; rule++) {
     if (!regina->rule_held[rule] ||
-        regina->script.rules[rule].trigger != BOSONO_TRIGGER_DOWN)
+        regina->script.rules[rule].trigger != BOSONO_TRIGGER_INPUT_KEY_DOWN)
       continue;
     if (regina->script.rules[rule].start) {
       regina->started = true;

@@ -5,9 +5,9 @@ di
   asset bravo "bravo.png"
   asset charlie "charlie.png"
 
-  theme "frappe" alpha bravo charlie HEX_626880U
+  theme "frappe" alpha bravo charlie 626880_hex
 
-  press_8
+  input_key_press_8
   di
     var alpha is 10_i32
     info "[9]" alpha "...again..." alpha
@@ -226,7 +226,7 @@ di
     do
   do
 
-  press_9
+  input_key_press_9
   di
     var test_count_raw is 0_i32
     var test_result is 0_i32
@@ -240,31 +240,31 @@ di
     set test_count_raw to_add test_count_raw 1_i32
     var test_count_passed is 0_i32
     set test_count_passed to_subtract test_count_raw test_result
-    info "press_9 tests: " test_count_passed "/" test_count_raw
+    info "input_key_press_9 tests: " test_count_passed "/" test_count_raw
   do
 
-  press_0
+  input_key_press_0
   di
     start
     info "[0]"
   do
 
-  down_w
+  input_key_down_w
   di
     info "[W]"
   do
 
-  down_s
+  input_key_down_s
   di
     info "[S]"
   do
 
-  down_q
+  input_key_down_q
   di
     info "[Q]"
   do
 
-  down_e
+  input_key_down_e
   di
     info "[E]"
   do
