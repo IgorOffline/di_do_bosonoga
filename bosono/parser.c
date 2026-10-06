@@ -81,11 +81,11 @@ static bool copy_theme_name(Token const* token,
 }
 
 static bool parse_color(Token const* token, uint32_t* output) {
-  if (token->length != 11 || memcmp(token->text, "HEX_", 4) != 0 ||
-      token->text[10] != 'U')
+  if (token->length != 6 + sizeof "_bosonoga_hex" - 1 ||
+      memcmp(token->text + 6, "_bosonoga_hex", sizeof "_bosonoga_hex" - 1) != 0)
     return false;
   uint32_t color = 0;
-  for (size_t index = 4; index < 10; index++) {
+  for (size_t index = 0; index < 6; index++) {
     char const digit = token->text[index];
     uint32_t value;
     if (digit >= '0' && digit <= '9')
@@ -205,7 +205,7 @@ static int parse_theme(Tokens const* tokens, size_t* position,
       theme->assets[index] = asset_index;
       theme->rectangles[index] = UINT32_C(0xffffff);
     } else if (!is_color) {
-      return syntax_error(tokens, *position, "Expected RGB color HEX_RRGGBBU");
+      return syntax_error(tokens, *position, "Expected RGB color RRGGBB_hex");
     }
     (*position)++;
   }
@@ -797,16 +797,18 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
           "Too many key blocks (maximum " BOSONO_TEXT(BOSONO_RULE_LIMIT) ")");
     }
     Token const* const trigger = &tokens->items[position];
-    bool const is_press = trigger->length == sizeof "_bosonoga_press_" &&
-                          memcmp(trigger->text, "_bosonoga_press_",
-                                 sizeof "_bosonoga_press_" - 1) == 0;
-    bool const is_down = trigger->length == sizeof "_bosonoga_down_" &&
-                         memcmp(trigger->text, "_bosonoga_down_",
-                                sizeof "_bosonoga_down_" - 1) == 0;
+    bool const is_press =
+        trigger->length == sizeof "_bosonoga_input_key_press_" &&
+        memcmp(trigger->text, "_bosonoga_input_key_press_",
+               sizeof "_bosonoga_input_key_press_" - 1) == 0;
+    bool const is_down =
+        trigger->length == sizeof "_bosonoga_input_key_down_" &&
+        memcmp(trigger->text, "_bosonoga_input_key_down_",
+               sizeof "_bosonoga_input_key_down_" - 1) == 0;
     if (!is_press && !is_down) {
-      return syntax_error(
-          tokens, position,
-          "Expected _bosonoga_press_<key> or _bosonoga_down_<key>");
+      return syntax_error(tokens, position,
+                          "Expected _bosonoga_input_key_press_<key> or "
+                          "_bosonoga_input_key_down_<key>");
     }
     char const key = trigger->text[trigger->length - 1];
     if (!((key >= 'a' && key <= 'z') || (key >= '0' && key <= '9'))) {
@@ -817,7 +819,8 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
     rule->key = key;
     rule->start = false;
     rule->info_count = 0;
-    rule->trigger = is_press ? BOSONO_TRIGGER_PRESS : BOSONO_TRIGGER_DOWN;
+    rule->trigger = is_press ? BOSONO_TRIGGER_INPUT_KEY_PRESS
+                             : BOSONO_TRIGGER_INPUT_KEY_DOWN;
     for (size_t index = 0; index < output->rule_count; index++) {
       if (output->rules[index].key == rule->key &&
           output->rules[index].trigger == rule->trigger) {

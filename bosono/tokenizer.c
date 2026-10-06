@@ -82,15 +82,33 @@ int tokenize(char const program[static BOSONO_LIMIT], Tokens* output) {
   return result;
 }
 
+static bool token_matches(Token const* token, char const* name) {
+  size_t const length = strlen(name);
+  return token->length == length && memcmp(token->text, name, length) == 0;
+}
+
+static int declaration_kind(Token const* token, bool legal,
+                            BosonoAliasKind* kind) {
+  if (token_matches(token, legal ? "lega" : "aka"))
+    *kind = BOSONO_ALIAS_EXACT;
+  else if (token_matches(token, legal ? "lega_prefix" : "aka_prefix"))
+    *kind = BOSONO_ALIAS_PREFIX;
+  else if (token_matches(token, legal ? "lega_suffix" : "aka_suffix"))
+    *kind = BOSONO_ALIAS_SUFFIX;
+  else
+    return EXIT_FAILURE;
+  return EXIT_SUCCESS;
+}
+
 int load_aliases(Tokens const* tokens, BosonoAliases* aliases) {
   aliases->count = 0;
   if (tokens->count % 3 != 0 || tokens->count / 3 > BOSONO_ALIAS_LIMIT)
     return EXIT_FAILURE;
   for (size_t i = 0; i < tokens->count; i += 3) {
-    if (tokens->items[i].length != 3 ||
-        memcmp(tokens->items[i].text, "aka", 3) != 0)
-      return EXIT_FAILURE;
     BosonoAlias* alias = &aliases->items[aliases->count];
+    if (declaration_kind(&tokens->items[i], false, &alias->kind) !=
+        EXIT_SUCCESS)
+      return EXIT_FAILURE;
     char* names[2] = {alias->original, alias->shorter};
     for (size_t n = 0; n < 2; n++) {
       Token const* token = &tokens->items[i + n + 1];
@@ -118,35 +136,33 @@ int apply_aliases(char program[static BOSONO_LIMIT], Tokens* tokens,
     if (token->text[0] == '"') continue;
     for (size_t j = 0; j < aliases->count; j++) {
       BosonoAlias const* alias = &aliases->items[j];
-      size_t length = strlen(alias->shorter);
-      if (token->length == length &&
-          memcmp(token->text, alias->shorter, length) == 0) {
+      size_t const length = strlen(alias->shorter);
+      size_t const original_length = strlen(alias->original);
+      if (alias->kind == BOSONO_ALIAS_EXACT &&
+          token_matches(token, alias->shorter)) {
         token->text = alias->original;
-        token->length = strlen(alias->original);
+        token->length = original_length;
         break;
       }
-    }
-    for (size_t j = 0; j < aliases->count; j++) {
-      BosonoAlias const* alias = &aliases->items[j];
-      size_t length = strlen(alias->shorter);
-      size_t original_length = strlen(alias->original);
-      bool prefix = alias->shorter[length - 1] == '_' &&
-                    token->length > length &&
-                    memcmp(token->text, alias->shorter, length) == 0;
-      bool suffix = strcmp(alias->shorter, "i32") == 0 &&
-                    !(token->length >= original_length &&
-                      memcmp(token->text + token->length - original_length,
-                             alias->original, original_length) == 0) &&
-                    token->length > length + 1 &&
-                    token->text[token->length - length - 1] == '_' &&
-                    memcmp(token->text + token->length - length, alias->shorter,
-                           length) == 0;
+      // The declaration names describe the value attached to the alias.
+      bool const suffix = alias->kind == BOSONO_ALIAS_SUFFIX &&
+                          token->length > length + 1 &&
+                          token->text[length] == '_' &&
+                          memcmp(token->text, alias->shorter, length) == 0;
+      bool const prefix =
+          alias->kind == BOSONO_ALIAS_PREFIX && token->length > length + 1 &&
+          token->text[token->length - length - 1] == '_' &&
+          !(token->length >= original_length &&
+            memcmp(token->text + token->length - original_length,
+                   alias->original, original_length) == 0) &&
+          memcmp(token->text + token->length - length, alias->shorter,
+                 length) == 0;
       if (!prefix && !suffix) continue;
-      size_t remainder = token->length - length - (suffix ? 1U : 0U);
-      size_t expanded = original_length + remainder;
+      size_t const remainder = token->length - length - (prefix ? 1U : 0U);
+      size_t const expanded = original_length + remainder;
       if (expanded + 1 > BOSONO_LIMIT - used) return EXIT_FAILURE;
       char* destination = program + used;
-      if (prefix) {
+      if (suffix) {
         memcpy(destination, alias->original, original_length);
         memcpy(destination + original_length, token->text + length, remainder);
       } else {
@@ -166,8 +182,8 @@ int apply_aliases(char program[static BOSONO_LIMIT], Tokens* tokens,
 int validate_aliases(Tokens const* legal, BosonoAliases const* aliases) {
   if (legal->count % 2 != 0) return EXIT_FAILURE;
   for (size_t i = 0; i < legal->count; i += 2) {
-    if (legal->items[i].length != 4 ||
-        memcmp(legal->items[i].text, "lega", 4) != 0)
+    BosonoAliasKind kind;
+    if (declaration_kind(&legal->items[i], true, &kind) != EXIT_SUCCESS)
       return EXIT_FAILURE;
     Token const* name = &legal->items[i + 1];
     if (!name->length || name->length >= BOSONO_ALIAS_NAME_LIMIT)
@@ -177,16 +193,20 @@ int validate_aliases(Tokens const* legal, BosonoAliases const* aliases) {
         return EXIT_FAILURE;
   }
   for (size_t i = 0; i < aliases->count; i++) {
-    char const* original = aliases->items[i].original;
-    size_t length = strlen(original);
+    BosonoAlias const* alias = &aliases->items[i];
     bool found = false;
-    for (size_t j = 1; j < legal->count; j += 2)
-      if (legal->items[j].length == length &&
-          memcmp(legal->items[j].text, original, length) == 0)
+    for (size_t j = 0; j < legal->count; j += 2) {
+      BosonoAliasKind kind;
+      if (declaration_kind(&legal->items[j], true, &kind) == EXIT_SUCCESS &&
+          kind == alias->kind &&
+          token_matches(&legal->items[j + 1], alias->original))
         found = true;
+    }
     if (!found) {
-      fprintf(stderr, "Alias original %s is not enabled in lega.bosonoga\n",
-              original);
+      fprintf(stderr,
+              "Alias original %s with its attachment kind is not enabled in "
+              "lega.bosonoga\n",
+              alias->original);
       return EXIT_FAILURE;
     }
   }
