@@ -144,13 +144,12 @@ int apply_aliases(char program[static BOSONO_LIMIT], Tokens* tokens,
         token->length = original_length;
         break;
       }
-      // The declaration names describe the value attached to the alias.
-      bool const suffix = alias->kind == BOSONO_ALIAS_SUFFIX &&
+      bool const prefix = alias->kind == BOSONO_ALIAS_PREFIX &&
                           token->length > length + 1 &&
                           token->text[length] == '_' &&
                           memcmp(token->text, alias->shorter, length) == 0;
-      bool const prefix =
-          alias->kind == BOSONO_ALIAS_PREFIX && token->length > length + 1 &&
+      bool const suffix =
+          alias->kind == BOSONO_ALIAS_SUFFIX && token->length > length + 1 &&
           token->text[token->length - length - 1] == '_' &&
           !(token->length >= original_length &&
             memcmp(token->text + token->length - original_length,
@@ -158,11 +157,11 @@ int apply_aliases(char program[static BOSONO_LIMIT], Tokens* tokens,
           memcmp(token->text + token->length - length, alias->shorter,
                  length) == 0;
       if (!prefix && !suffix) continue;
-      size_t const remainder = token->length - length - (prefix ? 1U : 0U);
+      size_t const remainder = token->length - length - (suffix ? 1U : 0U);
       size_t const expanded = original_length + remainder;
       if (expanded + 1 > BOSONO_LIMIT - used) return EXIT_FAILURE;
       char* destination = program + used;
-      if (suffix) {
+      if (prefix) {
         memcpy(destination, alias->original, original_length);
         memcpy(destination + original_length, token->text + length, remainder);
       } else {

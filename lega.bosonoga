@@ -25,8 +25,8 @@ lega _bosonoga_theme
 lega _bosonoga_to_add
 lega _bosonoga_to_subtract
 lega _bosonoga_var
-lega_prefix _bosonoga_hex
-lega_prefix _bosonoga_i32
-lega_suffix _bosonoga_input_key_down
-lega_suffix _bosonoga_input_key_press
-lega_suffix _bosonoga_shift
+lega_prefix _bosonoga_input_key_down
+lega_prefix _bosonoga_input_key_press
+lega_prefix _bosonoga_shift
+lega_suffix _bosonoga_hex
+lega_suffix _bosonoga_i32

@@ -25,8 +25,8 @@ aka _bosonoga_theme theme
 aka _bosonoga_to_add to_add
 aka _bosonoga_to_subtract to_subtract
 aka _bosonoga_var var
-aka_prefix _bosonoga_hex hex
-aka_prefix _bosonoga_i32 i32
-aka_suffix _bosonoga_input_key_down input_key_down
-aka_suffix _bosonoga_input_key_press input_key_press
-aka_suffix _bosonoga_shift shift
+aka_prefix _bosonoga_input_key_down input_key_down
+aka_prefix _bosonoga_input_key_press input_key_press
+aka_prefix _bosonoga_shift shift
+aka_suffix _bosonoga_hex hex
+aka_suffix _bosonoga_i32 i32

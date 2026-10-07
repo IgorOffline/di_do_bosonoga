@@ -22,7 +22,7 @@ static int syntax_error(Tokens const* tokens, size_t index,
   } else {
     fprintf(stderr, "Bosonoga end of file: %s\n", message);
   }
-  return BOSONOGA_EXIT_FAILURE;
+  return BOSONO_EXIT_FAILURE;
 }
 
 static bool copy_string(Token const* token,
@@ -147,7 +147,7 @@ static int parse_asset(Tokens const* tokens, size_t* position,
   asset->filename[path->length] = '\0';
   (*position)++;
   output->asset_count++;
-  return BOSONOGA_EXIT_SUCCESS;
+  return BOSONO_EXIT_SUCCESS;
 }
 
 static int parse_theme(Tokens const* tokens, size_t* position,
@@ -210,7 +210,7 @@ static int parse_theme(Tokens const* tokens, size_t* position,
     (*position)++;
   }
   output->theme_count++;
-  return BOSONOGA_EXIT_SUCCESS;
+  return BOSONO_EXIT_SUCCESS;
 }
 
 static bool parse_i32(Token const* token, int32_t* output) {
@@ -393,7 +393,7 @@ static int parse_variable(Tokens const* tokens, size_t* position,
     variable->value.kind = BOSONO_VALUE_I32;
     variable->value.i32 = 0;
     if (active && execute_import(filename, execution, &variable->value.i32) !=
-                      BOSONOGA_EXIT_SUCCESS)
+                      BOSONO_EXIT_SUCCESS)
       return syntax_error(tokens, *position,
                           "Unable to execute imported script");
     (*position)++;
@@ -431,7 +431,7 @@ static int parse_variable(Tokens const* tokens, size_t* position,
                         "_bosonoga_shift_0 through _bosonoga_shift_31");
   }
   (*count)++;
-  return BOSONOGA_EXIT_SUCCESS;
+  return BOSONO_EXIT_SUCCESS;
 }
 
 static int parse_set(Tokens const* tokens, size_t* position,
@@ -492,7 +492,7 @@ static int parse_set(Tokens const* tokens, size_t* position,
                         "Expected at least two arithmetic operands");
   }
   if (active) variables[target].value.i32 = (int32_t)result;
-  return BOSONOGA_EXIT_SUCCESS;
+  return BOSONO_EXIT_SUCCESS;
 }
 
 static int parse_info(Tokens const* tokens, size_t* position,
@@ -559,7 +559,7 @@ static int parse_info(Tokens const* tokens, size_t* position,
                         "Expected a string or variable after info");
   }
   output[length] = '\0';
-  return BOSONOGA_EXIT_SUCCESS;
+  return BOSONO_EXIT_SUCCESS;
 }
 
 static bool read_condition_value(Token const* token,
@@ -639,8 +639,8 @@ static int parse_statements(Tokens const* tokens, size_t* position,
         size_t const saved_count = *variable_count;
         if (parse_statements(tokens, position, rule, storage, variable_count,
                              executing && !branch_taken && condition, depth + 1,
-                             execution) != BOSONOGA_EXIT_SUCCESS)
-          return BOSONOGA_EXIT_FAILURE;
+                             execution) != BOSONO_EXIT_SUCCESS)
+          return BOSONO_EXIT_FAILURE;
         if (!executing || branch_taken || !condition)
           *variable_count = saved_count;
         branch_taken = branch_taken || condition;
@@ -655,8 +655,8 @@ static int parse_statements(Tokens const* tokens, size_t* position,
           size_t const before_else = *variable_count;
           if (parse_statements(tokens, position, rule, storage, variable_count,
                                executing && !branch_taken, depth + 1,
-                               execution) != BOSONOGA_EXIT_SUCCESS)
-            return BOSONOGA_EXIT_FAILURE;
+                               execution) != BOSONO_EXIT_SUCCESS)
+            return BOSONO_EXIT_FAILURE;
           if (!executing || branch_taken) *variable_count = before_else;
         }
         break;
@@ -668,9 +668,9 @@ static int parse_statements(Tokens const* tokens, size_t* position,
       (*position)++;
       int32_t result;
       if (matches(tokens, *position, "_bosonoga_exit_success"))
-        result = BOSONOGA_EXIT_SUCCESS;
+        result = BOSONO_EXIT_SUCCESS;
       else if (matches(tokens, *position, "_bosonoga_exit_failure"))
-        result = BOSONOGA_EXIT_FAILURE;
+        result = BOSONO_EXIT_FAILURE;
       else
         return syntax_error(
             tokens, *position,
@@ -684,12 +684,12 @@ static int parse_statements(Tokens const* tokens, size_t* position,
       (*position)++;
     } else if (matches(tokens, *position, "_bosonoga_set")) {
       if (parse_set(tokens, position, variables, *variable_count, executing) !=
-          BOSONOGA_EXIT_SUCCESS)
-        return BOSONOGA_EXIT_FAILURE;
+          BOSONO_EXIT_SUCCESS)
+        return BOSONO_EXIT_FAILURE;
     } else if (matches(tokens, *position, "_bosonoga_var")) {
       if (parse_variable(tokens, position, variables, variable_count, capacity,
-                         false, executing, execution) != BOSONOGA_EXIT_SUCCESS)
-        return BOSONOGA_EXIT_FAILURE;
+                         false, executing, execution) != BOSONO_EXIT_SUCCESS)
+        return BOSONO_EXIT_FAILURE;
     } else if (matches(tokens, *position, "_bosonoga_start")) {
       if (executing && rule->start)
         return syntax_error(tokens, *position, "Duplicate start action");
@@ -702,8 +702,8 @@ static int parse_statements(Tokens const* tokens, size_t* position,
       char ignored[BOSONO_STRING_LIMIT];
       char* const text = executing ? rule->info[rule->info_count] : ignored;
       if (parse_info(tokens, position, variables, *variable_count, text) !=
-          BOSONOGA_EXIT_SUCCESS)
-        return BOSONOGA_EXIT_FAILURE;
+          BOSONO_EXIT_SUCCESS)
+        return BOSONO_EXIT_FAILURE;
       if (executing) rule->info_count++;
     } else {
       return syntax_error(tokens, *position,
@@ -716,7 +716,7 @@ static int parse_statements(Tokens const* tokens, size_t* position,
     return syntax_error(tokens, *position, "Expected do to close block");
   }
   (*position)++;
-  return BOSONOGA_EXIT_SUCCESS;
+  return BOSONO_EXIT_SUCCESS;
 }
 
 static int parse_rules(Tokens const* tokens, BosonoProgram* output,
@@ -733,8 +733,8 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
     if (matches(tokens, position, "_bosonoga_var")) {
       if (parse_variable(tokens, &position, storage->items, &storage->count,
                          BOSONO_VARIABLE_LIMIT, random_binary, true,
-                         execution) != BOSONOGA_EXIT_SUCCESS)
-        return BOSONOGA_EXIT_FAILURE;
+                         execution) != BOSONO_EXIT_SUCCESS)
+        return BOSONO_EXIT_FAILURE;
       continue;
     }
     if (matches(tokens, position, "_bosonoga_info")) {
@@ -780,8 +780,8 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
           Tokens selected = {.items = tokens->items + start,
                              .count = position - start};
           if (parse_rules(&selected, output, storage, random_binary, depth + 1,
-                          execution) != BOSONOGA_EXIT_SUCCESS)
-            return BOSONOGA_EXIT_FAILURE;
+                          execution) != BOSONO_EXIT_SUCCESS)
+            return BOSONO_EXIT_FAILURE;
         }
         position++;
         if (branch == 0 && matches(tokens, position, "_bosonoga_else"))
@@ -792,13 +792,13 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
       continue;
     }
     if (matches(tokens, position, "_bosonoga_asset")) {
-      if (parse_asset(tokens, &position, output) != BOSONOGA_EXIT_SUCCESS)
-        return BOSONOGA_EXIT_FAILURE;
+      if (parse_asset(tokens, &position, output) != BOSONO_EXIT_SUCCESS)
+        return BOSONO_EXIT_FAILURE;
       continue;
     }
     if (matches(tokens, position, "_bosonoga_theme")) {
-      if (parse_theme(tokens, &position, output) != BOSONOGA_EXIT_SUCCESS) {
-        return BOSONOGA_EXIT_FAILURE;
+      if (parse_theme(tokens, &position, output) != BOSONO_EXIT_SUCCESS) {
+        return BOSONO_EXIT_FAILURE;
       }
       continue;
     }
@@ -847,12 +847,12 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
     rule->variable_count = 0;
     size_t variable_count = 0;
     if (parse_statements(tokens, &position, rule, storage, &variable_count,
-                         true, 0, execution) != BOSONOGA_EXIT_SUCCESS) {
-      return BOSONOGA_EXIT_FAILURE;
+                         true, 0, execution) != BOSONO_EXIT_SUCCESS) {
+      return BOSONO_EXIT_FAILURE;
     }
     output->rule_count++;
   }
-  return BOSONOGA_EXIT_SUCCESS;
+  return BOSONO_EXIT_SUCCESS;
 }
 
 int parse_with_aliases(Tokens const* tokens, BosonoProgram* output,
@@ -866,15 +866,14 @@ int parse_with_aliases(Tokens const* tokens, BosonoProgram* output,
   output->startup_info_count = 0;
   int result =
       parse_rules(tokens, output, variables, random_binary, 0, &execution);
-  if (result == BOSONOGA_EXIT_SUCCESS &&
-      output->theme_count < BOSONO_THEME_MIN &&
+  if (result == BOSONO_EXIT_SUCCESS && output->theme_count < BOSONO_THEME_MIN &&
       (output->asset_count != 0 || output->rule_count != 0 ||
        output->startup_info_count == 0)) {
     result = syntax_error(tokens, tokens->count,
                           "Expected at least " BOSONO_TEXT(
                               BOSONO_THEME_MIN) " theme declaration");
   }
-  if (result != BOSONOGA_EXIT_SUCCESS) {
+  if (result != BOSONO_EXIT_SUCCESS) {
     output->asset_count = 0;
     variables->count = 0;
     output->rule_count = 0;
@@ -892,7 +891,7 @@ static int execute_import(char const* filename, BosonoExecution* execution,
                           int32_t* result) {
   if (execution->import_depth >= BOSONO_CONDITION_DEPTH_LIMIT) {
     fprintf(stderr, "Import nesting limit exceeded\n");
-    return BOSONOGA_EXIT_FAILURE;
+    return BOSONO_EXIT_FAILURE;
   }
   FILE* file = NULL;
 #if defined(_WIN32)
@@ -902,13 +901,13 @@ static int execute_import(char const* filename, BosonoExecution* execution,
 #endif
   if (!file) {
     fprintf(stderr, "Unable to open imported script %s\n", filename);
-    return BOSONOGA_EXIT_FAILURE;
+    return BOSONO_EXIT_FAILURE;
   }
   char* source = malloc(BOSONO_LIMIT);
   Token* items = malloc(sizeof(Token) * BOSONO_TOKEN_LIMIT);
   BosonoVariables* storage = malloc(sizeof *storage);
   BosonoRule* rule = calloc(1, sizeof *rule);
-  int status = BOSONOGA_EXIT_FAILURE;
+  int status = BOSONO_EXIT_FAILURE;
   if (!source || !items || !storage || !rule) {
     fprintf(stderr, "Unable to allocate imported script storage\n");
     (void)fclose(file);
@@ -925,10 +924,10 @@ static int execute_import(char const* filename, BosonoExecution* execution,
     goto cleanup;
   }
   Tokens tokens = {.items = items};
-  if (tokenize(source, &tokens) != BOSONOGA_EXIT_SUCCESS ||
+  if (tokenize(source, &tokens) != BOSONO_EXIT_SUCCESS ||
       (execution->aliases &&
        apply_aliases(source, &tokens, execution->aliases) !=
-           BOSONOGA_EXIT_SUCCESS) ||
+           BOSONO_EXIT_SUCCESS) ||
       tokens.count >= BOSONO_TOKEN_LIMIT)
     goto cleanup;
   tokens.items[tokens.count++] =
@@ -939,7 +938,7 @@ static int execute_import(char const* filename, BosonoExecution* execution,
                               .import_depth = execution->import_depth + 1,
                               .imported = true};
   if (parse_statements(&tokens, &position, rule, storage, &variable_count, true,
-                       0, &imported) != BOSONOGA_EXIT_SUCCESS)
+                       0, &imported) != BOSONO_EXIT_SUCCESS)
     goto cleanup;
   if (position != tokens.count || !imported.returned) {
     (void)syntax_error(&tokens, position, "Expected an imported script return");
@@ -948,7 +947,7 @@ static int execute_import(char const* filename, BosonoExecution* execution,
   for (size_t i = 0; i < rule->info_count; i++)
     (void)printf("%s\n", rule->info[i]);
   *result = imported.result;
-  status = BOSONOGA_EXIT_SUCCESS;
+  status = BOSONO_EXIT_SUCCESS;
 cleanup:
   free(rule);
   free(storage);
