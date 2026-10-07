@@ -108,6 +108,7 @@ static int parse_asset(Tokens const* tokens, size_t* position,
     return syntax_error(tokens, *position, "Too many assets");
   }
   BosonoAsset* const asset = &output->assets[output->asset_count];
+  asset->is_font = matches(tokens, *position, "_bosonoga_asset_font_ttf");
   (*position)++;
   if (*position >= tokens->count ||
       !copy_theme_name(&tokens->items[*position], asset->name)) {
@@ -119,32 +120,37 @@ static int parse_asset(Tokens const* tokens, size_t* position,
     }
   }
   (*position)++;
-  if (*position >= tokens->count) {
-    return syntax_error(tokens, *position, "Expected a PNG filename in asset/");
-  }
-  Token filename = tokens->items[*position];
-  if (filename.length < 2 || filename.text[0] != '"' ||
-      filename.text[filename.length - 1] != '"') {
-    return syntax_error(tokens, *position, "Expected a quoted PNG filename");
-  }
-  filename.text++;
-  filename.length -= 2;
-  Token const* const path = &filename;
-  if (path->length < 5 || path->length >= sizeof asset->filename ||
-      memcmp(path->text + path->length - 4, ".png", 4) != 0) {
-    return syntax_error(tokens, *position, "Expected a PNG filename in asset/");
-  }
-  for (size_t index = 0; index < path->length; index++) {
-    char const value = path->text[index];
-    if (!((value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
-          (value >= '0' && value <= '9') || value == '_' || value == '-' ||
-          value == '.')) {
-      return syntax_error(tokens, *position,
-                          "Expected a PNG filename in asset/");
-    }
-  }
-  memcpy(asset->filename, path->text, path->length);
-  asset->filename[path->length] = '\0';
+  if (!matches(tokens, *position, "_bosonoga_is"))
+    return syntax_error(tokens, *position, "Expected is after asset name");
+  (*position)++;
+  if (!matches(tokens, *position, "_bosonoga_dir_from_current"))
+    return syntax_error(tokens, *position, "Expected dir_from_current");
+  (*position)++;
+  char directory[BOSONO_STRING_LIMIT];
+  char filename[BOSONO_STRING_LIMIT];
+  if (*position >= tokens->count ||
+      !copy_string(&tokens->items[*position], directory) || !directory[0])
+    return syntax_error(tokens, *position, "Expected a quoted directory");
+  (*position)++;
+  if (!matches(tokens, *position, "_bosonoga_file"))
+    return syntax_error(tokens, *position, "Expected file after directory");
+  (*position)++;
+  if (*position >= tokens->count ||
+      !copy_string(&tokens->items[*position], filename) || !filename[0])
+    return syntax_error(tokens, *position, "Expected a quoted filename");
+  size_t const length = strlen(filename);
+  char const* extension = asset->is_font ? ".ttf" : ".png";
+  if (length < 5 || strcmp(filename + length - 4, extension) != 0)
+    return syntax_error(tokens, *position,
+                        "Asset filename has the wrong extension");
+  size_t const directory_length = strlen(directory);
+  bool const separator = directory[directory_length - 1] != '/' &&
+                         directory[directory_length - 1] != 92;
+  int const written =
+      snprintf(asset->filename, sizeof asset->filename, "%s%s%s", directory,
+               separator ? "/" : "", filename);
+  if (written < 0 || (size_t)written >= sizeof asset->filename)
+    return syntax_error(tokens, *position, "Asset path exceeds path limit");
   (*position)++;
   output->asset_count++;
   return BOSONO_EXIT_SUCCESS;
@@ -179,8 +185,29 @@ static int parse_theme(Tokens const* tokens, size_t* position,
     }
   }
   (*position)++;
+  theme->font = output->asset_count;
+  if (*position < tokens->count) {
+    Token const* name = &tokens->items[*position];
+    for (size_t index = 0; index < output->asset_count; index++) {
+      if (output->assets[index].is_font &&
+          strlen(output->assets[index].name) == name->length &&
+          memcmp(output->assets[index].name, name->text, name->length) == 0) {
+        theme->font = index;
+        break;
+      }
+    }
+  }
+  if (theme->font == output->asset_count)
+    return syntax_error(tokens, *position,
+                        "Expected a font asset declared before the theme");
+  (*position)++;
+  if (*position >= tokens->count ||
+      !parse_color(&tokens->items[*position], &theme->background))
+    return syntax_error(tokens, *position,
+                        "Expected theme background RRGGBB_hex");
+  (*position)++;
   theme->uses_assets = false;
-  for (size_t index = 0; index < BOSONO_THEME_COLOR_COUNT + 1; index++) {
+  for (size_t index = 0; index < BOSONO_THEME_COLOR_COUNT; index++) {
     uint32_t* const color = index < BOSONO_THEME_COLOR_COUNT
                                 ? &theme->rectangles[index]
                                 : &theme->background;
@@ -198,7 +225,8 @@ static int parse_theme(Tokens const* tokens, size_t* position,
             memcmp(name->text, output->assets[asset_index].name, length) == 0)
           break;
       }
-      if (asset_index == output->asset_count) {
+      if (asset_index == output->asset_count ||
+          output->assets[asset_index].is_font) {
         return syntax_error(tokens, *position,
                             "Expected an asset declared before the theme");
       }
@@ -363,7 +391,7 @@ static int parse_variable(Tokens const* tokens, size_t* position,
     size_t const directory_length = strlen(directory);
     size_t const filename_length = strlen(filename);
     bool const separator = directory[directory_length - 1] != '/' &&
-                           directory[directory_length - 1] != '\\';
+                           directory[directory_length - 1] != 92;
     size_t const joined_length = directory_length + (separator ? 1U : 0U);
     if (filename_length >= BOSONO_STRING_LIMIT - joined_length)
       return syntax_error(tokens, *position,
@@ -791,7 +819,8 @@ static int parse_rules(Tokens const* tokens, BosonoProgram* output,
       }
       continue;
     }
-    if (matches(tokens, position, "_bosonoga_asset")) {
+    if (matches(tokens, position, "_bosonoga_asset_font_ttf") ||
+        matches(tokens, position, "_bosonoga_asset_image_png")) {
       if (parse_asset(tokens, &position, output) != BOSONO_EXIT_SUCCESS)
         return BOSONO_EXIT_FAILURE;
       continue;

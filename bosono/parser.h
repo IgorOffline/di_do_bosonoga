@@ -56,10 +56,12 @@ typedef struct BosonoTheme {
   uint32_t rectangles[BOSONO_THEME_COLOR_COUNT];
   size_t assets[BOSONO_THEME_COLOR_COUNT];
   bool uses_assets;
+  size_t font;
   uint32_t background;
 } BosonoTheme;
 
 typedef struct BosonoAsset {
+  bool is_font;
   char name[BOSONO_THEME_NAME_LIMIT];
   char filename[BOSONO_ASSET_PATH_LIMIT];
 } BosonoAsset;

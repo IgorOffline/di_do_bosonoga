@@ -425,6 +425,8 @@ static void core_frame(void* user_data) {
   struct nk_context* ctx = snk_new_frame();
   BosonoTheme const* const theme =
       &regina->script.themes[regina->selected_theme];
+  regina->label_font = regina->asset_fonts[theme->font];
+  nk_style_set_font(ctx, &regina->label_font->handle);
   if (regina->started && theme->uses_assets) {
     if (nk_begin(ctx, "sprites",
                  nk_rect(0, 0, (float)sapp_width(), (float)sapp_height()),
@@ -475,9 +477,8 @@ static void core_frame(void* user_data) {
 static bool load_assets(Regina* regina) {
   image_regina = regina;
   for (size_t index = 0; index < regina->script.asset_count; index++) {
-    char path[BOSONO_ASSET_PATH_LIMIT + 16];
-    (void)snprintf(path, sizeof path, "asset/%s",
-                   regina->script.assets[index].filename);
+    if (regina->script.assets[index].is_font) continue;
+    char const* path = regina->script.assets[index].filename;
     FILE* file = NULL;
 #if defined(_WIN32)
     (void)fopen_s(&file, path, "rb");
@@ -587,14 +588,20 @@ static void core_init(void* user_data) {
                                             .alloc = counted_nk_alloc,
                                             .free = counted_nk_free});
   nk_font_atlas_begin(&regina->font_atlas);
-  regina->label_font = nk_font_atlas_add_from_file(
-      &regina->font_atlas, "asset/IndieFlower.ttf", 28.0f, NULL);
-  if (!regina->label_font) {
-    fputs("Unable to load asset/IndieFlower.ttf\n", stderr);
-    regina->graphics_failed = true;
-    sapp_quit();
-    return;
+  for (size_t index = 0; index < regina->script.asset_count; index++) {
+    BosonoAsset const* asset = &regina->script.assets[index];
+    if (!asset->is_font) continue;
+    regina->asset_fonts[index] = nk_font_atlas_add_from_file(
+        &regina->font_atlas, asset->filename, 28.0f, NULL);
+    if (!regina->asset_fonts[index]) {
+      fprintf(stderr, "Unable to load font asset %s\n", asset->filename);
+      regina->graphics_failed = true;
+      sapp_quit();
+      return;
+    }
   }
+  regina->label_font =
+      regina->asset_fonts[regina->script.themes[regina->selected_theme].font];
   int font_width, font_height;
   void const* pixels = nk_font_atlas_bake(&regina->font_atlas, &font_width,
                                           &font_height, NK_FONT_ATLAS_RGBA32);

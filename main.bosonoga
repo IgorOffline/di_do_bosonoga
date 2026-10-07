@@ -1,11 +1,12 @@
 var coin_flip is default_rand_binary
 if coin_flip eq true
 di
-  asset alpha "alpha.png"
-  asset bravo "bravo.png"
-  asset charlie "charlie.png"
+  asset_font_ttf ttf_font is dir_from_current "asset" file "IntelOneMono-Medium.ttf"
+  asset_image_png alpha_image is dir_from_current "asset" file "alpha.png"
+  asset_image_png bravo_image is dir_from_current "asset" file "bravo.png"
+  asset_image_png charlie_image is dir_from_current "asset" file "charlie.png"
 
-  theme "frappe" alpha bravo charlie 626880_hex
+  theme "frappe" ttf_font 626880_hex alpha_image bravo_image charlie_image
 
   input_key_press_9
   di

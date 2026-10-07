@@ -1,4 +1,5 @@
-aka _bosonoga_asset asset
+aka _bosonoga_asset_font_ttf asset_font_ttf
+aka _bosonoga_asset_image_png asset_image_png
 aka _bosonoga_di di
 aka _bosonoga_dir_from_current dir_from_current
 aka _bosonoga_do do
