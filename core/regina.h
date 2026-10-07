@@ -82,6 +82,7 @@ struct Regina {
       sg_pass_action pass_action;
       struct nk_font_atlas font_atlas;
       struct nk_font* label_font;
+      struct nk_font* asset_fonts[BOSONO_ASSET_LIMIT];
       World worlds[WORLD_COUNT];
 
       bool rule_held[BOSONO_RULE_LIMIT];
