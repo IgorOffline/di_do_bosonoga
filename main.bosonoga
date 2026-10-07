@@ -7,225 +7,6 @@ di
 
   theme "frappe" alpha bravo charlie 626880_hex
 
-  input_key_press_8
-  di
-    var alpha is 10_i32
-    info "[9]" alpha "...again..." alpha
-    var bravo is 20_i32
-    set bravo to_add bravo 1_i32
-    info "[9]" bravo
-    var charlie is 30_i32
-    set charlie to_subtract charlie 1_i32
-    info "[9]" charlie
-    var delta is 40_i32
-    set delta to_add delta 1_i32 delta 2_i32 delta 3_i32
-    info "[9]" delta
-    var echo is 50_i32
-    set echo to_subtract echo 1_i32 echo 2_i32 echo 3_i32
-    info "[9]" echo
-    if alpha eq 10
-    di
-      info "alpha _bosonoga_eq 10"
-    do
-    if alpha not_eq 20
-    di
-      info "alpha _bosonoga_not_eq 20"
-    do
-    if alpha eq 20
-    di
-      info "alpha _bosonoga_eq 20"
-    do
-    else
-    di
-      info "alpha _bosonoga_not_eq 20"
-    do
-    if alpha gt 1
-    di
-      info "alpha gt 1"
-    do
-    if alpha lt 99
-    di
-      info "alpha lt 99"
-    do
-    if alpha gt 1 or alpha lt 99
-    di
-      nihil
-    do
-    var foxtrot is shift_0
-    var golf is shift_1
-    var hotel is foxtrot shift_or golf
-    if hotel shift_eq foxtrot
-    di
-      info "hotel _bosonoga_shift_eq foxtrot"
-    do
-    if hotel shift_eq golf
-    di
-      info "hotel _bosonoga_shift_eq golf"
-    do
-    var bit_0 is shift_0
-    var bit_1 is shift_1
-    var bit_2 is shift_2
-    var bit_3 is shift_3
-    var bit_4 is shift_4
-    var bit_5 is shift_5
-    var bit_6 is shift_6
-    var bit_7 is shift_7
-    var bit_8 is shift_8
-    var bit_9 is shift_9
-    var bit_10 is shift_10
-    var bit_11 is shift_11
-    var bit_12 is shift_12
-    var bit_13 is shift_13
-    var bit_14 is shift_14
-    var bit_15 is shift_15
-    var bit_16 is shift_16
-    var bit_17 is shift_17
-    var bit_18 is shift_18
-    var bit_19 is shift_19
-    var bit_20 is shift_20
-    var bit_21 is shift_21
-    var bit_22 is shift_22
-    var bit_23 is shift_23
-    var bit_24 is shift_24
-    var bit_25 is shift_25
-    var bit_26 is shift_26
-    var bit_27 is shift_27
-    var bit_28 is shift_28
-    var bit_29 is shift_29
-    var bit_30 is shift_30
-    var bit_31 is shift_31
-    var all_flags is bit_0 shift_or bit_1 shift_or bit_2 shift_or bit_3 shift_or bit_4 shift_or bit_5 shift_or bit_6 shift_or bit_7 shift_or bit_8 shift_or bit_9 shift_or bit_10 shift_or bit_11 shift_or bit_12 shift_or bit_13 shift_or bit_14 shift_or bit_15 shift_or bit_16 shift_or bit_17 shift_or bit_18 shift_or bit_19 shift_or bit_20 shift_or bit_21 shift_or bit_22 shift_or bit_23 shift_or bit_24 shift_or bit_25 shift_or bit_26 shift_or bit_27 shift_or bit_28 shift_or bit_29 shift_or bit_30 shift_or bit_31
-    info "all_flags _bosonoga_is " all_flags
-    if all_flags shift_eq bit_0
-    di
-      info "_bosonoga_shift_0 _bosonoga_is " bit_0
-    do
-    if all_flags shift_eq bit_1
-    di
-      info "_bosonoga_shift_1 _bosonoga_is " bit_1
-    do
-    if all_flags shift_eq bit_2
-    di
-      info "_bosonoga_shift_2 _bosonoga_is " bit_2
-    do
-    if all_flags shift_eq bit_3
-    di
-      info "_bosonoga_shift_3 _bosonoga_is " bit_3
-    do
-    if all_flags shift_eq bit_4
-    di
-      info "_bosonoga_shift_4 _bosonoga_is " bit_4
-    do
-    if all_flags shift_eq bit_5
-    di
-      info "_bosonoga_shift_5 _bosonoga_is " bit_5
-    do
-    if all_flags shift_eq bit_6
-    di
-      info "_bosonoga_shift_6 _bosonoga_is " bit_6
-    do
-    if all_flags shift_eq bit_7
-    di
-      info "_bosonoga_shift_7 _bosonoga_is " bit_7
-    do
-    if all_flags shift_eq bit_8
-    di
-      info "_bosonoga_shift_8 _bosonoga_is " bit_8
-    do
-    if all_flags shift_eq bit_9
-    di
-      info "_bosonoga_shift_9 _bosonoga_is " bit_9
-    do
-    if all_flags shift_eq bit_10
-    di
-      info "_bosonoga_shift_10 _bosonoga_is " bit_10
-    do
-    if all_flags shift_eq bit_11
-    di
-      info "_bosonoga_shift_11 _bosonoga_is " bit_11
-    do
-    if all_flags shift_eq bit_12
-    di
-      info "_bosonoga_shift_12 _bosonoga_is " bit_12
-    do
-    if all_flags shift_eq bit_13
-    di
-      info "_bosonoga_shift_13 _bosonoga_is " bit_13
-    do
-    if all_flags shift_eq bit_14
-    di
-      info "_bosonoga_shift_14 _bosonoga_is " bit_14
-    do
-    if all_flags shift_eq bit_15
-    di
-      info "_bosonoga_shift_15 _bosonoga_is " bit_15
-    do
-    if all_flags shift_eq bit_16
-    di
-      info "_bosonoga_shift_16 _bosonoga_is " bit_16
-    do
-    if all_flags shift_eq bit_17
-    di
-      info "_bosonoga_shift_17 _bosonoga_is " bit_17
-    do
-    if all_flags shift_eq bit_18
-    di
-      info "_bosonoga_shift_18 _bosonoga_is " bit_18
-    do
-    if all_flags shift_eq bit_19
-    di
-      info "_bosonoga_shift_19 _bosonoga_is " bit_19
-    do
-    if all_flags shift_eq bit_20
-    di
-      info "_bosonoga_shift_20 _bosonoga_is " bit_20
-    do
-    if all_flags shift_eq bit_21
-    di
-      info "_bosonoga_shift_21 _bosonoga_is " bit_21
-    do
-    if all_flags shift_eq bit_22
-    di
-      info "_bosonoga_shift_22 _bosonoga_is " bit_22
-    do
-    if all_flags shift_eq bit_23
-    di
-      info "_bosonoga_shift_23 _bosonoga_is " bit_23
-    do
-    if all_flags shift_eq bit_24
-    di
-      info "_bosonoga_shift_24 _bosonoga_is " bit_24
-    do
-    if all_flags shift_eq bit_25
-    di
-      info "_bosonoga_shift_25 _bosonoga_is " bit_25
-    do
-    if all_flags shift_eq bit_26
-    di
-      info "_bosonoga_shift_26 _bosonoga_is " bit_26
-    do
-    if all_flags shift_eq bit_27
-    di
-      info "_bosonoga_shift_27 _bosonoga_is " bit_27
-    do
-    if all_flags shift_eq bit_28
-    di
-      info "_bosonoga_shift_28 _bosonoga_is " bit_28
-    do
-    if all_flags shift_eq bit_29
-    di
-      info "_bosonoga_shift_29 _bosonoga_is " bit_29
-    do
-    if all_flags shift_eq bit_30
-    di
-      info "_bosonoga_shift_30 _bosonoga_is " bit_30
-    do
-    if all_flags shift_eq bit_31
-    di
-      info "_bosonoga_shift_31 _bosonoga_is " bit_31
-    do
-  do
-
   input_key_press_9
   di
     var test_count_raw is 0_i32
@@ -237,6 +18,30 @@ di
     var uri_lt is dir_from_current "test" file "lt.bosonoga"
     var test_lt is raw_import_and_execute uri_lt
     set test_result to_add test_result test_lt
+    set test_count_raw to_add test_count_raw 1_i32
+    var uri_if_else_gt_lt_nihil is dir_from_current "test" file "if_else_gt_lt_nihil.bosonoga"
+    var test_if_else_gt_lt_nihil is raw_import_and_execute uri_if_else_gt_lt_nihil
+    set test_result to_add test_result test_if_else_gt_lt_nihil
+    set test_count_raw to_add test_count_raw 1_i32
+    var uri_to_add is dir_from_current "test" file "to_add.bosonoga"
+    var test_to_add is raw_import_and_execute uri_to_add
+    set test_result to_add test_result test_to_add
+    set test_count_raw to_add test_count_raw 1_i32
+    var uri_to_add_multiple is dir_from_current "test" file "to_add_multiple.bosonoga"
+    var test_to_add_multiple is raw_import_and_execute uri_to_add_multiple
+    set test_result to_add test_result test_to_add_multiple
+    set test_count_raw to_add test_count_raw 1_i32
+    var uri_to_subtract is dir_from_current "test" file "to_subtract.bosonoga"
+    var test_to_subtract is raw_import_and_execute uri_to_subtract
+    set test_result to_add test_result test_to_subtract
+    set test_count_raw to_add test_count_raw 1_i32
+    var uri_to_subtract_multiple is dir_from_current "test" file "to_subtract_multiple.bosonoga"
+    var test_to_subtract_multiple is raw_import_and_execute uri_to_subtract_multiple
+    set test_result to_add test_result test_to_subtract_multiple
+    set test_count_raw to_add test_count_raw 1_i32
+    var uri_shift is dir_from_current "test" file "shift.bosonoga"
+    var test_shift is raw_import_and_execute uri_shift
+    set test_result to_add test_result test_shift
     set test_count_raw to_add test_count_raw 1_i32
     var test_count_passed is 0_i32
     set test_count_passed to_subtract test_count_raw test_result
@@ -257,16 +62,6 @@ di
   input_key_down_s
   di
     info "[S]"
-  do
-
-  input_key_down_q
-  di
-    info "[Q]"
-  do
-
-  input_key_down_e
-  di
-    info "[E]"
   do
 do
 else

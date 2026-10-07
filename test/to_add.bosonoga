@@ -1,0 +1,7 @@
+var test_to_add is 10_i32
+set test_to_add to_add test_to_add 1_i32
+if test_to_add eq 11
+di
+  return exit_success
+do
+return exit_failure
