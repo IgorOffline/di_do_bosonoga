@@ -215,6 +215,29 @@ static void print_tokens(const Regina* regina) {
   }
 }
 
+static const BosonogaVariable* find_variable(const Regina* regina,
+                                             const char* name) {
+  for (BOSONOGA_SIZE i = 0; i < regina->variable_count; i++) {
+    if (BOSONOGA_STRCMP(regina->variables[i].name, name) ==
+        BOSONOGA_STRINGS_EQUAL) {
+      return &regina->variables[i];
+    }
+  }
+  return NULL;
+}
+
+static int parse_return_status(const char* keyword, int* status) {
+  if (BOSONOGA_STRCMP(keyword, "exit_success") == BOSONOGA_STRINGS_EQUAL) {
+    *status = BOSONOGA_EXIT_SUCCESS;
+  } else if (BOSONOGA_STRCMP(keyword, "exit_failure") ==
+             BOSONOGA_STRINGS_EQUAL) {
+    *status = BOSONOGA_EXIT_FAILURE;
+  } else {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+  return BOSONOGA_EXIT_SUCCESS;
+}
+
 static int parse_tokens(Regina* regina) {
   bool inside_main = false;
   for (BOSONOGA_SIZE i = 0; i < regina->token_count; i++) {
@@ -235,6 +258,9 @@ static int parse_tokens(Regina* regina) {
       }
 
       const char* name = regina->tokens[i + 1].data;
+      if (find_variable(regina, name) != NULL) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
       const char* i32_value_raw = regina->tokens[i + 3].data;
       const char* suffix = "_i32";
       const BOSONOGA_SIZE raw_len = BOSONOGA_STRLEN(i32_value_raw);
@@ -267,12 +293,37 @@ static int parse_tokens(Regina* regina) {
       BOSONOGA_MEMCPY(variable->name, name, BOSONOGA_STRLEN(name) + 1);
       variable->value = (int32_t)(negative ? -value : value);
       i += 3;
+    } else if (inside_main &&
+               BOSONOGA_STRCMP(keyword, "if") == BOSONOGA_STRINGS_EQUAL) {
+      if (regina->token_count - i != 10) return BOSONOGA_EXIT_FAILURE;
+      const BosonogaToken* expression = &regina->tokens[i];
+      if (BOSONOGA_STRCMP(expression[2].data, "gt") != BOSONOGA_STRINGS_EQUAL ||
+          BOSONOGA_STRCMP(expression[4].data, "di") != BOSONOGA_STRINGS_EQUAL ||
+          BOSONOGA_STRCMP(expression[5].data, "return") !=
+              BOSONOGA_STRINGS_EQUAL ||
+          BOSONOGA_STRCMP(expression[7].data, "do") != BOSONOGA_STRINGS_EQUAL ||
+          BOSONOGA_STRCMP(expression[8].data, "return") !=
+              BOSONOGA_STRINGS_EQUAL) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+      const BosonogaVariable* left = find_variable(regina, expression[1].data);
+      const BosonogaVariable* right = find_variable(regina, expression[3].data);
+      if (left == NULL || right == NULL) return BOSONOGA_EXIT_FAILURE;
+      int di_status;
+      int do_status;
+      if (parse_return_status(expression[6].data, &di_status) !=
+              BOSONOGA_EXIT_SUCCESS ||
+          parse_return_status(expression[9].data, &do_status) !=
+              BOSONOGA_EXIT_SUCCESS) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+      return left->value > right->value ? di_status : do_status;
+    } else if (inside_main) {
+      return BOSONOGA_EXIT_FAILURE;
     }
   }
 
-  if (regina->variable_count == 0) return BOSONOGA_EXIT_FAILURE;
-  return regina->variables[0].value == 10 ? BOSONOGA_EXIT_SUCCESS
-                                          : BOSONOGA_EXIT_FAILURE;
+  return BOSONOGA_EXIT_FAILURE;
 }
 
 static void print_non_empty_regina(const Regina* regina) {
@@ -384,7 +435,8 @@ int main(void) {
       "main\n"
       "var test_gt_alpha is 20_i32\n"
       "var test_gt_bravo is 10_i32\n"
-      "if 1 gt 0 di return exit_success do return exit_failure\n";
+      "if test_gt_alpha gt test_gt_bravo di return exit_success do return "
+      "exit_failure\n";
   const char* const input_failure =
       "version 0.2.0\n"
       "lega _bosonoga_if\n"
@@ -404,7 +456,8 @@ int main(void) {
       "main\n"
       "var test_gt_charlie is 10_i32\n"
       "var test_gt_delta is 20_i32\n"
-      "if 0 gt 1 di return exit_success do return exit_failure\n";
+      "if test_gt_charlie gt test_gt_delta di return exit_failure do return "
+      "exit_success\n";
 
   const int status_input_success = core(input_success);
   const int status_input_failure = core(input_failure);
