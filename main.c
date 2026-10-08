@@ -295,34 +295,50 @@ static int parse_tokens(Regina* regina) {
       i += 3;
     } else if (inside_main &&
                BOSONOGA_STRCMP(keyword, "if") == BOSONOGA_STRINGS_EQUAL) {
-      if (regina->token_count - i != 10) return BOSONOGA_EXIT_FAILURE;
-      const BosonogaToken* expression = &regina->tokens[i];
-      const bool is_gt =
-          BOSONOGA_STRCMP(expression[2].data, "gt") == BOSONOGA_STRINGS_EQUAL;
-      const bool is_lt =
-          BOSONOGA_STRCMP(expression[2].data, "lt") == BOSONOGA_STRINGS_EQUAL;
-      if ((!is_gt && !is_lt) ||
-          BOSONOGA_STRCMP(expression[4].data, "di") != BOSONOGA_STRINGS_EQUAL ||
-          BOSONOGA_STRCMP(expression[5].data, "return") !=
+      BOSONOGA_SIZE position = i + 1;
+      bool condition = true;
+      for (;;) {
+        if (regina->token_count - position < 3) return BOSONOGA_EXIT_FAILURE;
+        const BosonogaVariable* left =
+            find_variable(regina, regina->tokens[position].data);
+        const char* operation = regina->tokens[position + 1].data;
+        const BosonogaVariable* right =
+            find_variable(regina, regina->tokens[position + 2].data);
+        if (left == NULL || right == NULL) return BOSONOGA_EXIT_FAILURE;
+        bool comparison;
+        if (BOSONOGA_STRCMP(operation, "gt") == BOSONOGA_STRINGS_EQUAL) {
+          comparison = left->value > right->value;
+        } else if (BOSONOGA_STRCMP(operation, "lt") == BOSONOGA_STRINGS_EQUAL) {
+          comparison = left->value < right->value;
+        } else {
+          return BOSONOGA_EXIT_FAILURE;
+        }
+        condition = condition && comparison;
+        position += 3;
+        if (position == regina->token_count) return BOSONOGA_EXIT_FAILURE;
+        if (BOSONOGA_STRCMP(regina->tokens[position].data, "and") !=
+            BOSONOGA_STRINGS_EQUAL)
+          break;
+        position++;
+      }
+      if (regina->token_count - position != 6) return BOSONOGA_EXIT_FAILURE;
+      const BosonogaToken* branches = &regina->tokens[position];
+      if (BOSONOGA_STRCMP(branches[0].data, "di") != BOSONOGA_STRINGS_EQUAL ||
+          BOSONOGA_STRCMP(branches[1].data, "return") !=
               BOSONOGA_STRINGS_EQUAL ||
-          BOSONOGA_STRCMP(expression[7].data, "do") != BOSONOGA_STRINGS_EQUAL ||
-          BOSONOGA_STRCMP(expression[8].data, "return") !=
+          BOSONOGA_STRCMP(branches[3].data, "do") != BOSONOGA_STRINGS_EQUAL ||
+          BOSONOGA_STRCMP(branches[4].data, "return") !=
               BOSONOGA_STRINGS_EQUAL) {
         return BOSONOGA_EXIT_FAILURE;
       }
-      const BosonogaVariable* left = find_variable(regina, expression[1].data);
-      const BosonogaVariable* right = find_variable(regina, expression[3].data);
-      if (left == NULL || right == NULL) return BOSONOGA_EXIT_FAILURE;
       int di_status;
       int do_status;
-      if (parse_return_status(expression[6].data, &di_status) !=
+      if (parse_return_status(branches[2].data, &di_status) !=
               BOSONOGA_EXIT_SUCCESS ||
-          parse_return_status(expression[9].data, &do_status) !=
+          parse_return_status(branches[5].data, &do_status) !=
               BOSONOGA_EXIT_SUCCESS) {
         return BOSONOGA_EXIT_FAILURE;
       }
-      const bool condition =
-          is_gt ? left->value > right->value : left->value < right->value;
       return condition ? di_status : do_status;
     } else if (inside_main) {
       return BOSONOGA_EXIT_FAILURE;
@@ -429,6 +445,7 @@ int main(void) {
       "version 0.2.0\n"
       "lega _bosonoga_if\n"
       "lega _bosonoga_gt\n"
+      "lega _bosonoga_and\n"
       "lega _bosonoga_lt\n"
       "lega _bosonoga_di\n"
       "lega _bosonoga_return\n"
@@ -437,6 +454,7 @@ int main(void) {
       "lega _bosonoga_exit_failure\n"
       "aka _bosonoga_if if\n"
       "aka _bosonoga_gt gt\n"
+      "aka _bosonoga_and and\n"
       "aka _bosonoga_lt lt\n"
       "aka _bosonoga_di di\n"
       "aka _bosonoga_return return\n"
@@ -465,13 +483,31 @@ int main(void) {
       "var test_lt_delta is 10_i32\n"
       "if test_lt_charlie lt test_lt_delta di return exit_failure do return "
       "exit_success\n";
+  const char* const input_and_success =
+      "var test_and_echo is 30_i32\n"
+      "var test_and_foxtrot is 20_i32\n"
+      "var test_and_golf is 10_i32\n"
+      "if test_and_echo gt test_and_foxtrot and test_and_foxtrot gt "
+      "test_and_golf di return exit_success do return "
+      "exit_failure\n";
+  const char* const input_and_failure =
+      "var test_and_hotel is 30_i32\n"
+      "var test_and_india is 20_i32\n"
+      "var test_and_julia is 25_i32\n"
+      "if test_and_hotel gt test_and_india and test_and_india gt "
+      "test_and_julia di return exit_failure do return "
+      "exit_success\n";
 
   const int status_input_gt_success = core(header, input_gt_success);
   const int status_input_gt_failure = core(header, input_gt_failure);
   const int status_input_lt_success = core(header, input_lt_success);
   const int status_input_lt_failure = core(header, input_lt_failure);
-  printf("[%d %d %d %d]\n", status_input_gt_success, status_input_gt_failure,
-         status_input_lt_success, status_input_lt_failure);
+  const int status_input_and_success = core(header, input_and_success);
+  const int status_input_and_failure = core(header, input_and_failure);
+  printf("[%d %d %d %d %d %d]\n", status_input_gt_success,
+         status_input_gt_failure, status_input_lt_success,
+         status_input_lt_failure, status_input_and_success,
+         status_input_and_failure);
   printf("=== === === === ===\n");
 
   return BOSONOGA_EXIT_SUCCESS;
