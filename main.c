@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -8,6 +9,7 @@
 #define BOSONOGA_LEGA_LIMIT 16
 #define BOSONOGA_AKA_LIMIT 16
 #define BOSONOGA_MAIN_LIMIT 1
+#define BOSONOGA_VARIABLE_LIMIT 64
 #define BOSONOGA_LINE_LIMIT 256
 #define BOSONOGA_LINE_LENGTH 255
 #define BOSONOGA_TOKEN_PER_LINE_LIMIT 16
@@ -55,6 +57,14 @@ BOSONOGA_RECORD {
 BosonogaAka;
 
 BOSONOGA_RECORD {
+  char name[BOSONOGA_TOKEN_LENGTH + 1];
+  int32_t value;
+}
+BosonogaVariable;
+
+BOSONOGA_RECORD {
+  BosonogaVariable variables[BOSONOGA_VARIABLE_LIMIT];
+  BOSONOGA_SIZE variable_count;
   BosonogaVersion version[BOSONOGA_VERSION_LIMIT];
   BosonogaLega lega[BOSONOGA_LEGA_LIMIT];
   BosonogaAka aka[BOSONOGA_AKA_LIMIT];
@@ -206,25 +216,63 @@ static void print_tokens(const Regina* regina) {
 }
 
 static int parse_tokens(Regina* regina) {
-  int main_count = 0;
+  bool inside_main = false;
   for (BOSONOGA_SIZE i = 0; i < regina->token_count; i++) {
     const char* keyword = regina->tokens[i].data;
     if (BOSONOGA_STRCMP(keyword, "main") == BOSONOGA_STRINGS_EQUAL) {
-      main_count++;
+      inside_main = true;
+      continue;
     }
-    const bool main_count_ok = main_count > 0;
-    const bool if_found =
-        BOSONOGA_STRCMP(keyword, "if") == BOSONOGA_STRINGS_EQUAL;
-    if (main_count_ok && if_found) {
-      const char* token = regina->tokens[++i].data;
-      int32_t value = strtol(token, NULL, 10);
-      if (value == 0) {
+
+    if (inside_main &&
+        BOSONOGA_STRCMP(keyword, "var") == BOSONOGA_STRINGS_EQUAL) {
+      if (regina->token_count - i < 4) {
         return BOSONOGA_EXIT_FAILURE;
       }
+      if (BOSONOGA_STRCMP(regina->tokens[i + 2].data, "is") !=
+          BOSONOGA_STRINGS_EQUAL) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+
+      const char* name = regina->tokens[i + 1].data;
+      const char* i32_value_raw = regina->tokens[i + 3].data;
+      const char* suffix = "_i32";
+      const BOSONOGA_SIZE raw_len = BOSONOGA_STRLEN(i32_value_raw);
+      const BOSONOGA_SIZE suffix_len = BOSONOGA_STRLEN(suffix);
+
+      if (raw_len <= suffix_len ||
+          BOSONOGA_STRCMP(i32_value_raw + raw_len - suffix_len, suffix) !=
+              BOSONOGA_STRINGS_EQUAL) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+
+      if (regina->variable_count == BOSONOGA_VARIABLE_LIMIT) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+      const BOSONOGA_SIZE value_len = raw_len - suffix_len;
+      BOSONOGA_SIZE digit = 0;
+      const bool negative = i32_value_raw[0] == '-';
+      if (negative) digit++;
+      if (digit == value_len) return BOSONOGA_EXIT_FAILURE;
+      int64_t value = 0;
+      const int64_t limit = negative ? -(int64_t)INT32_MIN : INT32_MAX;
+      for (; digit < value_len; digit++) {
+        if (i32_value_raw[digit] < '0' || i32_value_raw[digit] > '9') {
+          return BOSONOGA_EXIT_FAILURE;
+        }
+        value = value * 10 + (i32_value_raw[digit] - '0');
+        if (value > limit) return BOSONOGA_EXIT_FAILURE;
+      }
+      BosonogaVariable* variable = &regina->variables[regina->variable_count++];
+      BOSONOGA_MEMCPY(variable->name, name, BOSONOGA_STRLEN(name) + 1);
+      variable->value = (int32_t)(negative ? -value : value);
+      i += 3;
     }
   }
 
-  return BOSONOGA_EXIT_SUCCESS;
+  if (regina->variable_count == 0) return BOSONOGA_EXIT_FAILURE;
+  return regina->variables[0].value == 10 ? BOSONOGA_EXIT_SUCCESS
+                                          : BOSONOGA_EXIT_FAILURE;
 }
 
 static void print_non_empty_regina(const Regina* regina) {
@@ -269,6 +317,11 @@ static void print_non_empty_regina(const Regina* regina) {
       printf("tokens[%zu]: %s\n", i, regina->tokens[i].data);
     }
   }
+
+  for (BOSONOGA_SIZE i = 0; i < regina->variable_count; i++) {
+    printf("variables[%zu]: %s = %" PRId32 "\n", i, regina->variables[i].name,
+           regina->variables[i].value);
+  }
 }
 
 static int core(const char* input) {
@@ -299,7 +352,9 @@ static int core(const char* input) {
   }
   printf("=== === === === ===\n");
 
-  status = parse_tokens(regina);
+  if (status == BOSONOGA_EXIT_SUCCESS) {
+    status = parse_tokens(regina);
+  }
   printf("=== === === === ===\n");
 
   print_non_empty_regina(regina);
@@ -326,7 +381,10 @@ int main(void) {
       "aka _bosonoga_exit_success exit_success\n"
       "aka _bosonoga_do do\n"
       "aka _bosonoga_exit_failure exit_failure\n"
-      "\nmain\nif 1 gt 0 di return exit_success do return exit_failure\n";
+      "main\n"
+      "var test_gt_alpha is 20_i32\n"
+      "var test_gt_bravo is 10_i32\n"
+      "if 1 gt 0 di return exit_success do return exit_failure\n";
   const char* const input_failure =
       "version 0.2.0\n"
       "lega _bosonoga_if\n"
@@ -343,7 +401,10 @@ int main(void) {
       "aka _bosonoga_exit_success exit_success\n"
       "aka _bosonoga_do do\n"
       "aka _bosonoga_exit_failure exit_failure\n"
-      "\nmain\nif 0 gt 1 di return exit_success do return exit_failure\n";
+      "main\n"
+      "var test_gt_charlie is 10_i32\n"
+      "var test_gt_delta is 20_i32\n"
+      "if 0 gt 1 di return exit_success do return exit_failure\n";
 
   const int status_input_success = core(input_success);
   const int status_input_failure = core(input_failure);
