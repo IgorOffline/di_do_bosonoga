@@ -1,3 +1,5 @@
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -203,6 +205,28 @@ static void print_tokens(const Regina* regina) {
   }
 }
 
+static int parse_tokens(Regina* regina) {
+  int main_count = 0;
+  for (BOSONOGA_SIZE i = 0; i < regina->token_count; i++) {
+    const char* keyword = regina->tokens[i].data;
+    if (BOSONOGA_STRCMP(keyword, "main") == BOSONOGA_STRINGS_EQUAL) {
+      main_count++;
+    }
+    const bool main_count_ok = main_count > 0;
+    const bool if_found =
+        BOSONOGA_STRCMP(keyword, "if") == BOSONOGA_STRINGS_EQUAL;
+    if (main_count_ok && if_found) {
+      const char* token = regina->tokens[++i].data;
+      int32_t value = strtol(token, NULL, 10);
+      if (value == 0) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+    }
+  }
+
+  return BOSONOGA_EXIT_SUCCESS;
+}
+
 static void print_non_empty_regina(const Regina* regina) {
   for (BOSONOGA_SIZE i = 0; i < regina->version_count; i++) {
     const BosonogaVersion* version = &regina->version[i];
@@ -273,6 +297,9 @@ static int core(const char* input) {
   if (status == BOSONOGA_EXIT_SUCCESS) {
     print_tokens(regina);
   }
+  printf("=== === === === ===\n");
+
+  status = parse_tokens(regina);
   printf("=== === === === ===\n");
 
   print_non_empty_regina(regina);
