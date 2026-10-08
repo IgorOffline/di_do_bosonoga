@@ -3,14 +3,12 @@
 #include <string.h>
 
 #define BOSONOGA_VERSION_LIMIT 1
-#define BOSONOGA_LEGA_LIMIT 8
-#define BOSONOGA_AKA_LIMIT 8
+#define BOSONOGA_LEGA_LIMIT 16
+#define BOSONOGA_AKA_LIMIT 16
 #define BOSONOGA_MAIN_LIMIT 1
-#define BOSONOGA_LINE_LIMIT                                            \
-  (BOSONOGA_VERSION_LIMIT + BOSONOGA_LEGA_LIMIT + BOSONOGA_AKA_LIMIT + \
-   BOSONOGA_MAIN_LIMIT + 7)
+#define BOSONOGA_LINE_LIMIT 256
 #define BOSONOGA_LINE_LENGTH 255
-#define BOSONOGA_TOKEN_PER_LINE_LIMIT 8
+#define BOSONOGA_TOKEN_PER_LINE_LIMIT 16
 #define BOSONOGA_TOKEN_LENGTH 63
 #define BOSONOGA_TOKEN_LIMIT \
   (BOSONOGA_LINE_LIMIT * BOSONOGA_TOKEN_PER_LINE_LIMIT)
@@ -24,6 +22,7 @@
 #define BOSONOGA_MALLOC(size) malloc(size)
 #define BOSONOGA_FREE(ptr) free(ptr)
 #define BOSONOGA_MEMCPY(dest, src, size) memcpy(dest, src, size)
+#define BOSONOGA_MEMSET(dest, value, size) memset(dest, value, size)
 #define BOSONOGA_STRLEN(str) strlen(str)
 #define BOSONOGA_STRCMP(a, b) strcmp(a, b)
 
@@ -145,8 +144,6 @@ static int parse_records(Regina* regina) {
         return BOSONOGA_EXIT_FAILURE;
       }
       regina->main_count++;
-    } else if (regina->main_count != 0) {
-      // empty
     } else if (BOSONOGA_STRCMP(keyword, "version") == BOSONOGA_STRINGS_EQUAL) {
       if (regina->version_count == BOSONOGA_VERSION_LIMIT ||
           regina->token_count - i < 2) {
@@ -250,19 +247,14 @@ static void print_non_empty_regina(const Regina* regina) {
   }
 }
 
-int main(void) {
-  const char* const input =
-      "version 0.2.0\nlega _bosonoga_if\nlega _bosonoga_gt\naka _bosonoga_if "
-      "if\naka "
-      "_bosonoga_gt gt\nmain\nif 1 gt 0\n";
-
+static int core(const char* input) {
   Regina* regina = BOSONOGA_MALLOC(sizeof(Regina));
 
   if (regina == NULL) {
     return BOSONOGA_EXIT_FAILURE;
   }
 
-  *regina = (Regina){0};
+  BOSONOGA_MEMSET(regina, 0, sizeof(*regina));
 
   int status = parse_input(input, regina);
 
@@ -288,4 +280,48 @@ int main(void) {
 
   BOSONOGA_FREE(regina);
   return status;
+}
+
+int main(void) {
+  const char* const input_success =
+      "version 0.2.0\n"
+      "lega _bosonoga_if\n"
+      "lega _bosonoga_gt\n"
+      "lega _bosonoga_di\n"
+      "lega _bosonoga_return\n"
+      "lega _bosonoga_exit_success\n"
+      "lega _bosonoga_do\n"
+      "lega _bosonoga_exit_failure\n"
+      "aka _bosonoga_if if\n"
+      "aka _bosonoga_gt gt\n"
+      "aka _bosonoga_di di\n"
+      "aka _bosonoga_return return\n"
+      "aka _bosonoga_exit_success exit_success\n"
+      "aka _bosonoga_do do\n"
+      "aka _bosonoga_exit_failure exit_failure\n"
+      "\nmain\nif 1 gt 0 di return exit_success do return exit_failure\n";
+  const char* const input_failure =
+      "version 0.2.0\n"
+      "lega _bosonoga_if\n"
+      "lega _bosonoga_gt\n"
+      "lega _bosonoga_di\n"
+      "lega _bosonoga_return\n"
+      "lega _bosonoga_exit_success\n"
+      "lega _bosonoga_do\n"
+      "lega _bosonoga_exit_failure\n"
+      "aka _bosonoga_if if\n"
+      "aka _bosonoga_gt gt\n"
+      "aka _bosonoga_di di\n"
+      "aka _bosonoga_return return\n"
+      "aka _bosonoga_exit_success exit_success\n"
+      "aka _bosonoga_do do\n"
+      "aka _bosonoga_exit_failure exit_failure\n"
+      "\nmain\nif 0 gt 1 di return exit_success do return exit_failure\n";
+
+  const int status_input_success = core(input_success);
+  const int status_input_failure = core(input_failure);
+  printf("[%d %d]\n", status_input_success, status_input_failure);
+  printf("=== === === === ===\n");
+
+  return BOSONOGA_EXIT_SUCCESS;
 }
