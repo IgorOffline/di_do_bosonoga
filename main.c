@@ -2,11 +2,18 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define BOSONOGA_LINES 7
+#define BOSONOGA_VERSION_LIMIT 1
+#define BOSONOGA_LEGA_LIMIT 8
+#define BOSONOGA_AKA_LIMIT 8
+#define BOSONOGA_MAIN_LIMIT 1
+#define BOSONOGA_LINE_LIMIT                                            \
+  (BOSONOGA_VERSION_LIMIT + BOSONOGA_LEGA_LIMIT + BOSONOGA_AKA_LIMIT + \
+   BOSONOGA_MAIN_LIMIT + 7)
 #define BOSONOGA_LINE_LENGTH 255
-#define BOSONOGA_TOKENS_PER_LINE 8
+#define BOSONOGA_TOKEN_PER_LINE_LIMIT 8
 #define BOSONOGA_TOKEN_LENGTH 63
-#define BOSONOGA_TOKENS (BOSONOGA_LINES * BOSONOGA_TOKENS_PER_LINE)
+#define BOSONOGA_TOKEN_LIMIT \
+  (BOSONOGA_LINE_LIMIT * BOSONOGA_TOKEN_PER_LINE_LIMIT)
 
 #define BOSONOGA_EXIT_SUCCESS 0
 #define BOSONOGA_EXIT_FAILURE 1
@@ -27,8 +34,35 @@ BOSONOGA_RECORD { char data[BOSONOGA_TOKEN_LENGTH + 1]; }
 BosonogaToken;
 
 BOSONOGA_RECORD {
-  BosonogaLine lines[BOSONOGA_LINES];
-  BosonogaToken tokens[BOSONOGA_TOKENS];
+  char string[BOSONOGA_TOKEN_LENGTH + 1];
+  BOSONOGA_SIZE len;
+}
+BosonogaVersion;
+
+BOSONOGA_RECORD {
+  char legal[BOSONOGA_TOKEN_LENGTH + 1];
+  BOSONOGA_SIZE len;
+}
+BosonogaLega;
+
+BOSONOGA_RECORD {
+  char original[BOSONOGA_TOKEN_LENGTH + 1];
+  char replacement[BOSONOGA_TOKEN_LENGTH + 1];
+  BOSONOGA_SIZE original_len;
+  BOSONOGA_SIZE replacement_len;
+}
+BosonogaAka;
+
+BOSONOGA_RECORD {
+  BosonogaVersion version[BOSONOGA_VERSION_LIMIT];
+  BosonogaLega lega[BOSONOGA_LEGA_LIMIT];
+  BosonogaAka aka[BOSONOGA_AKA_LIMIT];
+  BOSONOGA_SIZE version_count;
+  BOSONOGA_SIZE lega_count;
+  BOSONOGA_SIZE aka_count;
+  BOSONOGA_SIZE main_count;
+  BosonogaLine lines[BOSONOGA_LINE_LIMIT];
+  BosonogaToken tokens[BOSONOGA_TOKEN_LIMIT];
   BOSONOGA_SIZE line_count;
   BOSONOGA_SIZE token_count;
 }
@@ -36,7 +70,7 @@ Regina;
 
 static int parse_input(const char* input, Regina* regina) {
   while (*input != '\0') {
-    if (regina->line_count == BOSONOGA_LINES) {
+    if (regina->line_count == BOSONOGA_LINE_LIMIT) {
       return BOSONOGA_EXIT_FAILURE;
     }
 
@@ -86,7 +120,7 @@ static int parse_lines(Regina* regina) {
       BOSONOGA_SIZE length = (BOSONOGA_SIZE)(current - start);
 
       if (length > BOSONOGA_TOKEN_LENGTH ||
-          line_tokens == BOSONOGA_TOKENS_PER_LINE) {
+          line_tokens == BOSONOGA_TOKEN_PER_LINE_LIMIT) {
         return BOSONOGA_EXIT_FAILURE;
       }
 
@@ -96,6 +130,53 @@ static int parse_lines(Regina* regina) {
       token->data[length] = '\0';
 
       line_tokens++;
+    }
+  }
+
+  return BOSONOGA_EXIT_SUCCESS;
+}
+
+static int parse_records(Regina* regina) {
+  for (BOSONOGA_SIZE i = 0; i < regina->token_count; i++) {
+    const char* keyword = regina->tokens[i].data;
+
+    if (BOSONOGA_STRCMP(keyword, "main") == BOSONOGA_STRINGS_EQUAL) {
+      if (regina->main_count == BOSONOGA_MAIN_LIMIT) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+      regina->main_count++;
+    } else if (regina->main_count != 0) {
+      // empty
+    } else if (BOSONOGA_STRCMP(keyword, "version") == BOSONOGA_STRINGS_EQUAL) {
+      if (regina->version_count == BOSONOGA_VERSION_LIMIT ||
+          regina->token_count - i < 2) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+      BosonogaVersion* version = &regina->version[regina->version_count++];
+      const char* string = regina->tokens[++i].data;
+      version->len = BOSONOGA_STRLEN(string) + 1;
+      BOSONOGA_MEMCPY(version->string, string, version->len);
+    } else if (BOSONOGA_STRCMP(keyword, "lega") == BOSONOGA_STRINGS_EQUAL) {
+      if (regina->lega_count == BOSONOGA_LEGA_LIMIT ||
+          regina->token_count - i < 2) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+      BosonogaLega* lega = &regina->lega[regina->lega_count++];
+      const char* legal = regina->tokens[++i].data;
+      lega->len = BOSONOGA_STRLEN(legal) + 1;
+      BOSONOGA_MEMCPY(lega->legal, legal, lega->len);
+    } else if (BOSONOGA_STRCMP(keyword, "aka") == BOSONOGA_STRINGS_EQUAL) {
+      if (regina->aka_count == BOSONOGA_AKA_LIMIT ||
+          regina->token_count - i < 3) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+      BosonogaAka* aka = &regina->aka[regina->aka_count++];
+      const char* original = regina->tokens[++i].data;
+      const char* replacement = regina->tokens[++i].data;
+      aka->original_len = BOSONOGA_STRLEN(original) + 1;
+      aka->replacement_len = BOSONOGA_STRLEN(replacement) + 1;
+      BOSONOGA_MEMCPY(aka->original, original, aka->original_len);
+      BOSONOGA_MEMCPY(aka->replacement, replacement, aka->replacement_len);
     }
   }
 
@@ -125,6 +206,50 @@ static void print_tokens(const Regina* regina) {
   }
 }
 
+static void print_non_empty_regina(const Regina* regina) {
+  for (BOSONOGA_SIZE i = 0; i < regina->version_count; i++) {
+    const BosonogaVersion* version = &regina->version[i];
+    if (version->string[0] != '\0') {
+      printf("version[%zu]: %s (len=%zu)\n", i, version->string, version->len);
+    }
+  }
+
+  for (BOSONOGA_SIZE i = 0; i < regina->lega_count; i++) {
+    const BosonogaLega* lega = &regina->lega[i];
+    if (lega->legal[0] != '\0') {
+      printf("lega[%zu]: %s (len=%zu)\n", i, lega->legal, lega->len);
+    }
+  }
+
+  for (BOSONOGA_SIZE i = 0; i < regina->aka_count; i++) {
+    const BosonogaAka* aka = &regina->aka[i];
+    if (aka->original[0] != '\0') {
+      printf("aka[%zu].original: %s (len=%zu)\n", i, aka->original,
+             aka->original_len);
+    }
+    if (aka->replacement[0] != '\0') {
+      printf("aka[%zu].replacement: %s (len=%zu)\n", i, aka->replacement,
+             aka->replacement_len);
+    }
+  }
+
+  if (regina->main_count != 0) {
+    printf("main_count: %zu\n", regina->main_count);
+  }
+
+  for (BOSONOGA_SIZE i = 0; i < regina->line_count; i++) {
+    if (regina->lines[i].data[0] != '\0') {
+      printf("lines[%zu]: %s\n", i, regina->lines[i].data);
+    }
+  }
+
+  for (BOSONOGA_SIZE i = 0; i < regina->token_count; i++) {
+    if (regina->tokens[i].data[0] != '\0') {
+      printf("tokens[%zu]: %s\n", i, regina->tokens[i].data);
+    }
+  }
+}
+
 int main(void) {
   const char* const input =
       "version 0.2.0\nlega _bosonoga_if\nlega _bosonoga_gt\naka _bosonoga_if "
@@ -141,15 +266,25 @@ int main(void) {
 
   int status = parse_input(input, regina);
 
+  printf("=== === === === ===\n");
   printf("Regina allocated: %zu bytes\n", sizeof(Regina));
+  printf("=== === === === ===\n");
 
   if (status == BOSONOGA_EXIT_SUCCESS) {
     status = parse_lines(regina);
   }
 
   if (status == BOSONOGA_EXIT_SUCCESS) {
+    status = parse_records(regina);
+  }
+
+  if (status == BOSONOGA_EXIT_SUCCESS) {
     print_tokens(regina);
   }
+  printf("=== === === === ===\n");
+
+  print_non_empty_regina(regina);
+  printf("=== === === === ===\n");
 
   BOSONOGA_FREE(regina);
   return status;
