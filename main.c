@@ -381,8 +381,10 @@ int main(void) {
       "aka _bosonoga_exit_success exit_success\n"
       "aka _bosonoga_do do\n"
       "aka _bosonoga_exit_failure exit_failure\n"
-      "\nmain\nvar test_gt_alpha is 20_i32\nvar test_gt_bravo is 10_i32\nif 1 "
-      "gt 0 di return exit_success do return exit_failure\n";
+      "main\n"
+      "var test_gt_alpha is 20_i32\n"
+      "var test_gt_bravo is 10_i32\n"
+      "if 1 gt 0 di return exit_success do return exit_failure\n";
   const char* const input_failure =
       "version 0.2.0\n"
       "lega _bosonoga_if\n"
@@ -399,9 +401,10 @@ int main(void) {
       "aka _bosonoga_exit_success exit_success\n"
       "aka _bosonoga_do do\n"
       "aka _bosonoga_exit_failure exit_failure\n"
-      "\nmain\nvar test_gt_charlie is 10_i32\nvar test_gt_delta is 20_i32\nif "
-      "0 "
-      "gt 1 di return exit_success do return exit_failure\n";
+      "main\n"
+      "var test_gt_charlie is 10_i32\n"
+      "var test_gt_delta is 20_i32\n"
+      "if 0 gt 1 di return exit_success do return exit_failure\n";
 
   const int status_input_success = core(input_success);
   const int status_input_failure = core(input_failure);
