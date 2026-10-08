@@ -206,21 +206,40 @@ static void print_tokens(const Regina* regina) {
 }
 
 static int parse_tokens(Regina* regina) {
-  int main_count = 0;
+  bool inside_main = false;
   for (BOSONOGA_SIZE i = 0; i < regina->token_count; i++) {
     const char* keyword = regina->tokens[i].data;
     if (BOSONOGA_STRCMP(keyword, "main") == BOSONOGA_STRINGS_EQUAL) {
-      main_count++;
+      inside_main = true;
+      continue;
     }
-    const bool main_count_ok = main_count > 0;
-    const bool if_found =
-        BOSONOGA_STRCMP(keyword, "if") == BOSONOGA_STRINGS_EQUAL;
-    if (main_count_ok && if_found) {
-      const char* token = regina->tokens[++i].data;
-      int32_t value = strtol(token, NULL, 10);
-      if (value == 0) {
+
+    if (inside_main &&
+        BOSONOGA_STRCMP(keyword, "var") == BOSONOGA_STRINGS_EQUAL) {
+      if (regina->token_count - i < 4) {
         return BOSONOGA_EXIT_FAILURE;
       }
+      if (BOSONOGA_STRCMP(regina->tokens[i + 2].data, "is") !=
+          BOSONOGA_STRINGS_EQUAL) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+
+      const char* name = regina->tokens[i + 1].data;
+      const char* i32_value_raw = regina->tokens[i + 3].data;
+      const char* suffix = "_i32";
+      const BOSONOGA_SIZE raw_len = BOSONOGA_STRLEN(i32_value_raw);
+      const BOSONOGA_SIZE suffix_len = BOSONOGA_STRLEN(suffix);
+
+      if (raw_len <= suffix_len ||
+          BOSONOGA_STRCMP(i32_value_raw + raw_len - suffix_len, suffix) !=
+              BOSONOGA_STRINGS_EQUAL) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+
+      const int value_len = (int)(raw_len - suffix_len);
+      printf("var %s: type=i32, raw=%s, value=%.*s\n", name, i32_value_raw,
+             value_len, i32_value_raw);
+      i += 3;
     }
   }
 
@@ -326,7 +345,9 @@ int main(void) {
       "aka _bosonoga_exit_success exit_success\n"
       "aka _bosonoga_do do\n"
       "aka _bosonoga_exit_failure exit_failure\n"
-      "\nmain\nif 1 gt 0 di return exit_success do return exit_failure\n";
+      "\nmain\nvar test_gt_alpha is 20_i32\nvar test_gt_bravo is 10_i32\nif 1 "
+      "gt "
+      "0 di return exit_success do return exit_failure\n";
   const char* const input_failure =
       "version 0.2.0\n"
       "lega _bosonoga_if\n"
@@ -343,7 +364,9 @@ int main(void) {
       "aka _bosonoga_exit_success exit_success\n"
       "aka _bosonoga_do do\n"
       "aka _bosonoga_exit_failure exit_failure\n"
-      "\nmain\nif 0 gt 1 di return exit_success do return exit_failure\n";
+      "\nmain\nvar test_gt_charlie is 10_i32\nvar test_gt_delta is 20_i32\nif "
+      "0 "
+      "gt 1 di return exit_success do return exit_failure\n";
 
   const int status_input_success = core(input_success);
   const int status_input_failure = core(input_failure);
