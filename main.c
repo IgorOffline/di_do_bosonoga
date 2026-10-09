@@ -10,6 +10,7 @@
 #define BOSONOGA_AKA_LIMIT 16
 #define BOSONOGA_MAIN_LIMIT 1
 #define BOSONOGA_VARIABLE_LIMIT 64
+#define BOSONOGA_PARAM_LIMIT 8
 #define BOSONOGA_LINE_LIMIT 256
 #define BOSONOGA_LINE_LENGTH 255
 #define BOSONOGA_TOKEN_PER_LINE_LIMIT 16
@@ -245,12 +246,18 @@ static int parse_operand(const Regina* regina, const char* token,
     return BOSONOGA_EXIT_SUCCESS;
   }
 
+  BOSONOGA_SIZE length = BOSONOGA_STRLEN(token);
+  if (length > 4 &&
+      BOSONOGA_STRCMP(token + length - 4, "_i32") == BOSONOGA_STRINGS_EQUAL) {
+    length -= 4;
+  }
+  const char* end = token + length;
   const bool negative = *token == '-';
   if (negative) token++;
-  if (*token == '\0') return BOSONOGA_EXIT_FAILURE;
+  if (token == end) return BOSONOGA_EXIT_FAILURE;
   int64_t value = 0;
   const int64_t limit = negative ? -(int64_t)INT32_MIN : INT32_MAX;
-  for (; *token != '\0'; token++) {
+  for (; token != end; token++) {
     if (*token < '0' || *token > '9') return BOSONOGA_EXIT_FAILURE;
     value = value * 10 + (*token - '0');
     if (value > limit) return BOSONOGA_EXIT_FAILURE;
@@ -326,6 +333,39 @@ static int parse_tokens(Regina* regina) {
       BOSONOGA_MEMCPY(variable->name, name, BOSONOGA_STRLEN(name) + 1);
       variable->value = (int32_t)(negative ? -value : value);
       i += 3;
+    } else if (inside_main &&
+               BOSONOGA_STRCMP(keyword, "set") == BOSONOGA_STRINGS_EQUAL) {
+      if (regina->token_count - i < 4 ||
+          BOSONOGA_STRCMP(regina->tokens[i + 2].data, "to_add") !=
+              BOSONOGA_STRINGS_EQUAL) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+      const BosonogaVariable* target =
+          find_variable(regina, regina->tokens[i + 1].data);
+      if (target == NULL) return BOSONOGA_EXIT_FAILURE;
+      BOSONOGA_SIZE position = i + 3;
+      BOSONOGA_SIZE param_count = 0;
+      int64_t sum = 0;
+      for (; position < regina->token_count; position++) {
+        const char* param = regina->tokens[position].data;
+        if (BOSONOGA_STRCMP(param, "var") == BOSONOGA_STRINGS_EQUAL ||
+            BOSONOGA_STRCMP(param, "set") == BOSONOGA_STRINGS_EQUAL ||
+            BOSONOGA_STRCMP(param, "if") == BOSONOGA_STRINGS_EQUAL) {
+          break;
+        }
+        int32_t value;
+        if (param_count == BOSONOGA_PARAM_LIMIT ||
+            parse_operand(regina, param, &value) != BOSONOGA_EXIT_SUCCESS) {
+          return BOSONOGA_EXIT_FAILURE;
+        }
+        sum += value;
+        param_count++;
+      }
+      if (param_count == 0 || sum < INT32_MIN || sum > INT32_MAX) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+      regina->variables[target - regina->variables].value = (int32_t)sum;
+      i = position - 1;
     } else if (inside_main &&
                BOSONOGA_STRCMP(keyword, "if") == BOSONOGA_STRINGS_EQUAL) {
       BOSONOGA_SIZE position = i + 1;
@@ -541,80 +581,134 @@ int main(void) {
   const char* const input_gt_success =
       "var test_gt_s_left is 20_i32\n"
       "var test_gt_s_right is 10_i32\n"
-      "if test_gt_s_left gt test_gt_s_right di return exit_success do return "
-      "exit_failure\n";
+      "if test_gt_s_left gt test_gt_s_right\n"
+      "di\n"
+      "  return exit_success\n"
+      "do\n"
+      "return exit_failure\n";
   const char* const input_gt_failure =
       "var test_gt_f_left is 10_i32\n"
       "var test_gt_f_right is 20_i32\n"
-      "if test_gt_f_left gt test_gt_f_right di return exit_failure do return "
-      "exit_success\n";
+      "if test_gt_f_left gt test_gt_f_right\n"
+      "di\n"
+      "  return exit_failure\n"
+      "do\n"
+      "return exit_success\n";
   const char* const input_lt_success =
       "var test_lt_s_left is 10_i32\n"
       "var test_lt_s_right is 20_i32\n"
-      "if test_lt_s_left lt test_lt_s_right di return exit_success do return "
-      "exit_failure\n";
+      "if test_lt_s_left lt test_lt_s_right\n"
+      "di\n"
+      "  return exit_success\n"
+      "do\n"
+      "return exit_failure\n";
   const char* const input_lt_failure =
       "var test_lt_f_left is 20_i32\n"
       "var test_lt_f_right is 10_i32\n"
-      "if test_lt_f_left lt test_lt_f_right di return exit_failure do return "
-      "exit_success\n";
+      "if test_lt_f_left lt test_lt_f_right\n"
+      "di\n"
+      "  return exit_failure\n"
+      "do\n"
+      "return exit_success\n";
   const char* const input_and_success =
       "var test_and_s_left is 30_i32\n"
       "var test_and_s_mid is 20_i32\n"
       "var test_and_s_right is 10_i32\n"
       "if test_and_s_left gt test_and_s_mid and test_and_s_mid gt "
-      "test_and_s_right di return exit_success do return "
-      "exit_failure\n";
+      "test_and_s_right\n"
+      "di\n"
+      "  return exit_success\n"
+      "do\n"
+      "return exit_failure\n";
   const char* const input_and_failure =
       "var test_and_f_left is 30_i32\n"
       "var test_and_f_mid is 20_i32\n"
       "var test_and_f_right is 25_i32\n"
       "if test_and_f_left gt test_and_f_mid and test_and_f_mid gt "
-      "test_and_f_right di return exit_failure do return "
-      "exit_success\n";
+      "test_and_f_right\n"
+      "di\n"
+      "  return exit_failure\n"
+      "do\n"
+      "return exit_success\n";
   const char* const input_or_success =
       "var test_or_s_left is 30_i32\n"
       "var test_or_s_mid is 20_i32\n"
       "var test_or_s_right is 25_i32\n"
-      "if test_or_s_left gt test_or_s_mid or test_or_s_mid gt "
-      "test_or_s_right di return exit_success do return "
-      "exit_failure\n";
+      "if test_or_s_left gt test_or_s_mid or test_or_s_mid gt test_or_s_right\n"
+      "di\n"
+      "  return exit_success\n"
+      "do\n"
+      "return exit_failure\n";
   const char* const input_or_failure =
       "var test_or_f_left is 20_i32\n"
       "var test_or_f_mid is 25_i32\n"
       "var test_or_f_right is 24_i32\n"
-      "if test_or_f_left gt test_or_f_mid or test_or_f_mid gt test_or_f_right "
-      "di "
-      "return exit_success do return "
-      "exit_failure\n";
+      "if test_or_f_left gt test_or_f_mid or test_or_f_mid gt test_or_f_right\n"
+      "di\n"
+      "  return exit_success\n"
+      "do\n"
+      "return exit_failure\n";
   const char* const input_eq_success =
       "var test_eq_success is 10_i32\n"
-      "if test_eq_success eq 10 di "
-      "return exit_success do return exit_failure\n";
+      "if test_eq_success eq 10\n"
+      "di\n"
+      "  return exit_success\n"
+      "do\n"
+      "return exit_failure\n";
   const char* const input_eq_failure =
       "var test_eq_failure is 10_i32\n"
-      "if test_eq_failure eq 99 di "
-      "return exit_failure do return exit_success\n";
+      "if test_eq_failure eq 99\n"
+      "di\n"
+      "  return exit_failure\n"
+      "do\n"
+      "return exit_success\n";
   const char* const input_not_eq_success =
       "var test_not_eq_success is 10_i32\n"
-      "if test_not_eq_success not_eq 99 di "
-      "return exit_success do return exit_failure\n";
+      "if test_not_eq_success not_eq 99\n"
+      "di\n"
+      "  return exit_success\n"
+      "do\n"
+      "return exit_failure\n";
   const char* const input_not_eq_failure =
       "var test_not_eq_failure is 10_i32\n"
-      "if test_not_eq_failure not_eq 10 di "
-      "return exit_failure do return exit_success\n";
+      "if test_not_eq_failure not_eq 10\n"
+      "di\n"
+      "  return exit_failure\n"
+      "do\n"
+      "return exit_success\n";
   const char* const input_eq_and_success =
       "var test_eq_and_success_left is 10_i32\n"
       "var test_eq_and_success_right is 20_i32\n"
-      "if test_eq_and_success_left eq 10 and test_eq_and_success_right eq 20 "
-      "di "
-      "return exit_success do return exit_failure\n";
+      "if test_eq_and_success_left eq 10 and test_eq_and_success_right eq 20\n"
+      "di\n"
+      "  return exit_success\n"
+      "do\n"
+      "return exit_failure\n";
   const char* const input_eq_and_failure =
       "var test_eq_and_failure_left is 10_i32\n"
       "var test_eq_and_failure_right is 20_i32\n"
-      "if test_eq_and_failure_left eq 10 and test_eq_and_failure_right eq 99 "
-      "di "
-      "return exit_failure do return exit_success\n";
+      "if test_eq_and_failure_left eq 10 and test_eq_and_failure_right eq 99\n"
+      "di\n"
+      "  return exit_failure\n"
+      "do\n"
+      "return exit_success\n";
+  const char* const input_to_add =
+      "var test_to_add is 10_i32\n"
+      "set test_to_add to_add test_to_add 1_i32\n"
+      "if test_to_add eq 11\n"
+      "di\n"
+      "  return exit_success\n"
+      "do\n"
+      "return exit_failure\n";
+  const char* const input_to_add_multiple =
+      "var test_to_add is 1000_i32\n"
+      "set test_to_add to_add test_to_add 5_i32 5_i32 20_i32 20_i32 "
+      "25_i32 25_i32 50_i32\n"
+      "if test_to_add eq 1150\n"
+      "di\n"
+      "  return exit_success\n"
+      "do\n"
+      "return exit_failure\n";
 
   const int status_input_gt_success = core(header, input_gt_success);
   const int status_input_gt_failure = core(header, input_gt_failure);
@@ -630,15 +724,18 @@ int main(void) {
   const int status_input_not_eq_failure = core(header, input_not_eq_failure);
   const int status_input_eq_and_success = core(header, input_eq_and_success);
   const int status_input_eq_and_failure = core(header, input_eq_and_failure);
+  const int status_input_to_add = core(header, input_to_add);
+  const int status_input_to_add_multiple = core(header, input_to_add_multiple);
   printf("=== === === === ===\n");
-  printf("[%d %d %d %d %d %d %d %d %d %d %d %d %d %d]\n",
+  printf("[%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d]\n",
          status_input_gt_success, status_input_gt_failure,
          status_input_lt_success, status_input_lt_failure,
          status_input_and_success, status_input_and_failure,
          status_input_or_success, status_input_or_failure,
          status_input_eq_success, status_input_eq_failure,
          status_input_not_eq_success, status_input_not_eq_failure,
-         status_input_eq_and_success, status_input_eq_and_failure);
+         status_input_eq_and_success, status_input_eq_and_failure,
+         status_input_to_add, status_input_to_add_multiple);
   printf("=== === === === ===\n");
 
   return status_input_gt_success || status_input_gt_failure ||
@@ -647,5 +744,6 @@ int main(void) {
          status_input_or_success || status_input_or_failure ||
          status_input_eq_success || status_input_eq_failure ||
          status_input_not_eq_success || status_input_not_eq_failure ||
-         status_input_eq_and_success || status_input_eq_and_failure;
+         status_input_eq_and_success || status_input_eq_and_failure ||
+         status_input_to_add || status_input_to_add_multiple;
 }
