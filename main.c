@@ -21,7 +21,7 @@
 #define BOSONOGA_EXIT_FAILURE 1
 #define BOSONOGA_STRINGS_EQUAL 0
 
-#define BOSONOGA_LOG_PARSETOK true
+#define BOSONOGA_LOG_PARSETOK false
 #define BOSONOGA_RECORD typedef struct
 #define BOSONOGA_SIZE size_t
 #define BOSONOGA_MALLOC(size) malloc(size)
@@ -237,6 +237,28 @@ static const BosonogaVariable* find_variable(const Regina* regina,
   return NULL;
 }
 
+static int parse_operand(const Regina* regina, const char* token,
+                         int32_t* result) {
+  const BosonogaVariable* variable = find_variable(regina, token);
+  if (variable != NULL) {
+    *result = variable->value;
+    return BOSONOGA_EXIT_SUCCESS;
+  }
+
+  const bool negative = *token == '-';
+  if (negative) token++;
+  if (*token == '\0') return BOSONOGA_EXIT_FAILURE;
+  int64_t value = 0;
+  const int64_t limit = negative ? -(int64_t)INT32_MIN : INT32_MAX;
+  for (; *token != '\0'; token++) {
+    if (*token < '0' || *token > '9') return BOSONOGA_EXIT_FAILURE;
+    value = value * 10 + (*token - '0');
+    if (value > limit) return BOSONOGA_EXIT_FAILURE;
+  }
+  *result = (int32_t)(negative ? -value : value);
+  return BOSONOGA_EXIT_SUCCESS;
+}
+
 static int parse_return_status(const char* keyword, int* status) {
   if (BOSONOGA_STRCMP(keyword, "exit_success") == BOSONOGA_STRINGS_EQUAL) {
     *status = BOSONOGA_EXIT_SUCCESS;
@@ -311,17 +333,25 @@ static int parse_tokens(Regina* regina) {
       bool and_group = true;
       for (;;) {
         if (regina->token_count - position < 3) return BOSONOGA_EXIT_FAILURE;
-        const BosonogaVariable* left =
-            find_variable(regina, regina->tokens[position].data);
+        int32_t left;
+        int32_t right;
         const char* operation = regina->tokens[position + 1].data;
-        const BosonogaVariable* right =
-            find_variable(regina, regina->tokens[position + 2].data);
-        if (left == NULL || right == NULL) return BOSONOGA_EXIT_FAILURE;
+        if (parse_operand(regina, regina->tokens[position].data, &left) !=
+                BOSONOGA_EXIT_SUCCESS ||
+            parse_operand(regina, regina->tokens[position + 2].data, &right) !=
+                BOSONOGA_EXIT_SUCCESS) {
+          return BOSONOGA_EXIT_FAILURE;
+        }
         bool comparison;
         if (BOSONOGA_STRCMP(operation, "gt") == BOSONOGA_STRINGS_EQUAL) {
-          comparison = left->value > right->value;
+          comparison = left > right;
         } else if (BOSONOGA_STRCMP(operation, "lt") == BOSONOGA_STRINGS_EQUAL) {
-          comparison = left->value < right->value;
+          comparison = left < right;
+        } else if (BOSONOGA_STRCMP(operation, "eq") == BOSONOGA_STRINGS_EQUAL) {
+          comparison = left == right;
+        } else if (BOSONOGA_STRCMP(operation, "not_eq") ==
+                   BOSONOGA_STRINGS_EQUAL) {
+          comparison = left != right;
         } else {
           return BOSONOGA_EXIT_FAILURE;
         }
@@ -509,53 +539,82 @@ int main(void) {
       "main\n";
 
   const char* const input_gt_success =
-      "var test_gt_alpha is 20_i32\n"
-      "var test_gt_bravo is 10_i32\n"
-      "if test_gt_alpha gt test_gt_bravo di return exit_success do return "
+      "var test_gt_s_left is 20_i32\n"
+      "var test_gt_s_right is 10_i32\n"
+      "if test_gt_s_left gt test_gt_s_right di return exit_success do return "
       "exit_failure\n";
   const char* const input_gt_failure =
-      "var test_gt_charlie is 10_i32\n"
-      "var test_gt_delta is 20_i32\n"
-      "if test_gt_charlie gt test_gt_delta di return exit_failure do return "
+      "var test_gt_f_left is 10_i32\n"
+      "var test_gt_f_right is 20_i32\n"
+      "if test_gt_f_left gt test_gt_f_right di return exit_failure do return "
       "exit_success\n";
   const char* const input_lt_success =
-      "var test_lt_alpha is 10_i32\n"
-      "var test_lt_bravo is 20_i32\n"
-      "if test_lt_alpha lt test_lt_bravo di return exit_success do return "
+      "var test_lt_s_left is 10_i32\n"
+      "var test_lt_s_right is 20_i32\n"
+      "if test_lt_s_left lt test_lt_s_right di return exit_success do return "
       "exit_failure\n";
   const char* const input_lt_failure =
-      "var test_lt_charlie is 20_i32\n"
-      "var test_lt_delta is 10_i32\n"
-      "if test_lt_charlie lt test_lt_delta di return exit_failure do return "
+      "var test_lt_f_left is 20_i32\n"
+      "var test_lt_f_right is 10_i32\n"
+      "if test_lt_f_left lt test_lt_f_right di return exit_failure do return "
       "exit_success\n";
   const char* const input_and_success =
-      "var test_and_echo is 30_i32\n"
-      "var test_and_foxtrot is 20_i32\n"
-      "var test_and_golf is 10_i32\n"
-      "if test_and_echo gt test_and_foxtrot and test_and_foxtrot gt "
-      "test_and_golf di return exit_success do return "
+      "var test_and_s_left is 30_i32\n"
+      "var test_and_s_mid is 20_i32\n"
+      "var test_and_s_right is 10_i32\n"
+      "if test_and_s_left gt test_and_s_mid and test_and_s_mid gt "
+      "test_and_s_right di return exit_success do return "
       "exit_failure\n";
   const char* const input_and_failure =
-      "var test_and_hotel is 30_i32\n"
-      "var test_and_india is 20_i32\n"
-      "var test_and_julia is 25_i32\n"
-      "if test_and_hotel gt test_and_india and test_and_india gt "
-      "test_and_julia di return exit_failure do return "
+      "var test_and_f_left is 30_i32\n"
+      "var test_and_f_mid is 20_i32\n"
+      "var test_and_f_right is 25_i32\n"
+      "if test_and_f_left gt test_and_f_mid and test_and_f_mid gt "
+      "test_and_f_right di return exit_failure do return "
       "exit_success\n";
   const char* const input_or_success =
-      "var test_or_echo is 30_i32\n"
-      "var test_or_foxtrot is 20_i32\n"
-      "var test_or_golf is 25_i32\n"
-      "if test_or_echo gt test_or_foxtrot or test_or_foxtrot gt "
-      "test_or_golf di return exit_success do return "
+      "var test_or_s_left is 30_i32\n"
+      "var test_or_s_mid is 20_i32\n"
+      "var test_or_s_right is 25_i32\n"
+      "if test_or_s_left gt test_or_s_mid or test_or_s_mid gt "
+      "test_or_s_right di return exit_success do return "
       "exit_failure\n";
   const char* const input_or_failure =
-      "var test_or_hotel is 20_i32\n"
-      "var test_or_india is 25_i32\n"
-      "var test_or_julia is 24_i32\n"
-      "if test_or_hotel gt test_or_india or test_or_india gt test_or_julia di "
+      "var test_or_f_left is 20_i32\n"
+      "var test_or_f_mid is 25_i32\n"
+      "var test_or_f_right is 24_i32\n"
+      "if test_or_f_left gt test_or_f_mid or test_or_f_mid gt test_or_f_right "
+      "di "
       "return exit_success do return "
       "exit_failure\n";
+  const char* const input_eq_success =
+      "var test_eq_success is 10_i32\n"
+      "if test_eq_success eq 10 di "
+      "return exit_success do return exit_failure\n";
+  const char* const input_eq_failure =
+      "var test_eq_failure is 10_i32\n"
+      "if test_eq_failure eq 99 di "
+      "return exit_failure do return exit_success\n";
+  const char* const input_not_eq_success =
+      "var test_not_eq_success is 10_i32\n"
+      "if test_not_eq_success not_eq 99 di "
+      "return exit_success do return exit_failure\n";
+  const char* const input_not_eq_failure =
+      "var test_not_eq_failure is 10_i32\n"
+      "if test_not_eq_failure not_eq 10 di "
+      "return exit_failure do return exit_success\n";
+  const char* const input_eq_and_success =
+      "var test_eq_and_success_left is 10_i32\n"
+      "var test_eq_and_success_right is 20_i32\n"
+      "if test_eq_and_success_left eq 10 and test_eq_and_success_right eq 20 "
+      "di "
+      "return exit_success do return exit_failure\n";
+  const char* const input_eq_and_failure =
+      "var test_eq_and_failure_left is 10_i32\n"
+      "var test_eq_and_failure_right is 20_i32\n"
+      "if test_eq_and_failure_left eq 10 and test_eq_and_failure_right eq 99 "
+      "di "
+      "return exit_failure do return exit_success\n";
 
   const int status_input_gt_success = core(header, input_gt_success);
   const int status_input_gt_failure = core(header, input_gt_failure);
@@ -565,13 +624,28 @@ int main(void) {
   const int status_input_and_failure = core(header, input_and_failure);
   const int status_input_or_success = core(header, input_or_success);
   const int status_input_or_failure = core(header, input_or_failure);
+  const int status_input_eq_success = core(header, input_eq_success);
+  const int status_input_eq_failure = core(header, input_eq_failure);
+  const int status_input_not_eq_success = core(header, input_not_eq_success);
+  const int status_input_not_eq_failure = core(header, input_not_eq_failure);
+  const int status_input_eq_and_success = core(header, input_eq_and_success);
+  const int status_input_eq_and_failure = core(header, input_eq_and_failure);
   printf("=== === === === ===\n");
-  printf("[%d %d %d %d %d %d %d %d]\n", status_input_gt_success,
-         status_input_gt_failure, status_input_lt_success,
-         status_input_lt_failure, status_input_and_success,
-         status_input_and_failure, status_input_or_success,
-         status_input_or_failure);
+  printf("[%d %d %d %d %d %d %d %d %d %d %d %d %d %d]\n",
+         status_input_gt_success, status_input_gt_failure,
+         status_input_lt_success, status_input_lt_failure,
+         status_input_and_success, status_input_and_failure,
+         status_input_or_success, status_input_or_failure,
+         status_input_eq_success, status_input_eq_failure,
+         status_input_not_eq_success, status_input_not_eq_failure,
+         status_input_eq_and_success, status_input_eq_and_failure);
   printf("=== === === === ===\n");
 
-  return BOSONOGA_EXIT_SUCCESS;
+  return status_input_gt_success || status_input_gt_failure ||
+         status_input_lt_success || status_input_lt_failure ||
+         status_input_and_success || status_input_and_failure ||
+         status_input_or_success || status_input_or_failure ||
+         status_input_eq_success || status_input_eq_failure ||
+         status_input_not_eq_success || status_input_not_eq_failure ||
+         status_input_eq_and_success || status_input_eq_and_failure;
 }
