@@ -1,0 +1,22 @@
+version 0.2.0
+lega _bosonoga_if
+lega _bosonoga_gt
+lega _bosonoga_and
+lega _bosonoga_or
+lega _bosonoga_lt
+lega _bosonoga_di
+lega _bosonoga_return
+lega _bosonoga_exit_success
+lega _bosonoga_do
+lega _bosonoga_exit_failure
+aka _bosonoga_if if
+aka _bosonoga_gt gt
+aka _bosonoga_and and
+aka _bosonoga_or or
+aka _bosonoga_lt lt
+aka _bosonoga_di di
+aka _bosonoga_return return
+aka _bosonoga_exit_success exit_success
+aka _bosonoga_do do
+aka _bosonoga_exit_failure exit_failure
+main

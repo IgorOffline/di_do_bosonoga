@@ -1,0 +1,7 @@
+var test_to_add is 1000_i32
+set test_to_add to_add test_to_add 5_i32 5_i32 20_i32 20_i32 25_i32 25_i32 50_i32
+if test_to_add eq 1150
+di
+  return exit_success
+do
+return exit_failure

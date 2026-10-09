@@ -1,0 +1,8 @@
+var test_and_s_left is 30_i32
+var test_and_s_mid is 20_i32
+var test_and_s_right is 10_i32
+if test_and_s_left gt test_and_s_mid and test_and_s_mid gt test_and_s_right
+di
+  return exit_success
+do
+return exit_failure
