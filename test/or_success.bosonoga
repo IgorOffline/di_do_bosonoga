@@ -1,0 +1,8 @@
+var test_or_s_left is 30_i32
+var test_or_s_mid is 20_i32
+var test_or_s_right is 25_i32
+if test_or_s_left gt test_or_s_mid or test_or_s_mid gt test_or_s_right
+di
+  return exit_success
+do
+return exit_failure

@@ -1,0 +1,7 @@
+var test_lt_f_left is 20_i32
+var test_lt_f_right is 10_i32
+if test_lt_f_left lt test_lt_f_right
+di
+  return exit_failure
+do
+return exit_success

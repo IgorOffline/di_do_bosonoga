@@ -10,7 +10,9 @@
 #define BOSONOGA_AKA_LIMIT 16
 #define BOSONOGA_MAIN_LIMIT 1
 #define BOSONOGA_VARIABLE_LIMIT 64
+#define BOSONOGA_VARIABLE_NOT_FOUND BOSONOGA_VARIABLE_LIMIT
 #define BOSONOGA_PARAM_LIMIT 8
+#define BOSONOGA_SOURCE_LENGTH 8191
 #define BOSONOGA_LINE_LIMIT 256
 #define BOSONOGA_LINE_LENGTH 255
 #define BOSONOGA_TOKEN_PER_LINE_LIMIT 16
@@ -18,19 +20,60 @@
 #define BOSONOGA_TOKEN_LIMIT \
   (BOSONOGA_LINE_LIMIT * BOSONOGA_TOKEN_PER_LINE_LIMIT)
 
+#define BOSONOGA_VERSION_TOKEN_COUNT 2
+#define BOSONOGA_LEGA_TOKEN_COUNT 2
+#define BOSONOGA_AKA_TOKEN_COUNT 3
+#define BOSONOGA_VAR_TOKEN_COUNT 4
+#define BOSONOGA_SET_MIN_TOKEN_COUNT 4
+#define BOSONOGA_SHIFT_OR_TOKEN_COUNT 2
+#define BOSONOGA_COMPARISON_TOKEN_COUNT 3
+#define BOSONOGA_BRANCHES_TOKEN_COUNT 6
+
+#define BOSONOGA_I32_SUFFIX "_i32"
+#define BOSONOGA_SHIFT_PREFIX "shift_"
+#define BOSONOGA_SHIFT_DIGIT_LIMIT 2
+#define BOSONOGA_SHIFT_BIT_LIMIT 32
+
 #define BOSONOGA_EXIT_SUCCESS 0
 #define BOSONOGA_EXIT_FAILURE 1
 #define BOSONOGA_STRINGS_EQUAL 0
+#define BOSONOGA_IO_SUCCESS 0
 
 #define BOSONOGA_LOG_PARSETOK false
+#define BOSONOGA_LOG_SEPARATOR "=== === === === ===\n"
+#define BOSONOGA_HEADER_PATH "test/header.bosonoga"
+
 #define BOSONOGA_RECORD typedef struct
 #define BOSONOGA_SIZE size_t
-#define BOSONOGA_MALLOC(size) malloc(size)
+#define BOSONOGA_COUNT_OF(array) (sizeof(array) / sizeof((array)[0]))
+
+#define BOSONOGA_CALLOC(count, size) calloc(count, size)
 #define BOSONOGA_FREE(ptr) free(ptr)
 #define BOSONOGA_MEMCPY(dest, src, size) memcpy(dest, src, size)
-#define BOSONOGA_MEMSET(dest, value, size) memset(dest, value, size)
+#define BOSONOGA_MEMCHR(ptr, value, size) memchr(ptr, value, size)
 #define BOSONOGA_STRLEN(str) strlen(str)
+#define BOSONOGA_STRCHR(str, character) strchr(str, character)
 #define BOSONOGA_STRCMP(a, b) strcmp(a, b)
+#define BOSONOGA_STRNCMP(a, b, size) strncmp(a, b, size)
+
+#define BOSONOGA_FILE FILE
+#define BOSONOGA_STDERR stderr
+#define BOSONOGA_EOF EOF
+#define BOSONOGA_SEEK_SET SEEK_SET
+#define BOSONOGA_SEEK_END SEEK_END
+#if defined(_WIN32) && defined(_MSC_VER)
+#define BOSONOGA_FOPEN(file, path, mode) fopen_s(file, path, mode)
+#else
+#define BOSONOGA_FOPEN(file, path, mode) ((*(file) = fopen(path, mode)) == NULL)
+#endif
+#define BOSONOGA_FSEEK(file, offset, origin) fseek(file, offset, origin)
+#define BOSONOGA_FTELL(file) ftell(file)
+#define BOSONOGA_FREAD(dest, size, count, file) fread(dest, size, count, file)
+#define BOSONOGA_FGETC(file) fgetc(file)
+#define BOSONOGA_FERROR(file) ferror(file)
+#define BOSONOGA_FCLOSE(file) fclose(file)
+#define BOSONOGA_PRINTF(...) printf(__VA_ARGS__)
+#define BOSONOGA_FPRINTF(stream, ...) fprintf(stream, __VA_ARGS__)
 
 BOSONOGA_RECORD { char data[BOSONOGA_LINE_LENGTH + 1]; }
 BosonogaLine;
@@ -61,6 +104,8 @@ BosonogaAka;
 BOSONOGA_RECORD {
   char name[BOSONOGA_TOKEN_LENGTH + 1];
   int32_t value;
+  uint32_t flags;
+  bool is_flags;
 }
 BosonogaVariable;
 
@@ -81,701 +126,699 @@ BOSONOGA_RECORD {
 }
 Regina;
 
-static int parse_input(const char* input, Regina* regina) {
-  while (*input != '\0') {
+BOSONOGA_RECORD {
+  const char* path;
+  int expected;
+}
+BosonogaTest;
+
+static const BosonogaTest tests[] = {
+    {"test/gt_success.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/gt_failure.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/lt_success.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/lt_failure.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/and_success.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/and_failure.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/or_success.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/or_failure.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/eq_success.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/eq_failure.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/not_eq_success.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/not_eq_failure.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/eq_and_success.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/eq_and_failure.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/to_add.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/to_add_multiple.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/to_subtract.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/to_subtract_multiple.bosonoga", BOSONOGA_EXIT_SUCCESS},
+    {"test/shift.bosonoga", BOSONOGA_EXIT_SUCCESS},
+};
+
+static bool strings_equal(const char* left, const char* right) {
+  return BOSONOGA_STRCMP(left, right) == BOSONOGA_STRINGS_EQUAL;
+}
+
+static bool starts_with(const char* text, const char* prefix) {
+  return BOSONOGA_STRNCMP(text, prefix, BOSONOGA_STRLEN(prefix)) ==
+         BOSONOGA_STRINGS_EQUAL;
+}
+
+static bool ends_with(const char* text, const char* suffix) {
+  const BOSONOGA_SIZE text_length = BOSONOGA_STRLEN(text);
+  const BOSONOGA_SIZE suffix_length = BOSONOGA_STRLEN(suffix);
+  return text_length > suffix_length &&
+         strings_equal(text + text_length - suffix_length, suffix);
+}
+
+static bool is_blank(char character) {
+  return character == ' ' || character == '\t';
+}
+
+static bool is_digit(char character) {
+  return character >= '0' && character <= '9';
+}
+
+static BOSONOGA_SIZE copy_text(char* destination, const char* source) {
+  const BOSONOGA_SIZE size = BOSONOGA_STRLEN(source) + 1;
+  BOSONOGA_MEMCPY(destination, source, size);
+  return size;
+}
+
+static const char* token_at(const Regina* regina, BOSONOGA_SIZE position) {
+  return regina->tokens[position].data;
+}
+
+static BOSONOGA_SIZE tokens_left(const Regina* regina, BOSONOGA_SIZE position) {
+  return regina->token_count - position;
+}
+
+static int split_into_lines(const char* text, Regina* regina) {
+  while (*text != '\0') {
     if (regina->line_count == BOSONOGA_LINE_LIMIT) {
       return BOSONOGA_EXIT_FAILURE;
     }
 
-    const char* end = strchr(input, '\n');
-    BOSONOGA_SIZE length =
-        end == NULL ? BOSONOGA_STRLEN(input) : (BOSONOGA_SIZE)(end - input);
-
+    const char* newline = BOSONOGA_STRCHR(text, '\n');
+    const BOSONOGA_SIZE raw_length = newline == NULL
+                                         ? BOSONOGA_STRLEN(text)
+                                         : (BOSONOGA_SIZE)(newline - text);
+    BOSONOGA_SIZE length = raw_length;
+    if (length > 0 && text[length - 1] == '\r') {
+      length--;
+    }
     if (length > BOSONOGA_LINE_LENGTH) {
       return BOSONOGA_EXIT_FAILURE;
     }
 
     BosonogaLine* line = &regina->lines[regina->line_count++];
-
-    BOSONOGA_MEMCPY(line->data, input, length);
+    BOSONOGA_MEMCPY(line->data, text, length);
     line->data[length] = '\0';
 
-    input += length;
-
-    if (*input == '\n') {
-      input++;
+    text += raw_length;
+    if (*text == '\n') {
+      text++;
     }
   }
-
   return BOSONOGA_EXIT_SUCCESS;
 }
 
-static int parse_lines(Regina* regina) {
+static int split_line_into_tokens(const char* line, Regina* regina) {
+  BOSONOGA_SIZE line_token_count = 0;
+  while (true) {
+    while (is_blank(*line)) {
+      line++;
+    }
+    if (*line == '\0') {
+      return BOSONOGA_EXIT_SUCCESS;
+    }
+
+    const char* start = line;
+    while (*line != '\0' && !is_blank(*line)) {
+      line++;
+    }
+
+    const BOSONOGA_SIZE length = (BOSONOGA_SIZE)(line - start);
+    if (length > BOSONOGA_TOKEN_LENGTH ||
+        line_token_count == BOSONOGA_TOKEN_PER_LINE_LIMIT) {
+      return BOSONOGA_EXIT_FAILURE;
+    }
+
+    BosonogaToken* token = &regina->tokens[regina->token_count++];
+    BOSONOGA_MEMCPY(token->data, start, length);
+    token->data[length] = '\0';
+    line_token_count++;
+  }
+}
+
+static int split_lines_into_tokens(Regina* regina) {
   for (BOSONOGA_SIZE i = 0; i < regina->line_count; i++) {
-    const char* current = regina->lines[i].data;
-    BOSONOGA_SIZE line_tokens = 0;
-
-    while (*current != '\0') {
-      while (*current == ' ') {
-        current++;
-      }
-
-      if (*current == '\0') {
-        break;
-      }
-
-      const char* start = current;
-
-      while (*current != '\0' && *current != ' ') {
-        current++;
-      }
-
-      BOSONOGA_SIZE length = (BOSONOGA_SIZE)(current - start);
-
-      if (length > BOSONOGA_TOKEN_LENGTH ||
-          line_tokens == BOSONOGA_TOKEN_PER_LINE_LIMIT) {
-        return BOSONOGA_EXIT_FAILURE;
-      }
-
-      BosonogaToken* token = &regina->tokens[regina->token_count++];
-
-      BOSONOGA_MEMCPY(token->data, start, length);
-      token->data[length] = '\0';
-
-      line_tokens++;
+    if (split_line_into_tokens(regina->lines[i].data, regina) !=
+        BOSONOGA_EXIT_SUCCESS) {
+      return BOSONOGA_EXIT_FAILURE;
     }
   }
-
   return BOSONOGA_EXIT_SUCCESS;
 }
 
-static int parse_records(Regina* regina) {
-  for (BOSONOGA_SIZE i = 0; i < regina->token_count; i++) {
-    const char* keyword = regina->tokens[i].data;
+static int parse_header(Regina* regina) {
+  for (BOSONOGA_SIZE position = 0; position < regina->token_count; position++) {
+    const char* keyword = token_at(regina, position);
 
-    if (BOSONOGA_STRCMP(keyword, "main") == BOSONOGA_STRINGS_EQUAL) {
+    if (strings_equal(keyword, "main")) {
       if (regina->main_count == BOSONOGA_MAIN_LIMIT) {
         return BOSONOGA_EXIT_FAILURE;
       }
       regina->main_count++;
-    } else if (BOSONOGA_STRCMP(keyword, "version") == BOSONOGA_STRINGS_EQUAL) {
+    } else if (strings_equal(keyword, "version")) {
       if (regina->version_count == BOSONOGA_VERSION_LIMIT ||
-          regina->token_count - i < 2) {
+          tokens_left(regina, position) < BOSONOGA_VERSION_TOKEN_COUNT) {
         return BOSONOGA_EXIT_FAILURE;
       }
       BosonogaVersion* version = &regina->version[regina->version_count++];
-      const char* string = regina->tokens[++i].data;
-      version->len = BOSONOGA_STRLEN(string) + 1;
-      BOSONOGA_MEMCPY(version->string, string, version->len);
-    } else if (BOSONOGA_STRCMP(keyword, "lega") == BOSONOGA_STRINGS_EQUAL) {
+      version->len = copy_text(version->string, token_at(regina, position + 1));
+      position += BOSONOGA_VERSION_TOKEN_COUNT - 1;
+    } else if (strings_equal(keyword, "lega")) {
       if (regina->lega_count == BOSONOGA_LEGA_LIMIT ||
-          regina->token_count - i < 2) {
+          tokens_left(regina, position) < BOSONOGA_LEGA_TOKEN_COUNT) {
         return BOSONOGA_EXIT_FAILURE;
       }
       BosonogaLega* lega = &regina->lega[regina->lega_count++];
-      const char* legal = regina->tokens[++i].data;
-      lega->len = BOSONOGA_STRLEN(legal) + 1;
-      BOSONOGA_MEMCPY(lega->legal, legal, lega->len);
-    } else if (BOSONOGA_STRCMP(keyword, "aka") == BOSONOGA_STRINGS_EQUAL) {
+      lega->len = copy_text(lega->legal, token_at(regina, position + 1));
+      position += BOSONOGA_LEGA_TOKEN_COUNT - 1;
+    } else if (strings_equal(keyword, "aka")) {
       if (regina->aka_count == BOSONOGA_AKA_LIMIT ||
-          regina->token_count - i < 3) {
+          tokens_left(regina, position) < BOSONOGA_AKA_TOKEN_COUNT) {
         return BOSONOGA_EXIT_FAILURE;
       }
       BosonogaAka* aka = &regina->aka[regina->aka_count++];
-      const char* original = regina->tokens[++i].data;
-      const char* replacement = regina->tokens[++i].data;
-      aka->original_len = BOSONOGA_STRLEN(original) + 1;
-      aka->replacement_len = BOSONOGA_STRLEN(replacement) + 1;
-      BOSONOGA_MEMCPY(aka->original, original, aka->original_len);
-      BOSONOGA_MEMCPY(aka->replacement, replacement, aka->replacement_len);
+      aka->original_len =
+          copy_text(aka->original, token_at(regina, position + 1));
+      aka->replacement_len =
+          copy_text(aka->replacement, token_at(regina, position + 2));
+      position += BOSONOGA_AKA_TOKEN_COUNT - 1;
     }
   }
-
   return BOSONOGA_EXIT_SUCCESS;
 }
 
-static void print_tokens(const Regina* regina) {
-  for (BOSONOGA_SIZE i = 0; i < regina->token_count; i++) {
-    if (BOSONOGA_STRCMP(regina->tokens[i].data, "version") ==
-        BOSONOGA_STRINGS_EQUAL) {
-      if (BOSONOGA_LOG_PARSETOK) {
-        printf("[V]\n");
-      }
-      i++;
-    } else if (BOSONOGA_STRCMP(regina->tokens[i].data, "lega") ==
-               BOSONOGA_STRINGS_EQUAL) {
-      if (BOSONOGA_LOG_PARSETOK) {
-        printf("[L]\n");
-      }
-      i++;
-    } else if (BOSONOGA_STRCMP(regina->tokens[i].data, "aka") ==
-               BOSONOGA_STRINGS_EQUAL) {
-      if (BOSONOGA_LOG_PARSETOK) {
-        printf("[A]\n");
-      }
-      i += 2;
-    } else if (BOSONOGA_STRCMP(regina->tokens[i].data, "main") ==
-               BOSONOGA_STRINGS_EQUAL) {
-      if (BOSONOGA_LOG_PARSETOK) {
-        printf("[M]\n");
-      }
-    } else {
-      if (BOSONOGA_LOG_PARSETOK) {
-        printf("[%s]\n", regina->tokens[i].data);
-      }
-    }
-  }
-}
-
-static const BosonogaVariable* find_variable(const Regina* regina,
-                                             const char* name) {
+static BOSONOGA_SIZE index_of_variable(const Regina* regina, const char* name) {
   for (BOSONOGA_SIZE i = 0; i < regina->variable_count; i++) {
-    if (BOSONOGA_STRCMP(regina->variables[i].name, name) ==
-        BOSONOGA_STRINGS_EQUAL) {
-      return &regina->variables[i];
+    if (strings_equal(regina->variables[i].name, name)) {
+      return i;
     }
   }
-  return NULL;
+  return BOSONOGA_VARIABLE_NOT_FOUND;
 }
 
-static int parse_operand(const Regina* regina, const char* token,
-                         int32_t* result) {
-  const BosonogaVariable* variable = find_variable(regina, token);
-  if (variable != NULL) {
-    *result = variable->value;
-    return BOSONOGA_EXIT_SUCCESS;
+static BosonogaVariable* add_variable(Regina* regina, const char* name) {
+  BosonogaVariable* variable = &regina->variables[regina->variable_count++];
+  copy_text(variable->name, name);
+  return variable;
+}
+
+static int parse_i32(const char* text, BOSONOGA_SIZE length, int32_t* result) {
+  const char* end = text + length;
+  const bool negative = length > 0 && *text == '-';
+  if (negative) {
+    text++;
+  }
+  if (text == end) {
+    return BOSONOGA_EXIT_FAILURE;
   }
 
-  BOSONOGA_SIZE length = BOSONOGA_STRLEN(token);
-  if (length > 4 &&
-      BOSONOGA_STRCMP(token + length - 4, "_i32") == BOSONOGA_STRINGS_EQUAL) {
-    length -= 4;
-  }
-  const char* end = token + length;
-  const bool negative = *token == '-';
-  if (negative) token++;
-  if (token == end) return BOSONOGA_EXIT_FAILURE;
-  int64_t value = 0;
   const int64_t limit = negative ? -(int64_t)INT32_MIN : INT32_MAX;
-  for (; token != end; token++) {
-    if (*token < '0' || *token > '9') return BOSONOGA_EXIT_FAILURE;
-    value = value * 10 + (*token - '0');
-    if (value > limit) return BOSONOGA_EXIT_FAILURE;
+  int64_t value = 0;
+  for (; text != end; text++) {
+    if (!is_digit(*text)) {
+      return BOSONOGA_EXIT_FAILURE;
+    }
+    value = value * 10 + (*text - '0');
+    if (value > limit) {
+      return BOSONOGA_EXIT_FAILURE;
+    }
   }
   *result = (int32_t)(negative ? -value : value);
   return BOSONOGA_EXIT_SUCCESS;
 }
 
+static int parse_i32_literal(const char* token, int32_t* result) {
+  if (!ends_with(token, BOSONOGA_I32_SUFFIX)) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+  return parse_i32(
+      token, BOSONOGA_STRLEN(token) - BOSONOGA_STRLEN(BOSONOGA_I32_SUFFIX),
+      result);
+}
+
+static int parse_operand(const Regina* regina, const char* token,
+                         int32_t* result) {
+  const BOSONOGA_SIZE index = index_of_variable(regina, token);
+  if (index != BOSONOGA_VARIABLE_NOT_FOUND) {
+    const BosonogaVariable* variable = &regina->variables[index];
+    if (variable->is_flags) {
+      return BOSONOGA_EXIT_FAILURE;
+    }
+    *result = variable->value;
+    return BOSONOGA_EXIT_SUCCESS;
+  }
+
+  BOSONOGA_SIZE length = BOSONOGA_STRLEN(token);
+  if (ends_with(token, BOSONOGA_I32_SUFFIX)) {
+    length -= BOSONOGA_STRLEN(BOSONOGA_I32_SUFFIX);
+  }
+  return parse_i32(token, length, result);
+}
+
+static int parse_flags(const Regina* regina, const char* token,
+                       uint32_t* result) {
+  const BOSONOGA_SIZE index = index_of_variable(regina, token);
+  if (index != BOSONOGA_VARIABLE_NOT_FOUND) {
+    const BosonogaVariable* variable = &regina->variables[index];
+    if (!variable->is_flags) {
+      return BOSONOGA_EXIT_FAILURE;
+    }
+    *result = variable->flags;
+    return BOSONOGA_EXIT_SUCCESS;
+  }
+
+  if (!starts_with(token, BOSONOGA_SHIFT_PREFIX)) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+  const char* digits = token + BOSONOGA_STRLEN(BOSONOGA_SHIFT_PREFIX);
+  const BOSONOGA_SIZE digit_count = BOSONOGA_STRLEN(digits);
+  if (digit_count == 0 || digit_count > BOSONOGA_SHIFT_DIGIT_LIMIT) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+
+  uint32_t bit = 0;
+  for (BOSONOGA_SIZE i = 0; i < digit_count; i++) {
+    if (!is_digit(digits[i])) {
+      return BOSONOGA_EXIT_FAILURE;
+    }
+    bit = bit * 10U + (uint32_t)(digits[i] - '0');
+  }
+  if (bit >= BOSONOGA_SHIFT_BIT_LIMIT) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+  *result = UINT32_C(1) << bit;
+  return BOSONOGA_EXIT_SUCCESS;
+}
+
 static int parse_return_status(const char* keyword, int* status) {
-  if (BOSONOGA_STRCMP(keyword, "exit_success") == BOSONOGA_STRINGS_EQUAL) {
+  if (strings_equal(keyword, "exit_success")) {
     *status = BOSONOGA_EXIT_SUCCESS;
-  } else if (BOSONOGA_STRCMP(keyword, "exit_failure") ==
-             BOSONOGA_STRINGS_EQUAL) {
+    return BOSONOGA_EXIT_SUCCESS;
+  }
+  if (strings_equal(keyword, "exit_failure")) {
     *status = BOSONOGA_EXIT_FAILURE;
+    return BOSONOGA_EXIT_SUCCESS;
+  }
+  return BOSONOGA_EXIT_FAILURE;
+}
+
+static bool is_statement_keyword(const char* token) {
+  return strings_equal(token, "var") || strings_equal(token, "set") ||
+         strings_equal(token, "if");
+}
+
+static int run_var(Regina* regina, BOSONOGA_SIZE* position) {
+  if (tokens_left(regina, *position) < BOSONOGA_VAR_TOKEN_COUNT ||
+      !strings_equal(token_at(regina, *position + 2), "is")) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+
+  const char* name = token_at(regina, *position + 1);
+  const char* value = token_at(regina, *position + 3);
+  if (index_of_variable(regina, name) != BOSONOGA_VARIABLE_NOT_FOUND ||
+      regina->variable_count == BOSONOGA_VARIABLE_LIMIT) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+
+  uint32_t flags;
+  if (parse_flags(regina, value, &flags) == BOSONOGA_EXIT_SUCCESS) {
+    BOSONOGA_SIZE next = *position + BOSONOGA_VAR_TOKEN_COUNT;
+    while (next < regina->token_count &&
+           strings_equal(token_at(regina, next), "shift_or")) {
+      uint32_t operand;
+      if (tokens_left(regina, next) < BOSONOGA_SHIFT_OR_TOKEN_COUNT ||
+          parse_flags(regina, token_at(regina, next + 1), &operand) !=
+              BOSONOGA_EXIT_SUCCESS) {
+        return BOSONOGA_EXIT_FAILURE;
+      }
+      flags |= operand;
+      next += BOSONOGA_SHIFT_OR_TOKEN_COUNT;
+    }
+
+    BosonogaVariable* variable = add_variable(regina, name);
+    variable->is_flags = true;
+    variable->flags = flags;
+    *position = next;
+    return BOSONOGA_EXIT_SUCCESS;
+  }
+
+  int32_t number;
+  if (parse_i32_literal(value, &number) != BOSONOGA_EXIT_SUCCESS) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+
+  BosonogaVariable* variable = add_variable(regina, name);
+  variable->is_flags = false;
+  variable->value = number;
+  *position += BOSONOGA_VAR_TOKEN_COUNT;
+  return BOSONOGA_EXIT_SUCCESS;
+}
+
+static int run_set(Regina* regina, BOSONOGA_SIZE* position) {
+  if (tokens_left(regina, *position) < BOSONOGA_SET_MIN_TOKEN_COUNT) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+
+  const char* operation = token_at(regina, *position + 2);
+  const bool subtract = strings_equal(operation, "to_subtract");
+  if (!subtract && !strings_equal(operation, "to_add")) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+
+  const BOSONOGA_SIZE target =
+      index_of_variable(regina, token_at(regina, *position + 1));
+  if (target == BOSONOGA_VARIABLE_NOT_FOUND ||
+      regina->variables[target].is_flags) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+
+  BOSONOGA_SIZE next = *position + 3;
+  BOSONOGA_SIZE param_count = 0;
+  int64_t result = 0;
+  while (next < regina->token_count &&
+         !is_statement_keyword(token_at(regina, next))) {
+    int32_t value;
+    if (param_count == BOSONOGA_PARAM_LIMIT ||
+        parse_operand(regina, token_at(regina, next), &value) !=
+            BOSONOGA_EXIT_SUCCESS) {
+      return BOSONOGA_EXIT_FAILURE;
+    }
+    if (subtract && param_count > 0) {
+      result -= value;
+    } else {
+      result += value;
+    }
+    param_count++;
+    next++;
+  }
+
+  if (subtract && param_count == 1) {
+    result = -result;
+  }
+  if (param_count == 0 || result < INT32_MIN || result > INT32_MAX) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+
+  regina->variables[target].value = (int32_t)result;
+  *position = next;
+  return BOSONOGA_EXIT_SUCCESS;
+}
+
+static int evaluate_comparison(const Regina* regina, BOSONOGA_SIZE position,
+                               bool* comparison) {
+  const char* left_token = token_at(regina, position);
+  const char* operation = token_at(regina, position + 1);
+  const char* right_token = token_at(regina, position + 2);
+
+  if (strings_equal(operation, "shift_eq")) {
+    uint32_t left;
+    uint32_t right;
+    if (parse_flags(regina, left_token, &left) != BOSONOGA_EXIT_SUCCESS ||
+        parse_flags(regina, right_token, &right) != BOSONOGA_EXIT_SUCCESS) {
+      return BOSONOGA_EXIT_FAILURE;
+    }
+    *comparison = (left & right) == right;
+    return BOSONOGA_EXIT_SUCCESS;
+  }
+
+  int32_t left;
+  int32_t right;
+  if (parse_operand(regina, left_token, &left) != BOSONOGA_EXIT_SUCCESS ||
+      parse_operand(regina, right_token, &right) != BOSONOGA_EXIT_SUCCESS) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+
+  if (strings_equal(operation, "gt")) {
+    *comparison = left > right;
+  } else if (strings_equal(operation, "lt")) {
+    *comparison = left < right;
+  } else if (strings_equal(operation, "eq")) {
+    *comparison = left == right;
+  } else if (strings_equal(operation, "not_eq")) {
+    *comparison = left != right;
   } else {
     return BOSONOGA_EXIT_FAILURE;
   }
   return BOSONOGA_EXIT_SUCCESS;
 }
 
-static int parse_tokens(Regina* regina) {
-  bool inside_main = false;
-  for (BOSONOGA_SIZE i = 0; i < regina->token_count; i++) {
-    const char* keyword = regina->tokens[i].data;
-    if (BOSONOGA_STRCMP(keyword, "main") == BOSONOGA_STRINGS_EQUAL) {
-      inside_main = true;
-      continue;
-    }
-
-    if (inside_main &&
-        BOSONOGA_STRCMP(keyword, "var") == BOSONOGA_STRINGS_EQUAL) {
-      if (regina->token_count - i < 4) {
-        return BOSONOGA_EXIT_FAILURE;
-      }
-      if (BOSONOGA_STRCMP(regina->tokens[i + 2].data, "is") !=
-          BOSONOGA_STRINGS_EQUAL) {
-        return BOSONOGA_EXIT_FAILURE;
-      }
-
-      const char* name = regina->tokens[i + 1].data;
-      if (find_variable(regina, name) != NULL) {
-        return BOSONOGA_EXIT_FAILURE;
-      }
-      const char* i32_value_raw = regina->tokens[i + 3].data;
-      const char* suffix = "_i32";
-      const BOSONOGA_SIZE raw_len = BOSONOGA_STRLEN(i32_value_raw);
-      const BOSONOGA_SIZE suffix_len = BOSONOGA_STRLEN(suffix);
-
-      if (raw_len <= suffix_len ||
-          BOSONOGA_STRCMP(i32_value_raw + raw_len - suffix_len, suffix) !=
-              BOSONOGA_STRINGS_EQUAL) {
-        return BOSONOGA_EXIT_FAILURE;
-      }
-
-      if (regina->variable_count == BOSONOGA_VARIABLE_LIMIT) {
-        return BOSONOGA_EXIT_FAILURE;
-      }
-      const BOSONOGA_SIZE value_len = raw_len - suffix_len;
-      BOSONOGA_SIZE digit = 0;
-      const bool negative = i32_value_raw[0] == '-';
-      if (negative) digit++;
-      if (digit == value_len) return BOSONOGA_EXIT_FAILURE;
-      int64_t value = 0;
-      const int64_t limit = negative ? -(int64_t)INT32_MIN : INT32_MAX;
-      for (; digit < value_len; digit++) {
-        if (i32_value_raw[digit] < '0' || i32_value_raw[digit] > '9') {
-          return BOSONOGA_EXIT_FAILURE;
-        }
-        value = value * 10 + (i32_value_raw[digit] - '0');
-        if (value > limit) return BOSONOGA_EXIT_FAILURE;
-      }
-      BosonogaVariable* variable = &regina->variables[regina->variable_count++];
-      BOSONOGA_MEMCPY(variable->name, name, BOSONOGA_STRLEN(name) + 1);
-      variable->value = (int32_t)(negative ? -value : value);
-      i += 3;
-    } else if (inside_main &&
-               BOSONOGA_STRCMP(keyword, "set") == BOSONOGA_STRINGS_EQUAL) {
-      if (regina->token_count - i < 4) {
-        return BOSONOGA_EXIT_FAILURE;
-      }
-      const char* operation = regina->tokens[i + 2].data;
-      const bool subtract =
-          BOSONOGA_STRCMP(operation, "to_subtract") == BOSONOGA_STRINGS_EQUAL;
-      if (!subtract &&
-          BOSONOGA_STRCMP(operation, "to_add") != BOSONOGA_STRINGS_EQUAL) {
-        return BOSONOGA_EXIT_FAILURE;
-      }
-      const BosonogaVariable* target =
-          find_variable(regina, regina->tokens[i + 1].data);
-      if (target == NULL) return BOSONOGA_EXIT_FAILURE;
-      BOSONOGA_SIZE position = i + 3;
-      BOSONOGA_SIZE param_count = 0;
-      int64_t result = 0;
-      for (; position < regina->token_count; position++) {
-        const char* param = regina->tokens[position].data;
-        if (BOSONOGA_STRCMP(param, "var") == BOSONOGA_STRINGS_EQUAL ||
-            BOSONOGA_STRCMP(param, "set") == BOSONOGA_STRINGS_EQUAL ||
-            BOSONOGA_STRCMP(param, "if") == BOSONOGA_STRINGS_EQUAL) {
-          break;
-        }
-        int32_t value;
-        if (param_count == BOSONOGA_PARAM_LIMIT ||
-            parse_operand(regina, param, &value) != BOSONOGA_EXIT_SUCCESS) {
-          return BOSONOGA_EXIT_FAILURE;
-        }
-        if (subtract && param_count > 0) {
-          result -= value;
-        } else {
-          result += value;
-        }
-        param_count++;
-      }
-      if (subtract && param_count == 1) result = -result;
-      if (param_count == 0 || result < INT32_MIN || result > INT32_MAX) {
-        return BOSONOGA_EXIT_FAILURE;
-      }
-      regina->variables[target - regina->variables].value = (int32_t)result;
-      i = position - 1;
-    } else if (inside_main &&
-               BOSONOGA_STRCMP(keyword, "if") == BOSONOGA_STRINGS_EQUAL) {
-      BOSONOGA_SIZE position = i + 1;
-      bool condition = false;
-      bool and_group = true;
-      for (;;) {
-        if (regina->token_count - position < 3) return BOSONOGA_EXIT_FAILURE;
-        int32_t left;
-        int32_t right;
-        const char* operation = regina->tokens[position + 1].data;
-        if (parse_operand(regina, regina->tokens[position].data, &left) !=
-                BOSONOGA_EXIT_SUCCESS ||
-            parse_operand(regina, regina->tokens[position + 2].data, &right) !=
-                BOSONOGA_EXIT_SUCCESS) {
-          return BOSONOGA_EXIT_FAILURE;
-        }
-        bool comparison;
-        if (BOSONOGA_STRCMP(operation, "gt") == BOSONOGA_STRINGS_EQUAL) {
-          comparison = left > right;
-        } else if (BOSONOGA_STRCMP(operation, "lt") == BOSONOGA_STRINGS_EQUAL) {
-          comparison = left < right;
-        } else if (BOSONOGA_STRCMP(operation, "eq") == BOSONOGA_STRINGS_EQUAL) {
-          comparison = left == right;
-        } else if (BOSONOGA_STRCMP(operation, "not_eq") ==
-                   BOSONOGA_STRINGS_EQUAL) {
-          comparison = left != right;
-        } else {
-          return BOSONOGA_EXIT_FAILURE;
-        }
-        and_group = and_group && comparison;
-        position += 3;
-        if (position == regina->token_count) return BOSONOGA_EXIT_FAILURE;
-        if (BOSONOGA_STRCMP(regina->tokens[position].data, "or") ==
-            BOSONOGA_STRINGS_EQUAL) {
-          condition = condition || and_group;
-          and_group = true;
-        } else if (BOSONOGA_STRCMP(regina->tokens[position].data, "and") !=
-                   BOSONOGA_STRINGS_EQUAL) {
-          break;
-        }
-        position++;
-      }
-      condition = condition || and_group;
-      if (regina->token_count - position != 6) return BOSONOGA_EXIT_FAILURE;
-      const BosonogaToken* branches = &regina->tokens[position];
-      if (BOSONOGA_STRCMP(branches[0].data, "di") != BOSONOGA_STRINGS_EQUAL ||
-          BOSONOGA_STRCMP(branches[1].data, "return") !=
-              BOSONOGA_STRINGS_EQUAL ||
-          BOSONOGA_STRCMP(branches[3].data, "do") != BOSONOGA_STRINGS_EQUAL ||
-          BOSONOGA_STRCMP(branches[4].data, "return") !=
-              BOSONOGA_STRINGS_EQUAL) {
-        return BOSONOGA_EXIT_FAILURE;
-      }
-      int di_status;
-      int do_status;
-      if (parse_return_status(branches[2].data, &di_status) !=
-              BOSONOGA_EXIT_SUCCESS ||
-          parse_return_status(branches[5].data, &do_status) !=
-              BOSONOGA_EXIT_SUCCESS) {
-        return BOSONOGA_EXIT_FAILURE;
-      }
-      return condition ? di_status : do_status;
-    } else if (inside_main) {
-      return BOSONOGA_EXIT_FAILURE;
-    }
+static int run_branches(const Regina* regina, BOSONOGA_SIZE position,
+                        bool condition) {
+  if (tokens_left(regina, position) != BOSONOGA_BRANCHES_TOKEN_COUNT ||
+      !strings_equal(token_at(regina, position), "di") ||
+      !strings_equal(token_at(regina, position + 1), "return") ||
+      !strings_equal(token_at(regina, position + 3), "do") ||
+      !strings_equal(token_at(regina, position + 4), "return")) {
+    return BOSONOGA_EXIT_FAILURE;
   }
 
+  int di_status;
+  int do_status;
+  if (parse_return_status(token_at(regina, position + 2), &di_status) !=
+          BOSONOGA_EXIT_SUCCESS ||
+      parse_return_status(token_at(regina, position + 5), &do_status) !=
+          BOSONOGA_EXIT_SUCCESS) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+  return condition ? di_status : do_status;
+}
+
+static int run_if(const Regina* regina, BOSONOGA_SIZE position) {
+  BOSONOGA_SIZE next = position + 1;
+  bool condition = false;
+  bool and_group = true;
+  while (true) {
+    if (tokens_left(regina, next) < BOSONOGA_COMPARISON_TOKEN_COUNT) {
+      return BOSONOGA_EXIT_FAILURE;
+    }
+    bool comparison = false;
+    if (evaluate_comparison(regina, next, &comparison) !=
+        BOSONOGA_EXIT_SUCCESS) {
+      return BOSONOGA_EXIT_FAILURE;
+    }
+    and_group = and_group && comparison;
+    next += BOSONOGA_COMPARISON_TOKEN_COUNT;
+    if (next == regina->token_count) {
+      return BOSONOGA_EXIT_FAILURE;
+    }
+
+    const char* connector = token_at(regina, next);
+    if (strings_equal(connector, "or")) {
+      condition = condition || and_group;
+      and_group = true;
+    } else if (!strings_equal(connector, "and")) {
+      break;
+    }
+    next++;
+  }
+  condition = condition || and_group;
+  return run_branches(regina, next, condition);
+}
+
+static BOSONOGA_SIZE position_after_main(const Regina* regina) {
+  for (BOSONOGA_SIZE position = 0; position < regina->token_count; position++) {
+    if (strings_equal(token_at(regina, position), "main")) {
+      return position + 1;
+    }
+  }
+  return regina->token_count;
+}
+
+static int run_main(Regina* regina) {
+  BOSONOGA_SIZE position = position_after_main(regina);
+  while (position < regina->token_count) {
+    const char* keyword = token_at(regina, position);
+    int status;
+    if (strings_equal(keyword, "var")) {
+      status = run_var(regina, &position);
+    } else if (strings_equal(keyword, "set")) {
+      status = run_set(regina, &position);
+    } else if (strings_equal(keyword, "if")) {
+      return run_if(regina, position);
+    } else {
+      return BOSONOGA_EXIT_FAILURE;
+    }
+    if (status != BOSONOGA_EXIT_SUCCESS) {
+      return status;
+    }
+  }
   return BOSONOGA_EXIT_FAILURE;
 }
 
-static void print_non_empty_regina(const Regina* regina) {
+static void log_token_summary(const Regina* regina) {
+  for (BOSONOGA_SIZE position = 0; position < regina->token_count; position++) {
+    const char* token = token_at(regina, position);
+    if (strings_equal(token, "version")) {
+      BOSONOGA_PRINTF("[V]\n");
+      position += BOSONOGA_VERSION_TOKEN_COUNT - 1;
+    } else if (strings_equal(token, "lega")) {
+      BOSONOGA_PRINTF("[L]\n");
+      position += BOSONOGA_LEGA_TOKEN_COUNT - 1;
+    } else if (strings_equal(token, "aka")) {
+      BOSONOGA_PRINTF("[A]\n");
+      position += BOSONOGA_AKA_TOKEN_COUNT - 1;
+    } else if (strings_equal(token, "main")) {
+      BOSONOGA_PRINTF("[M]\n");
+    } else {
+      BOSONOGA_PRINTF("[%s]\n", token);
+    }
+  }
+}
+
+static void log_regina(const Regina* regina) {
+  BOSONOGA_PRINTF(BOSONOGA_LOG_SEPARATOR);
+  BOSONOGA_PRINTF("Regina allocated: %zu bytes\n", sizeof(Regina));
+  BOSONOGA_PRINTF(BOSONOGA_LOG_SEPARATOR);
+  log_token_summary(regina);
+  BOSONOGA_PRINTF(BOSONOGA_LOG_SEPARATOR);
+
   for (BOSONOGA_SIZE i = 0; i < regina->version_count; i++) {
     const BosonogaVersion* version = &regina->version[i];
-    if (version->string[0] != '\0') {
-      if (BOSONOGA_LOG_PARSETOK) {
-        printf("version[%zu]: %s (len=%zu)\n", i, version->string,
-               version->len);
-      }
-    }
+    BOSONOGA_PRINTF("version[%zu]: %s (len=%zu)\n", i, version->string,
+                    version->len);
   }
 
   for (BOSONOGA_SIZE i = 0; i < regina->lega_count; i++) {
     const BosonogaLega* lega = &regina->lega[i];
-    if (lega->legal[0] != '\0') {
-      if (BOSONOGA_LOG_PARSETOK) {
-        printf("lega[%zu]: %s (len=%zu)\n", i, lega->legal, lega->len);
-      }
-    }
+    BOSONOGA_PRINTF("lega[%zu]: %s (len=%zu)\n", i, lega->legal, lega->len);
   }
 
   for (BOSONOGA_SIZE i = 0; i < regina->aka_count; i++) {
     const BosonogaAka* aka = &regina->aka[i];
-    if (aka->original[0] != '\0') {
-      if (BOSONOGA_LOG_PARSETOK) {
-        printf("aka[%zu].original: %s (len=%zu)\n", i, aka->original,
-               aka->original_len);
-      }
-    }
-    if (aka->replacement[0] != '\0') {
-      if (BOSONOGA_LOG_PARSETOK) {
-        printf("aka[%zu].replacement: %s (len=%zu)\n", i, aka->replacement,
-               aka->replacement_len);
-      }
-    }
+    BOSONOGA_PRINTF("aka[%zu].original: %s (len=%zu)\n", i, aka->original,
+                    aka->original_len);
+    BOSONOGA_PRINTF("aka[%zu].replacement: %s (len=%zu)\n", i, aka->replacement,
+                    aka->replacement_len);
   }
 
-  if (regina->main_count != 0) {
-    if (BOSONOGA_LOG_PARSETOK) {
-      printf("main_count: %zu\n", regina->main_count);
-    }
-  }
+  BOSONOGA_PRINTF("main_count: %zu\n", regina->main_count);
 
   for (BOSONOGA_SIZE i = 0; i < regina->line_count; i++) {
     if (regina->lines[i].data[0] != '\0') {
-      if (BOSONOGA_LOG_PARSETOK) {
-        printf("lines[%zu]: %s\n", i, regina->lines[i].data);
-      }
+      BOSONOGA_PRINTF("lines[%zu]: %s\n", i, regina->lines[i].data);
     }
   }
 
   for (BOSONOGA_SIZE i = 0; i < regina->token_count; i++) {
-    if (regina->tokens[i].data[0] != '\0') {
-      if (BOSONOGA_LOG_PARSETOK) {
-        printf("tokens[%zu]: %s\n", i, regina->tokens[i].data);
-      }
-    }
+    BOSONOGA_PRINTF("tokens[%zu]: %s\n", i, token_at(regina, i));
   }
 
   for (BOSONOGA_SIZE i = 0; i < regina->variable_count; i++) {
-    if (BOSONOGA_LOG_PARSETOK) {
-      printf("variables[%zu]: %s = %" PRId32 "\n", i, regina->variables[i].name,
-             regina->variables[i].value);
+    const BosonogaVariable* variable = &regina->variables[i];
+    if (variable->is_flags) {
+      BOSONOGA_PRINTF("variables[%zu]: %s = flags %" PRIu32 "\n", i,
+                      variable->name, variable->flags);
+    } else {
+      BOSONOGA_PRINTF("variables[%zu]: %s = %" PRId32 "\n", i, variable->name,
+                      variable->value);
     }
   }
+  BOSONOGA_PRINTF(BOSONOGA_LOG_SEPARATOR);
+}
+
+static int load_program(Regina* regina, const char* header, const char* input) {
+  if (split_into_lines(header, regina) != BOSONOGA_EXIT_SUCCESS ||
+      split_into_lines(input, regina) != BOSONOGA_EXIT_SUCCESS ||
+      split_lines_into_tokens(regina) != BOSONOGA_EXIT_SUCCESS ||
+      parse_header(regina) != BOSONOGA_EXIT_SUCCESS) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+  return BOSONOGA_EXIT_SUCCESS;
 }
 
 static int core(const char* header, const char* input) {
-  Regina* regina = BOSONOGA_MALLOC(sizeof(Regina));
-
+  Regina* regina = BOSONOGA_CALLOC(1, sizeof(Regina));
   if (regina == NULL) {
     return BOSONOGA_EXIT_FAILURE;
   }
 
-  BOSONOGA_MEMSET(regina, 0, sizeof(*regina));
-
-  int status = parse_input(header, regina);
+  int status = load_program(regina, header, input);
   if (status == BOSONOGA_EXIT_SUCCESS) {
-    status = parse_input(input, regina);
-  }
-
-  if (BOSONOGA_LOG_PARSETOK) {
-    printf("=== === === === ===\n");
-    printf("Regina allocated: %zu bytes\n", sizeof(Regina));
-    printf("=== === === === ===\n");
-  }
-
-  if (status == BOSONOGA_EXIT_SUCCESS) {
-    status = parse_lines(regina);
-  }
-
-  if (status == BOSONOGA_EXIT_SUCCESS) {
-    status = parse_records(regina);
-  }
-
-  if (status == BOSONOGA_EXIT_SUCCESS) {
-    print_tokens(regina);
+    status = run_main(regina);
   }
   if (BOSONOGA_LOG_PARSETOK) {
-    printf("=== === === === ===\n");
-  }
-
-  if (status == BOSONOGA_EXIT_SUCCESS) {
-    status = parse_tokens(regina);
-  }
-  if (BOSONOGA_LOG_PARSETOK) {
-    printf("=== === === === ===\n");
-  }
-
-  print_non_empty_regina(regina);
-  if (BOSONOGA_LOG_PARSETOK) {
-    printf("=== === === === ===\n");
+    log_regina(regina);
   }
 
   BOSONOGA_FREE(regina);
   return status;
 }
 
+static int measure_source(BOSONOGA_FILE* file, BOSONOGA_SIZE* length) {
+  if (BOSONOGA_FSEEK(file, 0, BOSONOGA_SEEK_END) != BOSONOGA_IO_SUCCESS) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+  const long end = BOSONOGA_FTELL(file);
+  if (end < 0 || end > BOSONOGA_SOURCE_LENGTH ||
+      BOSONOGA_FSEEK(file, 0, BOSONOGA_SEEK_SET) != BOSONOGA_IO_SUCCESS) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+  *length = (BOSONOGA_SIZE)end;
+  return BOSONOGA_EXIT_SUCCESS;
+}
+
+static int read_exactly(BOSONOGA_FILE* file, char* source,
+                        BOSONOGA_SIZE length) {
+  const BOSONOGA_SIZE read_count = BOSONOGA_FREAD(source, 1, length, file);
+  if (read_count != length || BOSONOGA_FGETC(file) != BOSONOGA_EOF ||
+      BOSONOGA_FERROR(file) != BOSONOGA_IO_SUCCESS ||
+      BOSONOGA_MEMCHR(source, '\0', length) != NULL) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+  source[length] = '\0';
+  return BOSONOGA_EXIT_SUCCESS;
+}
+
+static int read_source(const char* path,
+                       char source[BOSONOGA_SOURCE_LENGTH + 1]) {
+  source[0] = '\0';
+  BOSONOGA_FILE* file = NULL;
+  if (BOSONOGA_FOPEN(&file, path, "rb") != BOSONOGA_IO_SUCCESS) {
+    return BOSONOGA_EXIT_FAILURE;
+  }
+
+  BOSONOGA_SIZE length = 0;
+  int status = measure_source(file, &length);
+  if (status == BOSONOGA_EXIT_SUCCESS) {
+    status = read_exactly(file, source, length);
+  }
+  if (BOSONOGA_FCLOSE(file) != BOSONOGA_IO_SUCCESS) {
+    status = BOSONOGA_EXIT_FAILURE;
+  }
+  if (status != BOSONOGA_EXIT_SUCCESS) {
+    source[0] = '\0';
+  }
+  return status;
+}
+
+static bool run_test(const BosonogaTest* test, const char* header,
+                     char input[BOSONOGA_SOURCE_LENGTH + 1]) {
+  if (read_source(test->path, input) != BOSONOGA_EXIT_SUCCESS) {
+    BOSONOGA_FPRINTF(BOSONOGA_STDERR, "FAIL %s: unable to load source\n",
+                     test->path);
+    return false;
+  }
+
+  const int status = core(header, input);
+  if (status != test->expected) {
+    BOSONOGA_FPRINTF(BOSONOGA_STDERR, "FAIL %s: expected %d, got %d\n",
+                     test->path, test->expected, status);
+    return false;
+  }
+  return true;
+}
+
 int main(void) {
-  const char* const header =
-      "version 0.2.0\n"
-      "lega _bosonoga_if\n"
-      "lega _bosonoga_gt\n"
-      "lega _bosonoga_and\n"
-      "lega _bosonoga_or\n"
-      "lega _bosonoga_lt\n"
-      "lega _bosonoga_di\n"
-      "lega _bosonoga_return\n"
-      "lega _bosonoga_exit_success\n"
-      "lega _bosonoga_do\n"
-      "lega _bosonoga_exit_failure\n"
-      "aka _bosonoga_if if\n"
-      "aka _bosonoga_gt gt\n"
-      "aka _bosonoga_and and\n"
-      "aka _bosonoga_or or\n"
-      "aka _bosonoga_lt lt\n"
-      "aka _bosonoga_di di\n"
-      "aka _bosonoga_return return\n"
-      "aka _bosonoga_exit_success exit_success\n"
-      "aka _bosonoga_do do\n"
-      "aka _bosonoga_exit_failure exit_failure\n"
-      "main\n";
+  char header[BOSONOGA_SOURCE_LENGTH + 1];
+  char input[BOSONOGA_SOURCE_LENGTH + 1];
+  if (read_source(BOSONOGA_HEADER_PATH, header) != BOSONOGA_EXIT_SUCCESS) {
+    BOSONOGA_FPRINTF(BOSONOGA_STDERR, "Unable to load %s\n",
+                     BOSONOGA_HEADER_PATH);
+    return BOSONOGA_EXIT_FAILURE;
+  }
 
-  const char* const input_gt_success =
-      "var test_gt_s_left is 20_i32\n"
-      "var test_gt_s_right is 10_i32\n"
-      "if test_gt_s_left gt test_gt_s_right\n"
-      "di\n"
-      "  return exit_success\n"
-      "do\n"
-      "return exit_failure\n";
-  const char* const input_gt_failure =
-      "var test_gt_f_left is 10_i32\n"
-      "var test_gt_f_right is 20_i32\n"
-      "if test_gt_f_left gt test_gt_f_right\n"
-      "di\n"
-      "  return exit_failure\n"
-      "do\n"
-      "return exit_success\n";
-  const char* const input_lt_success =
-      "var test_lt_s_left is 10_i32\n"
-      "var test_lt_s_right is 20_i32\n"
-      "if test_lt_s_left lt test_lt_s_right\n"
-      "di\n"
-      "  return exit_success\n"
-      "do\n"
-      "return exit_failure\n";
-  const char* const input_lt_failure =
-      "var test_lt_f_left is 20_i32\n"
-      "var test_lt_f_right is 10_i32\n"
-      "if test_lt_f_left lt test_lt_f_right\n"
-      "di\n"
-      "  return exit_failure\n"
-      "do\n"
-      "return exit_success\n";
-  const char* const input_and_success =
-      "var test_and_s_left is 30_i32\n"
-      "var test_and_s_mid is 20_i32\n"
-      "var test_and_s_right is 10_i32\n"
-      "if test_and_s_left gt test_and_s_mid and test_and_s_mid gt "
-      "test_and_s_right\n"
-      "di\n"
-      "  return exit_success\n"
-      "do\n"
-      "return exit_failure\n";
-  const char* const input_and_failure =
-      "var test_and_f_left is 30_i32\n"
-      "var test_and_f_mid is 20_i32\n"
-      "var test_and_f_right is 25_i32\n"
-      "if test_and_f_left gt test_and_f_mid and test_and_f_mid gt "
-      "test_and_f_right\n"
-      "di\n"
-      "  return exit_failure\n"
-      "do\n"
-      "return exit_success\n";
-  const char* const input_or_success =
-      "var test_or_s_left is 30_i32\n"
-      "var test_or_s_mid is 20_i32\n"
-      "var test_or_s_right is 25_i32\n"
-      "if test_or_s_left gt test_or_s_mid or test_or_s_mid gt test_or_s_right\n"
-      "di\n"
-      "  return exit_success\n"
-      "do\n"
-      "return exit_failure\n";
-  const char* const input_or_failure =
-      "var test_or_f_left is 20_i32\n"
-      "var test_or_f_mid is 25_i32\n"
-      "var test_or_f_right is 24_i32\n"
-      "if test_or_f_left gt test_or_f_mid or test_or_f_mid gt test_or_f_right\n"
-      "di\n"
-      "  return exit_success\n"
-      "do\n"
-      "return exit_failure\n";
-  const char* const input_eq_success =
-      "var test_eq_success is 10_i32\n"
-      "if test_eq_success eq 10\n"
-      "di\n"
-      "  return exit_success\n"
-      "do\n"
-      "return exit_failure\n";
-  const char* const input_eq_failure =
-      "var test_eq_failure is 10_i32\n"
-      "if test_eq_failure eq 99\n"
-      "di\n"
-      "  return exit_failure\n"
-      "do\n"
-      "return exit_success\n";
-  const char* const input_not_eq_success =
-      "var test_not_eq_success is 10_i32\n"
-      "if test_not_eq_success not_eq 99\n"
-      "di\n"
-      "  return exit_success\n"
-      "do\n"
-      "return exit_failure\n";
-  const char* const input_not_eq_failure =
-      "var test_not_eq_failure is 10_i32\n"
-      "if test_not_eq_failure not_eq 10\n"
-      "di\n"
-      "  return exit_failure\n"
-      "do\n"
-      "return exit_success\n";
-  const char* const input_eq_and_success =
-      "var test_eq_and_success_left is 10_i32\n"
-      "var test_eq_and_success_right is 20_i32\n"
-      "if test_eq_and_success_left eq 10 and test_eq_and_success_right eq 20\n"
-      "di\n"
-      "  return exit_success\n"
-      "do\n"
-      "return exit_failure\n";
-  const char* const input_eq_and_failure =
-      "var test_eq_and_failure_left is 10_i32\n"
-      "var test_eq_and_failure_right is 20_i32\n"
-      "if test_eq_and_failure_left eq 10 and test_eq_and_failure_right eq 99\n"
-      "di\n"
-      "  return exit_failure\n"
-      "do\n"
-      "return exit_success\n";
-  const char* const input_to_add =
-      "var test_to_add is 10_i32\n"
-      "set test_to_add to_add test_to_add 1_i32\n"
-      "if test_to_add eq 11\n"
-      "di\n"
-      "  return exit_success\n"
-      "do\n"
-      "return exit_failure\n";
-  const char* const input_to_add_multiple =
-      "var test_to_add is 1000_i32\n"
-      "set test_to_add to_add test_to_add 5_i32 5_i32 20_i32 20_i32 "
-      "25_i32 25_i32 50_i32\n"
-      "if test_to_add eq 1150\n"
-      "di\n"
-      "  return exit_success\n"
-      "do\n"
-      "return exit_failure\n";
-  const char* const input_to_subtract =
-      "var test_to_subtract is 11_i32\n"
-      "set test_to_subtract to_subtract test_to_subtract 1_i32\n"
-      "if test_to_subtract eq 10\n"
-      "di\n"
-      "  return exit_success\n"
-      "do\n"
-      "return exit_failure\n";
-  const char* const input_to_subtract_multiple =
-      "var test_to_subtract is 30_i32\n"
-      "set test_to_subtract to_subtract test_to_subtract 1_i32 "
-      "test_to_subtract 2_i32 test_to_subtract\n"
-      "if test_to_subtract eq -33\n"
-      "di\n"
-      "  return exit_success\n"
-      "do\n"
-      "return exit_failure\n";
+  const BOSONOGA_SIZE test_count = BOSONOGA_COUNT_OF(tests);
+  BOSONOGA_SIZE passed = 0;
+  for (BOSONOGA_SIZE i = 0; i < test_count; i++) {
+    if (run_test(&tests[i], header, input)) {
+      passed++;
+    }
+  }
 
-  const int status_input_gt_success = core(header, input_gt_success);
-  const int status_input_gt_failure = core(header, input_gt_failure);
-  const int status_input_lt_success = core(header, input_lt_success);
-  const int status_input_lt_failure = core(header, input_lt_failure);
-  const int status_input_and_success = core(header, input_and_success);
-  const int status_input_and_failure = core(header, input_and_failure);
-  const int status_input_or_success = core(header, input_or_success);
-  const int status_input_or_failure = core(header, input_or_failure);
-  const int status_input_eq_success = core(header, input_eq_success);
-  const int status_input_eq_failure = core(header, input_eq_failure);
-  const int status_input_not_eq_success = core(header, input_not_eq_success);
-  const int status_input_not_eq_failure = core(header, input_not_eq_failure);
-  const int status_input_eq_and_success = core(header, input_eq_and_success);
-  const int status_input_eq_and_failure = core(header, input_eq_and_failure);
-  const int status_input_to_add = core(header, input_to_add);
-  const int status_input_to_add_multiple = core(header, input_to_add_multiple);
-  const int status_input_to_subtract = core(header, input_to_subtract);
-  const int status_input_to_subtract_multiple =
-      core(header, input_to_subtract_multiple);
-  printf("=== === === === ===\n");
-  printf("[%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d]\n",
-         status_input_gt_success, status_input_gt_failure,
-         status_input_lt_success, status_input_lt_failure,
-         status_input_and_success, status_input_and_failure,
-         status_input_or_success, status_input_or_failure,
-         status_input_eq_success, status_input_eq_failure,
-         status_input_not_eq_success, status_input_not_eq_failure,
-         status_input_eq_and_success, status_input_eq_and_failure,
-         status_input_to_add, status_input_to_add_multiple,
-         status_input_to_subtract, status_input_to_subtract_multiple);
-  printf("=== === === === ===\n");
-
-  return status_input_gt_success || status_input_gt_failure ||
-         status_input_lt_success || status_input_lt_failure ||
-         status_input_and_success || status_input_and_failure ||
-         status_input_or_success || status_input_or_failure ||
-         status_input_eq_success || status_input_eq_failure ||
-         status_input_not_eq_success || status_input_not_eq_failure ||
-         status_input_eq_and_success || status_input_eq_and_failure ||
-         status_input_to_add || status_input_to_add_multiple ||
-         status_input_to_subtract || status_input_to_subtract_multiple;
+  BOSONOGA_PRINTF("Tests passed: %zu/%zu\n", passed, test_count);
+  return passed == test_count ? BOSONOGA_EXIT_SUCCESS : BOSONOGA_EXIT_FAILURE;
 }

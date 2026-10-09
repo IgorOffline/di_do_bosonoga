@@ -1,0 +1,7 @@
+var test_to_subtract is 11_i32
+set test_to_subtract to_subtract test_to_subtract 1_i32
+if test_to_subtract eq 10
+di
+  return exit_success
+do
+return exit_failure
