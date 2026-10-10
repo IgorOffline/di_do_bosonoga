@@ -1,6 +1,0 @@
-var test_not_eq_failure is 10_i32
-if test_not_eq_failure not_eq 10
-di
-  return exit_failure
-do
-return exit_success

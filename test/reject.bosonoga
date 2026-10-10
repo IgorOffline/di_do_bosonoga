@@ -1,0 +1,163 @@
+var count is 10_i32
+if count eq 10
+di
+  return exit_success
+do
+return exit_success
+-----
+var count is 10
+return exit_success
+-----
+var count is 1_i32
+set count to_add count 1
+return exit_success
+-----
+var ratio is 1.0_f32
+if ratio eq 1.0_f32
+di
+  return exit_success
+do
+return exit_success
+-----
+var ratio is 1.0_f32
+if ratio not_eq 2.0_f32
+di
+  return exit_success
+do
+return exit_success
+-----
+var count is 1_i32
+if count eq_3 1_i32
+di
+  return exit_success
+do
+return exit_success
+-----
+var count is 1_i32
+set count to_add count 1.5_f32
+return exit_success
+-----
+var count is 1_i32
+if count lt 1.5_f32
+di
+  return exit_success
+do
+return exit_success
+-----
+var huge_ratio is 3000000000.0_f32
+var count is to_i32 huge_ratio
+return exit_success
+-----
+var ratio is 1.0_f32
+var other_ratio is to_f32 ratio
+return exit_success
+-----
+var ratio is 1.0_f32
+set ratio to_i32 2.5_f32
+return exit_success
+-----
+var ratio is .5_f32
+return exit_success
+-----
+var ratio is 1e5_f32
+return exit_success
+-----
+var flags is shift_0
+if flags shift_eq shift_0
+di
+  return exit_success
+do
+return exit_success
+-----
+var count is 1_i32
+if count eq 1_i32
+do
+return exit_success
+-----
+var count is 1_i32
+if count eq 1_i32
+di
+do
+return exit_success
+-----
+var count is 1_i32
+if count eq 1_i32
+di
+  nihil
+return exit_success
+-----
+var count is 1_i32
+else
+di
+  nihil
+do
+return exit_success
+-----
+var count is 1_i32
+if count eq 1_i32
+di
+  nihil
+do
+else
+di
+  nihil
+do
+else
+di
+  nihil
+do
+return exit_success
+-----
+var count is 1_i32
+if count eq 1_i32
+di
+  nihil
+do
+else
+di
+  nihil
+do
+else if count eq 2_i32
+di
+  nihil
+do
+return exit_success
+-----
+var count is 1_i32
+if count eq 1_i32
+di
+  nihil
+do
+else
+di
+do
+return exit_success
+-----
+var count is 1_i32
+if count eq 1_i32
+di
+  nihil
+do
+else if
+di
+  nihil
+do
+return exit_success
+-----
+var count is 1_i32
+if count eq 1_i32
+di
+  nihil
+do
+else if count eq 1
+di
+  nihil
+do
+return exit_success
+-----
+var count is 1_i32//comment
+return exit_success
+-----
+var count is 1_i32
+/ not a comment
+return exit_success

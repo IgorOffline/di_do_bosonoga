@@ -1,9 +1,16 @@
 #include "bosonoga.h"
 
 #define BOSONOGA_MAIN_LIMIT 1
+#define BOSONOGA_COMMENT_PREFIX "//"
 
 static bool is_blank(char character) {
   return character == ' ' || character == '\t';
+}
+
+static bool starts_comment(const char* text) {
+  return BOSONOGA_STRNCMP(text, BOSONOGA_COMMENT_PREFIX,
+                          BOSONOGA_STRLEN(BOSONOGA_COMMENT_PREFIX)) ==
+         BOSONOGA_STRINGS_EQUAL;
 }
 
 static int split_into_lines(const char* text, Regina* regina) {
@@ -42,7 +49,7 @@ static int split_line_into_tokens(const char* line, Regina* regina) {
     while (is_blank(*line)) {
       line++;
     }
-    if (*line == '\0') {
+    if (*line == '\0' || starts_comment(line)) {
       return BOSONOGA_EXIT_SUCCESS;
     }
 
@@ -53,7 +60,8 @@ static int split_line_into_tokens(const char* line, Regina* regina) {
 
     const BOSONOGA_SIZE length = (BOSONOGA_SIZE)(line - start);
     if (length > BOSONOGA_TOKEN_LENGTH ||
-        line_token_count == BOSONOGA_TOKEN_PER_LINE_LIMIT) {
+        line_token_count == BOSONOGA_TOKEN_PER_LINE_LIMIT ||
+        regina->token_count == BOSONOGA_TOKEN_LIMIT) {
       return BOSONOGA_EXIT_FAILURE;
     }
 

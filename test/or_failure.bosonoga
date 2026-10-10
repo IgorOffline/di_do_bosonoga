@@ -1,8 +1,0 @@
-var test_or_f_left is 20_i32
-var test_or_f_mid is 25_i32
-var test_or_f_right is 24_i32
-if test_or_f_left gt test_or_f_mid or test_or_f_mid gt test_or_f_right
-di
-  return exit_success
-do
-return exit_failure

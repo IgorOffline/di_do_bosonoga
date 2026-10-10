@@ -1,24 +1,24 @@
-var test_loop is 100_i32
+var running_total is 100_i32
 to_8
 di
-  set test_loop to_add test_loop 1_i32
+  set running_total to_add running_total 1_i32
 do
-to_3 with it_a
+to_3 with i
 di
-  set test_loop to_add test_loop it_a
+  set running_total to_add running_total i
 do
-to_3 with it_a
+to_3 with i
 di
   nihil
 do
-to_3 with it_a
+to_3 with i
 di
-  to_2 with it_b
+  to_2 with j
   di
-    set test_loop to_add test_loop it_a it_b
+    set running_total to_add running_total i j
   do
 do
-if test_loop eq 120
+if running_total eq 120_i32
 di
   return exit_success
 do

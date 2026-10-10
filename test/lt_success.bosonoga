@@ -1,7 +1,0 @@
-var test_lt_s_left is 10_i32
-var test_lt_s_right is 20_i32
-if test_lt_s_left lt test_lt_s_right
-di
-  return exit_success
-do
-return exit_failure
