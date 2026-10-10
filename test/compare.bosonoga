@@ -1,0 +1,125 @@
+var passed_count is 100_i32
+var small_value is 10_i32
+var medium_value is 20_i32
+var large_value is 30_i32
+
+if medium_value gt small_value
+di
+  set passed_count to_add passed_count 1_i32
+do
+if small_value gt medium_value
+di
+  nihil
+do
+else
+di
+  set passed_count to_add passed_count 1_i32
+do
+if small_value gt small_value
+di
+  nihil
+do
+else
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+if small_value lt medium_value
+di
+  set passed_count to_add passed_count 1_i32
+do
+if medium_value lt small_value
+di
+  nihil
+do
+else
+di
+  set passed_count to_add passed_count 1_i32
+do
+if small_value lt small_value
+di
+  nihil
+do
+else
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+if small_value eq 10_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+if small_value eq 99_i32
+di
+  nihil
+do
+else
+di
+  set passed_count to_add passed_count 1_i32
+do
+if small_value not_eq 99_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+if small_value not_eq 10_i32
+di
+  nihil
+do
+else
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+if large_value gt medium_value and medium_value gt small_value
+di
+  set passed_count to_add passed_count 1_i32
+do
+if large_value gt medium_value and medium_value gt large_value
+di
+  nihil
+do
+else
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+if large_value gt medium_value or medium_value gt large_value
+di
+  set passed_count to_add passed_count 1_i32
+do
+if medium_value gt large_value or large_value gt medium_value
+di
+  set passed_count to_add passed_count 1_i32
+do
+if small_value gt medium_value or medium_value gt large_value
+di
+  nihil
+do
+else
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+if small_value eq 10_i32 and medium_value eq 20_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+if small_value eq 10_i32 and medium_value eq 99_i32
+di
+  nihil
+do
+else
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+if medium_value gt small_value or small_value gt medium_value and small_value gt medium_value
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+if passed_count eq 118_i32
+di
+  return exit_success
+do
+return exit_failure

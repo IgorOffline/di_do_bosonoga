@@ -1,0 +1,92 @@
+var passed_count is 100_i32
+var near_left is 12.003_f32
+var near_right is 12.007_f32
+
+if near_left eq_3 near_right
+di
+  set passed_count to_add passed_count 1_i32
+do
+if near_left eq_6 near_right
+di
+  nihil
+do
+else
+di
+  set passed_count to_add passed_count 1_i32
+do
+if near_left not_eq_6 near_right
+di
+  set passed_count to_add passed_count 1_i32
+do
+if near_left not_eq_3 near_right
+di
+  nihil
+do
+else
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var tiny_value is 0.0004_f32
+if tiny_value eq_3 0.0_f32 and tiny_value not_eq_6 0.0_f32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var small_real is 1.5_f32
+var large_real is 2.25_f32
+if small_real lt large_real and large_real gt small_real
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var real_sum is 1.5_f32
+set real_sum to_add real_sum 0.25_f32 2_f32 -0.75_f32
+if real_sum eq_6 3.0_f32
+di
+  set passed_count to_add passed_count 1_i32
+do
+var real_difference is 10.5_f32
+set real_difference to_subtract real_difference 0.5_f32
+var negated_real is 0.0_f32
+set negated_real to_subtract 2.5_f32
+if real_difference eq_6 10.0_f32 and negated_real eq_6 -2.5_f32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var whole_number is 7_i32
+var converted_real is to_f32 whole_number
+var assigned_real is 0.0_f32
+set assigned_real to_f32 -3_i32
+if converted_real eq_6 7.0_f32 and assigned_real eq_6 -3.0_f32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var fractional_value is 2.9_f32
+var truncated_positive is to_i32 fractional_value
+var truncated_negative is to_i32 -2.9_f32
+var assigned_whole is 0_i32
+set assigned_whole to_i32 fractional_value
+if truncated_positive eq 2_i32 and truncated_negative eq -2_i32 and assigned_whole eq 2_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var loop_sum is 0.0_f32
+to_4 with i
+di
+  var index_real is to_f32 i
+  set loop_sum to_add loop_sum index_real
+do
+if loop_sum eq_6 6.0_f32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+if passed_count eq 111_i32
+di
+  return exit_success
+do
+return exit_failure

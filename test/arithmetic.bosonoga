@@ -1,0 +1,39 @@
+var passed_count is 100_i32
+
+var single_sum is 10_i32
+set single_sum to_add single_sum 1_i32
+if single_sum eq 11_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+var multi_sum is 1000_i32
+set multi_sum to_add multi_sum 5_i32 5_i32 20_i32 20_i32 25_i32 25_i32 50_i32
+if multi_sum eq 1150_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var single_difference is 11_i32
+set single_difference to_subtract single_difference 1_i32
+if single_difference eq 10_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+var multi_difference is 30_i32
+set multi_difference to_subtract multi_difference 1_i32 multi_difference 2_i32 multi_difference
+if multi_difference eq -33_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var commented_value is 1_i32
+if commented_value eq 1_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+if passed_count eq 105_i32
+di
+  return exit_success
+do
+return exit_failure

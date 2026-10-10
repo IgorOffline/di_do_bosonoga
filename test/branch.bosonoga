@@ -1,0 +1,155 @@
+var passed_count is 100_i32
+
+var first_branch_value is 5_i32
+var first_branch_hits is 0_i32
+if first_branch_value gt 3_i32
+di
+  set first_branch_hits to_add first_branch_hits 1_i32
+do
+else if first_branch_value gt 1_i32
+di
+  set first_branch_hits to_add first_branch_hits 10_i32
+do
+else if first_branch_value gt 0_i32
+di
+  set first_branch_hits to_add first_branch_hits 100_i32
+do
+else
+di
+  set first_branch_hits to_add first_branch_hits 1000_i32
+do
+if first_branch_hits eq 1_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var second_branch_value is 2_i32
+var second_branch_hits is 0_i32
+if second_branch_value gt 3_i32
+di
+  set second_branch_hits to_add second_branch_hits 1_i32
+do
+else if second_branch_value gt 1_i32
+di
+  set second_branch_hits to_add second_branch_hits 10_i32
+do
+else if second_branch_value gt 0_i32
+di
+  set second_branch_hits to_add second_branch_hits 100_i32
+do
+else
+di
+  set second_branch_hits to_add second_branch_hits 1000_i32
+do
+if second_branch_hits eq 10_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var third_branch_value is 1_i32
+var third_branch_hits is 0_i32
+if third_branch_value gt 3_i32
+di
+  set third_branch_hits to_add third_branch_hits 1_i32
+do
+else if third_branch_value gt 1_i32
+di
+  set third_branch_hits to_add third_branch_hits 10_i32
+do
+else if third_branch_value gt 0_i32
+di
+  set third_branch_hits to_add third_branch_hits 100_i32
+do
+else
+di
+  set third_branch_hits to_add third_branch_hits 1000_i32
+do
+if third_branch_hits eq 100_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var else_branch_value is -4_i32
+var else_branch_hits is 0_i32
+if else_branch_value gt 3_i32
+di
+  set else_branch_hits to_add else_branch_hits 1_i32
+do
+else if else_branch_value gt 1_i32
+di
+  set else_branch_hits to_add else_branch_hits 10_i32
+do
+else if else_branch_value gt 0_i32
+di
+  set else_branch_hits to_add else_branch_hits 100_i32
+do
+else
+di
+  set else_branch_hits to_add else_branch_hits 1000_i32
+do
+if else_branch_hits eq 1000_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var alpha_port_value is 10_i32
+var alpha_port_hits is 0_i32
+if alpha_port_value lt 1_i32 or alpha_port_value gt 99_i32
+di
+  nihil
+do
+else if alpha_port_value not_eq 10_i32
+di
+  nihil
+do
+else
+di
+  set alpha_port_hits to_add alpha_port_hits 1_i32
+do
+if alpha_port_hits eq 1_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var nested_value is 7_i32
+var nested_hits is 0_i32
+if nested_value lt 5_i32
+di
+  nihil
+do
+else
+di
+  if nested_value gt 6_i32
+  di
+    set nested_hits to_add nested_hits 1_i32
+  do
+  else
+  di
+    set nested_hits to_add nested_hits 50_i32
+  do
+do
+if nested_hits eq 1_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+var scope_selector is 1_i32
+if scope_selector eq 1_i32
+di
+  var scoped_value is 1_i32
+do
+else
+di
+  var scoped_value is 2_i32
+do
+var scoped_value is 3_i32
+if scoped_value eq 3_i32
+di
+  set passed_count to_add passed_count 1_i32
+do
+
+if passed_count eq 107_i32
+di
+  return exit_success
+do
+return exit_failure

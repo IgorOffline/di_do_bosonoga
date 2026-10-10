@@ -1,104 +1,104 @@
-var sh_alpha is shift_0
-var sh_bravo is shift_1
-var sh_charlie is sh_alpha shift_or sh_bravo
-var sh_bit_0 is shift_0
-var sh_bit_1 is shift_1
-var sh_bit_2 is shift_2
-var sh_bit_3 is shift_3
-var sh_bit_4 is shift_4
-var sh_bit_5 is shift_5
-var sh_bit_6 is shift_6
-var sh_bit_7 is shift_7
-var sh_bit_8 is shift_8
-var sh_bit_9 is shift_9
-var sh_bit_10 is shift_10
-var sh_bit_11 is shift_11
-var sh_bit_12 is shift_12
-var sh_bit_13 is shift_13
-var sh_bit_14 is shift_14
-var sh_bit_15 is shift_15
-var sh_bit_16 is shift_16
-var sh_bit_17 is shift_17
-var sh_bit_18 is shift_18
-var sh_bit_19 is shift_19
-var sh_bit_20 is shift_20
-var sh_bit_21 is shift_21
-var sh_bit_22 is shift_22
-var sh_bit_23 is shift_23
-var sh_bit_24 is shift_24
-var sh_bit_25 is shift_25
-var sh_bit_26 is shift_26
-var sh_bit_27 is shift_27
-var sh_bit_28 is shift_28
-var sh_bit_29 is shift_29
-var sh_bit_30 is shift_30
-var sh_bit_31 is shift_31
-var sh_all_flags is sh_bit_0
-shift_or sh_bit_1
-shift_or sh_bit_2
-shift_or sh_bit_3
-shift_or sh_bit_4
-shift_or sh_bit_5
-shift_or sh_bit_6
-shift_or sh_bit_7
-shift_or sh_bit_8
-shift_or sh_bit_9
-shift_or sh_bit_10
-shift_or sh_bit_11
-shift_or sh_bit_12
-shift_or sh_bit_13
-shift_or sh_bit_14
-shift_or sh_bit_15
-shift_or sh_bit_16
-shift_or sh_bit_17
-shift_or sh_bit_18
-shift_or sh_bit_19
-shift_or sh_bit_20
-shift_or sh_bit_21
-shift_or sh_bit_22
-shift_or sh_bit_23
-shift_or sh_bit_24
-shift_or sh_bit_25
-shift_or sh_bit_26
-shift_or sh_bit_27
-shift_or sh_bit_28
-shift_or sh_bit_29
-shift_or sh_bit_30
-shift_or sh_bit_31
-if sh_charlie shift_eq sh_alpha
-and sh_charlie shift_eq sh_bravo
-and sh_all_flags shift_eq sh_bit_0
-and sh_all_flags shift_eq sh_bit_1
-and sh_all_flags shift_eq sh_bit_2
-and sh_all_flags shift_eq sh_bit_3
-and sh_all_flags shift_eq sh_bit_4
-and sh_all_flags shift_eq sh_bit_5
-and sh_all_flags shift_eq sh_bit_6
-and sh_all_flags shift_eq sh_bit_7
-and sh_all_flags shift_eq sh_bit_8
-and sh_all_flags shift_eq sh_bit_9
-and sh_all_flags shift_eq sh_bit_10
-and sh_all_flags shift_eq sh_bit_11
-and sh_all_flags shift_eq sh_bit_12
-and sh_all_flags shift_eq sh_bit_13
-and sh_all_flags shift_eq sh_bit_14
-and sh_all_flags shift_eq sh_bit_15
-and sh_all_flags shift_eq sh_bit_16
-and sh_all_flags shift_eq sh_bit_17
-and sh_all_flags shift_eq sh_bit_18
-and sh_all_flags shift_eq sh_bit_19
-and sh_all_flags shift_eq sh_bit_20
-and sh_all_flags shift_eq sh_bit_21
-and sh_all_flags shift_eq sh_bit_22
-and sh_all_flags shift_eq sh_bit_23
-and sh_all_flags shift_eq sh_bit_24
-and sh_all_flags shift_eq sh_bit_25
-and sh_all_flags shift_eq sh_bit_26
-and sh_all_flags shift_eq sh_bit_27
-and sh_all_flags shift_eq sh_bit_28
-and sh_all_flags shift_eq sh_bit_29
-and sh_all_flags shift_eq sh_bit_30
-and sh_all_flags shift_eq sh_bit_31
+var read_flag is shift_0
+var write_flag is shift_1
+var read_write_flags is read_flag shift_or write_flag
+var bit_0 is shift_0
+var bit_1 is shift_1
+var bit_2 is shift_2
+var bit_3 is shift_3
+var bit_4 is shift_4
+var bit_5 is shift_5
+var bit_6 is shift_6
+var bit_7 is shift_7
+var bit_8 is shift_8
+var bit_9 is shift_9
+var bit_10 is shift_10
+var bit_11 is shift_11
+var bit_12 is shift_12
+var bit_13 is shift_13
+var bit_14 is shift_14
+var bit_15 is shift_15
+var bit_16 is shift_16
+var bit_17 is shift_17
+var bit_18 is shift_18
+var bit_19 is shift_19
+var bit_20 is shift_20
+var bit_21 is shift_21
+var bit_22 is shift_22
+var bit_23 is shift_23
+var bit_24 is shift_24
+var bit_25 is shift_25
+var bit_26 is shift_26
+var bit_27 is shift_27
+var bit_28 is shift_28
+var bit_29 is shift_29
+var bit_30 is shift_30
+var bit_31 is shift_31
+var all_flags is bit_0
+shift_or bit_1
+shift_or bit_2
+shift_or bit_3
+shift_or bit_4
+shift_or bit_5
+shift_or bit_6
+shift_or bit_7
+shift_or bit_8
+shift_or bit_9
+shift_or bit_10
+shift_or bit_11
+shift_or bit_12
+shift_or bit_13
+shift_or bit_14
+shift_or bit_15
+shift_or bit_16
+shift_or bit_17
+shift_or bit_18
+shift_or bit_19
+shift_or bit_20
+shift_or bit_21
+shift_or bit_22
+shift_or bit_23
+shift_or bit_24
+shift_or bit_25
+shift_or bit_26
+shift_or bit_27
+shift_or bit_28
+shift_or bit_29
+shift_or bit_30
+shift_or bit_31
+if read_write_flags shift_has read_flag
+and read_write_flags shift_has write_flag
+and all_flags shift_has bit_0
+and all_flags shift_has bit_1
+and all_flags shift_has bit_2
+and all_flags shift_has bit_3
+and all_flags shift_has bit_4
+and all_flags shift_has bit_5
+and all_flags shift_has bit_6
+and all_flags shift_has bit_7
+and all_flags shift_has bit_8
+and all_flags shift_has bit_9
+and all_flags shift_has bit_10
+and all_flags shift_has bit_11
+and all_flags shift_has bit_12
+and all_flags shift_has bit_13
+and all_flags shift_has bit_14
+and all_flags shift_has bit_15
+and all_flags shift_has bit_16
+and all_flags shift_has bit_17
+and all_flags shift_has bit_18
+and all_flags shift_has bit_19
+and all_flags shift_has bit_20
+and all_flags shift_has bit_21
+and all_flags shift_has bit_22
+and all_flags shift_has bit_23
+and all_flags shift_has bit_24
+and all_flags shift_has bit_25
+and all_flags shift_has bit_26
+and all_flags shift_has bit_27
+and all_flags shift_has bit_28
+and all_flags shift_has bit_29
+and all_flags shift_has bit_30
+and all_flags shift_has bit_31
 di
   return exit_success
 do
