@@ -31,6 +31,7 @@ BOSONOGA_RECORD {
 BosonogaTest;
 
 static const BosonogaTest tests[] = {
+    {"test/loop.bosonoga", BOSONOGA_EXIT_SUCCESS},
     {"test/gt_success.bosonoga", BOSONOGA_EXIT_SUCCESS},
     {"test/gt_failure.bosonoga", BOSONOGA_EXIT_SUCCESS},
     {"test/lt_success.bosonoga", BOSONOGA_EXIT_SUCCESS},

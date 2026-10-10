@@ -1,0 +1,25 @@
+var test_loop is 100_i32
+to_8
+di
+  set test_loop to_add test_loop 1_i32
+do
+to_3 with it_a
+di
+  set test_loop to_add test_loop it_a
+do
+to_3 with it_a
+di
+  nihil
+do
+to_3 with it_a
+di
+  to_2 with it_b
+  di
+    set test_loop to_add test_loop it_a it_b
+  do
+do
+if test_loop eq 120
+di
+  return exit_success
+do
+return exit_failure
