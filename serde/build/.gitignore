@@ -1,0 +1,9 @@
+bosonoga_payload_types.c
+thrift.c
+thrift_application_exception.c
+thrift_compact_protocol.c
+thrift_configuration.c
+thrift_memory_buffer.c
+thrift_protocol.c
+thrift_struct.c
+thrift_transport.c
