@@ -1,211 +1,111 @@
-#include <stdio.h>
-
 #include "bosonoga/bosonoga.h"
 
-#define BOSONOGA_HEADER_PATH "test/header.bosonoga"
-#define BOSONOGA_REJECT_PATH "test/reject.bosonoga"
+#define BOSONOGA_TEST_DIRECTORY "test"
+#define BOSONOGA_HEADER_FILE "header.bosonoga"
+#define BOSONOGA_REJECT_FILE "reject.bosonoga"
+#define BOSONOGA_FILE_EXTENSION ".bosonoga"
 #define BOSONOGA_CASE_SEPARATOR "-----"
-#define BOSONOGA_CASE_LIMIT 64
-#define BOSONOGA_IO_SUCCESS 0
-#define BOSONOGA_COUNT_OF(array) (sizeof(array) / sizeof((array)[0]))
 
-#define BOSONOGA_FILE FILE
-#define BOSONOGA_STDERR stderr
-#define BOSONOGA_EOF EOF
-#define BOSONOGA_SEEK_SET SEEK_SET
-#define BOSONOGA_SEEK_END SEEK_END
-#if defined(_WIN32) && defined(_MSC_VER)
-#define BOSONOGA_FOPEN(file, path, mode) fopen_s(file, path, mode)
-#else
-#define BOSONOGA_FOPEN(file, path, mode) ((*(file) = fopen(path, mode)) == NULL)
-#endif
-#define BOSONOGA_FSEEK(file, offset, origin) fseek(file, offset, origin)
-#define BOSONOGA_FTELL(file) ftell(file)
-#define BOSONOGA_FREAD(dest, size, count, file) fread(dest, size, count, file)
-#define BOSONOGA_FGETC(file) fgetc(file)
-#define BOSONOGA_FERROR(file) ferror(file)
-#define BOSONOGA_FCLOSE(file) fclose(file)
-#define BOSONOGA_FPRINTF(stream, ...) fprintf(stream, __VA_ARGS__)
-
-BOSONOGA_RECORD {
-  const char* path;
-  int expected;
-}
-BosonogaTest;
-
-static const BosonogaTest tests[] = {
-    {"test/compare.bosonoga", BOSONOGA_EXIT_SUCCESS},
-    {"test/branch.bosonoga", BOSONOGA_EXIT_SUCCESS},
-    {"test/arithmetic.bosonoga", BOSONOGA_EXIT_SUCCESS},
-    {"test/f32.bosonoga", BOSONOGA_EXIT_SUCCESS},
-    {"test/loop.bosonoga", BOSONOGA_EXIT_SUCCESS},
-    {"test/shift.bosonoga", BOSONOGA_EXIT_SUCCESS},
+static const gchar* const valid_names[] = {
+    "compare", "branch", "arithmetic", "f32", "loop", "shift",
 };
 
-static int measure_source(BOSONOGA_FILE* file, BOSONOGA_SIZE* length) {
-  if (BOSONOGA_FSEEK(file, 0, BOSONOGA_SEEK_END) != BOSONOGA_IO_SUCCESS) {
-    return BOSONOGA_EXIT_FAILURE;
-  }
-  const long end = BOSONOGA_FTELL(file);
-  if (end < 0 || (BOSONOGA_SIZE)end > BOSONOGA_SOURCE_LENGTH ||
-      BOSONOGA_FSEEK(file, 0, BOSONOGA_SEEK_SET) != BOSONOGA_IO_SUCCESS) {
-    return BOSONOGA_EXIT_FAILURE;
-  }
-  *length = (BOSONOGA_SIZE)end;
-  return BOSONOGA_EXIT_SUCCESS;
+static gboolean read_test_source(const gchar* file_name,
+                                 gchar destination[BOSONOGA_SOURCE_LENGTH + 1],
+                                 GError** error) {
+  g_autofree gchar* path =
+      g_build_filename(BOSONOGA_TEST_DIRECTORY, file_name, NULL);
+  return bosonoga_read_source(path, destination, error);
 }
 
-static int read_exactly(BOSONOGA_FILE* file, char* source,
-                        BOSONOGA_SIZE length) {
-  const BOSONOGA_SIZE read_count = BOSONOGA_FREAD(source, 1, length, file);
-  if (read_count != length || BOSONOGA_FGETC(file) != BOSONOGA_EOF ||
-      BOSONOGA_FERROR(file) != BOSONOGA_IO_SUCCESS ||
-      BOSONOGA_MEMCHR(source, '\0', length) != NULL) {
-    return BOSONOGA_EXIT_FAILURE;
+static GStrv read_reject_cases(GError** error) {
+  g_autofree gchar* path =
+      g_build_filename(BOSONOGA_TEST_DIRECTORY, BOSONOGA_REJECT_FILE, NULL);
+  g_autofree gchar* contents = NULL;
+  if (!g_file_get_contents(path, &contents, NULL, error)) {
+    return NULL;
   }
-  source[length] = '\0';
-  return BOSONOGA_EXIT_SUCCESS;
+  g_autofree gchar* separator =
+      g_regex_escape_string(BOSONOGA_CASE_SEPARATOR, -1);
+  g_autofree gchar* pattern = g_strdup_printf("^%s\\r?(?:\\n|\\z)", separator);
+  return g_regex_split_simple(pattern, contents, G_REGEX_MULTILINE, 0);
 }
 
-static int read_source(const char* path,
-                       char source[BOSONOGA_SOURCE_LENGTH + 1]) {
-  source[0] = '\0';
-  BOSONOGA_FILE* file = NULL;
-  if (BOSONOGA_FOPEN(&file, path, "rb") != BOSONOGA_IO_SUCCESS) {
-    return BOSONOGA_EXIT_FAILURE;
+static gboolean run_valid(Regina* regina, const gchar* name) {
+  g_autofree gchar* file_name =
+      g_strconcat(name, BOSONOGA_FILE_EXTENSION, NULL);
+  g_autoptr(GError) error = NULL;
+  gint exit_status = BOSONOGA_EXIT_FAILURE;
+  if (!read_test_source(file_name, regina->input_source, &error) ||
+      !bosonoga_core(regina, regina->header_source, regina->input_source,
+                     &exit_status, &error)) {
+    g_printerr("FAIL %s: %s\n", file_name, error->message);
+    return FALSE;
   }
-
-  BOSONOGA_SIZE length = 0;
-  int status = measure_source(file, &length);
-  if (status == BOSONOGA_EXIT_SUCCESS) {
-    status = read_exactly(file, source, length);
+  if (exit_status != BOSONOGA_EXIT_SUCCESS) {
+    g_printerr("FAIL %s: returned exit_failure\n", file_name);
+    return FALSE;
   }
-  if (BOSONOGA_FCLOSE(file) != BOSONOGA_IO_SUCCESS) {
-    status = BOSONOGA_EXIT_FAILURE;
-  }
-  if (status != BOSONOGA_EXIT_SUCCESS) {
-    source[0] = '\0';
-  }
-  return status;
+  return TRUE;
 }
 
-static bool run_test(Regina* regina, const BosonogaTest* test) {
-  if (read_source(test->path, regina->input_source) != BOSONOGA_EXIT_SUCCESS) {
-    BOSONOGA_FPRINTF(BOSONOGA_STDERR, "FAIL %s: unable to load source\n",
-                     test->path);
-    return false;
+static gboolean run_rejected(Regina* regina, const gchar* source,
+                             guint number) {
+  g_autofree gchar* stripped = g_strstrip(g_strdup(source));
+  if (*stripped == '\0') {
+    g_printerr("FAIL %s case %u: empty\n", BOSONOGA_REJECT_FILE, number);
+    return FALSE;
   }
-
-  const int status =
-      bosonoga_core(regina, regina->header_source, regina->input_source);
-  if (status != test->expected) {
-    BOSONOGA_FPRINTF(BOSONOGA_STDERR, "FAIL %s: expected %d, got %d\n",
-                     test->path, test->expected, status);
-    return false;
+  g_autoptr(GError) error = NULL;
+  gint exit_status = BOSONOGA_EXIT_FAILURE;
+  if (bosonoga_core(regina, regina->header_source, source, &exit_status,
+                    &error)) {
+    g_printerr("FAIL %s case %u: was accepted\n", BOSONOGA_REJECT_FILE, number);
+    return FALSE;
   }
-  return true;
-}
-
-static bool is_blank_text(const char* text) {
-  for (; *text != '\0'; text++) {
-    if (*text != ' ' && *text != '\t' && *text != '\r' && *text != '\n') {
-      return false;
-    }
+  if (error == NULL || error->domain != BOSONOGA_ERROR) {
+    g_printerr("FAIL %s case %u: %s\n", BOSONOGA_REJECT_FILE, number,
+               error == NULL ? "no error was set" : error->message);
+    return FALSE;
   }
-  return true;
-}
-
-static BOSONOGA_SIZE split_cases(char* source, char** starts) {
-  const BOSONOGA_SIZE separator_length =
-      BOSONOGA_STRLEN(BOSONOGA_CASE_SEPARATOR);
-  BOSONOGA_SIZE count = 0;
-  starts[count++] = source;
-  char* line = source;
-  while (*line != '\0') {
-    char* newline = BOSONOGA_STRCHR(line, '\n');
-    char* next = newline == NULL ? line + BOSONOGA_STRLEN(line) : newline + 1;
-    BOSONOGA_SIZE length = (BOSONOGA_SIZE)(next - line);
-    while (length > 0 &&
-           (line[length - 1] == '\n' || line[length - 1] == '\r')) {
-      length--;
-    }
-    if (length == separator_length &&
-        BOSONOGA_STRNCMP(line, BOSONOGA_CASE_SEPARATOR, separator_length) ==
-            BOSONOGA_STRINGS_EQUAL) {
-      if (count == BOSONOGA_CASE_LIMIT) {
-        return 0;
-      }
-      *line = '\0';
-      starts[count++] = next;
-    }
-    line = next;
-  }
-  return count;
-}
-
-static BOSONOGA_SIZE run_reject_cases(Regina* regina,
-                                      BOSONOGA_SIZE* case_count) {
-  *case_count = 1;
-  if (read_source(BOSONOGA_REJECT_PATH, regina->input_source) !=
-      BOSONOGA_EXIT_SUCCESS) {
-    BOSONOGA_FPRINTF(BOSONOGA_STDERR, "FAIL %s: unable to load source\n",
-                     BOSONOGA_REJECT_PATH);
-    return 0;
-  }
-  char* starts[BOSONOGA_CASE_LIMIT];
-  const BOSONOGA_SIZE count = split_cases(regina->input_source, starts);
-  if (count == 0) {
-    BOSONOGA_FPRINTF(BOSONOGA_STDERR, "FAIL %s: more than %d cases\n",
-                     BOSONOGA_REJECT_PATH, BOSONOGA_CASE_LIMIT);
-    return 0;
-  }
-
-  *case_count = count;
-  BOSONOGA_SIZE passed = 0;
-  for (BOSONOGA_SIZE i = 0; i < count; i++) {
-    if (is_blank_text(starts[i])) {
-      BOSONOGA_FPRINTF(BOSONOGA_STDERR, "FAIL %s case %zu: empty case\n",
-                       BOSONOGA_REJECT_PATH, i + 1);
-    } else if (bosonoga_core(regina, regina->header_source, starts[i]) ==
-               BOSONOGA_EXIT_SUCCESS) {
-      BOSONOGA_FPRINTF(BOSONOGA_STDERR, "FAIL %s case %zu: was accepted\n",
-                       BOSONOGA_REJECT_PATH, i + 1);
-    } else {
-      passed++;
-    }
-  }
-  return passed;
+  g_debug("%s case %u rejected: %s", BOSONOGA_REJECT_FILE, number,
+          error->message);
+  return TRUE;
 }
 
 int main(void) {
-  Regina* regina = BOSONOGA_CALLOC(1, sizeof(Regina));
-  if (regina == NULL) {
-    BOSONOGA_FPRINTF(BOSONOGA_STDERR, "Unable to allocate Regina (%zu MiB)\n",
-                     sizeof(Regina) / BOSONOGA_MIB);
+  g_autofree Regina* regina = g_new0(Regina, 1);
+  g_autoptr(GError) error = NULL;
+  if (!read_test_source(BOSONOGA_HEADER_FILE, regina->header_source, &error)) {
+    g_printerr("%s\n", error->message);
     return BOSONOGA_EXIT_FAILURE;
   }
-  if (read_source(BOSONOGA_HEADER_PATH, regina->header_source) !=
-      BOSONOGA_EXIT_SUCCESS) {
-    BOSONOGA_FPRINTF(BOSONOGA_STDERR, "Unable to load %s\n",
-                     BOSONOGA_HEADER_PATH);
-    BOSONOGA_FREE(regina);
+  g_auto(GStrv) reject_cases = read_reject_cases(&error);
+  if (reject_cases == NULL) {
+    g_printerr("%s\n", error->message);
     return BOSONOGA_EXIT_FAILURE;
   }
 
-  const BOSONOGA_SIZE test_count = BOSONOGA_COUNT_OF(tests);
-  BOSONOGA_SIZE passed = 0;
-  for (BOSONOGA_SIZE i = 0; i < test_count; i++) {
-    if (run_test(regina, &tests[i])) {
-      passed++;
+  const guint valid_total = (guint)G_N_ELEMENTS(valid_names);
+  guint valid_passed = 0;
+  for (guint i = 0; i < valid_total; i++) {
+    if (run_valid(regina, valid_names[i])) {
+      valid_passed++;
     }
   }
 
-  BOSONOGA_SIZE reject_count = 0;
-  passed += run_reject_cases(regina, &reject_count);
-  const BOSONOGA_SIZE total = test_count + reject_count;
+  const guint rejected_total = g_strv_length(reject_cases);
+  guint rejected_passed = 0;
+  for (guint i = 0; i < rejected_total; i++) {
+    if (run_rejected(regina, reject_cases[i], i + 1)) {
+      rejected_passed++;
+    }
+  }
 
-  BOSONOGA_PRINTF("Tests passed: %zu/%zu (%zu, %zu)\n", passed, total,
-                  test_count, reject_count);
-  BOSONOGA_FREE(regina);
+  const guint passed = valid_passed + rejected_passed;
+  const guint total = valid_total + rejected_total;
+  g_print("GLib %u.%u.%u, passed %u/%u (valid %u/%u, rejected %u/%u)\n",
+          glib_major_version, glib_minor_version, glib_micro_version, passed,
+          total, valid_passed, valid_total, rejected_passed, rejected_total);
   return passed == total ? BOSONOGA_EXIT_SUCCESS : BOSONOGA_EXIT_FAILURE;
 }
