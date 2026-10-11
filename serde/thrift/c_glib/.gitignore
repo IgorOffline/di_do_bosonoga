@@ -1,0 +1,8 @@
+thrift.c
+thrift.h
+thrift_application_exception.c
+thrift_application_exception.h
+thrift_configuration.c
+thrift_configuration.h
+thrift_struct.c
+thrift_struct.h

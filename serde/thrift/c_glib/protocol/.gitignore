@@ -1,0 +1,4 @@
+thrift_compact_protocol.c
+thrift_compact_protocol.h
+thrift_protocol.c
+thrift_protocol.h
