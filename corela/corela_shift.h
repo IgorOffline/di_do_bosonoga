@@ -1,0 +1,12 @@
+#ifndef CORELA_CORELA_SHIFT_H_
+#define CORELA_CORELA_SHIFT_H_
+#define CORELA_EXIT_SUCCESS 0
+#define CORELA_EXIT_FAILURE 1
+#define CORELA_I32 int32_t
+#define CORELA_U32 uint32_t
+#define CORELA_SHIFT_0 (UINT32_C(1) << 0)
+#define CORELA_SHIFT_1 (UINT32_C(1) << 1)
+#define CORELA_SHIFT_OR |
+#define CORELA_IS &
+#define CORELA_AND &&
+#endif  // CORELA_CORELA_SHIFT_H_
