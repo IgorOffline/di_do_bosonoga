@@ -1,0 +1,6 @@
+main
+di
+  info 1 "ada" 23 "dido" 456
+  info 2 "dada" 345 "dida" 6789
+  return exit_success
+do
