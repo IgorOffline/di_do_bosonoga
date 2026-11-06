@@ -17,7 +17,11 @@ static gboolean daria_run_file(const gchar *path, GError **error) {
   g_autofree gchar *display_path = g_filename_display_name(path);
   g_autoptr(GArray) program =
       daria_parse(display_path, source, source_length, error);
-  return program != NULL && daria_run(program, error);
+  if (program == NULL) {
+    return FALSE;
+  }
+  daria_run(program);
+  return TRUE;
 }
 
 int main(int argc, char **argv) {
