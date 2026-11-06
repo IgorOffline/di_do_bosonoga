@@ -77,9 +77,15 @@ gboolean daria_tokenizer_advance(DariaTokenizer *tokenizer, GError **error) {
         }
         daria_consume_char(tokenizer);
       }
-      if (daria_at_word_char(tokenizer)) {
+      const gchar *suffix_start = tokenizer->cursor;
+      while (daria_at_word_char(tokenizer)) {
+        daria_consume_char(tokenizer);
+      }
+      g_autofree gchar *suffix =
+          g_strndup(suffix_start, (gsize)(tokenizer->cursor - suffix_start));
+      if (!g_str_equal(suffix, "_i32")) {
         return daria_lex_error(tokenizer, token.line, token.column,
-                               "invalid integer", error);
+                               "integer must have the suffix _i32", error);
       }
       token.integer = (gint32)value;
     } else if (g_ascii_isalpha(first) || first == '_') {

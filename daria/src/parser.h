@@ -8,6 +8,7 @@
 //   program   := "main" "di" statement* "return" "exit_success" "do"
 //   statement := "info" argument+
 //   argument  := INTEGER | STRING
+//   INTEGER   := digit+ "_i32"
 
 typedef enum {
   DARIA_OP_PRINT_INTEGER,
