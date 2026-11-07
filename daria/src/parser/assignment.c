@@ -2,30 +2,62 @@
 
 #include "parser/internal.h"
 
+// The conversions, which compute one value from the values after their word.
+static const struct {
+  const gchar *word;
+  DariaOpKind op;
+  DariaValueKind source;  // The kind of each value.
+  DariaValueKind result;
+  gboolean is_binary;  // Whether it takes two values, left and right.
+} daria_conversions[] = {
+    {"to_f32", DARIA_OP_CONVERT_TO_F32, DARIA_VALUE_I32, DARIA_VALUE_F32,
+     FALSE},
+    {"to_i32", DARIA_OP_CONVERT_TO_I32, DARIA_VALUE_F32, DARIA_VALUE_I32,
+     FALSE},
+    {"to_sin", DARIA_OP_SIN, DARIA_VALUE_F32, DARIA_VALUE_F32, FALSE},
+    {"to_cos", DARIA_OP_COS, DARIA_VALUE_F32, DARIA_VALUE_F32, FALSE},
+    {"to_atan2", DARIA_OP_ATAN2, DARIA_VALUE_F32, DARIA_VALUE_F32, TRUE},
+};
+
+// Returns the index in daria_conversions of the current token, or -1.
+static gint daria_find_conversion(const DariaParser *parser) {
+  for (gsize i = 0; i < G_N_ELEMENTS(daria_conversions); ++i) {
+    if (daria_at_word(parser, daria_conversions[i].word)) {
+      return (gint)i;
+    }
+  }
+  return -1;
+}
+
+static gboolean daria_at_conversion(const DariaParser *parser) {
+  return daria_find_conversion(parser) >= 0;
+}
+
 // Parses a conversion and stores its result in the slot. The keyword is the
 // current token, and the kind of the result is returned in kind.
 static gboolean daria_parse_conversion(DariaParser *parser, guint slot,
                                        DariaValueKind *kind, GError **error) {
   const DariaToken start = parser->tokenizer.token;
-  const gboolean to_f32 = daria_at_word(parser, "to_f32");
-  DariaOperand source;
+  const gint found = daria_find_conversion(parser);
+  g_return_val_if_fail(found >= 0, FALSE);
+  const gsize index = (gsize)found;
+  const gchar *word = daria_conversions[index].word;
+  const DariaValueKind source_kind = daria_conversions[index].source;
+  DariaOperand left;
+  DariaOperand right;
+  memset(&right, 0, sizeof(right));
   if (!daria_advance(parser, error) ||
-      !daria_parse_value_of_kind(
-          parser, to_f32 ? DARIA_VALUE_I32 : DARIA_VALUE_F32,
-          to_f32 ? "to_f32" : "to_i32", &source, error)) {
+      !daria_parse_value_of_kind(parser, source_kind, word, &left, error) ||
+      (daria_conversions[index].is_binary &&
+       !daria_parse_value_of_kind(parser, source_kind, word, &right, error))) {
     return FALSE;
   }
-  DariaOp *op = daria_emit(
-      parser, to_f32 ? DARIA_OP_CONVERT_TO_F32 : DARIA_OP_CONVERT_TO_I32,
-      &start);
+  DariaOp *op = daria_emit(parser, daria_conversions[index].op, &start);
   op->slot = slot;
-  op->left = source;
-  *kind = to_f32 ? DARIA_VALUE_F32 : DARIA_VALUE_I32;
+  op->left = left;
+  op->right = right;
+  *kind = daria_conversions[index].result;
   return TRUE;
-}
-
-static gboolean daria_at_conversion(const DariaParser *parser) {
-  return daria_at_word(parser, "to_f32") || daria_at_word(parser, "to_i32");
 }
 
 gboolean daria_parse_var(DariaParser *parser, GError **error) {

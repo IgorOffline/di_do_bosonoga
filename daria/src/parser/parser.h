@@ -28,7 +28,8 @@
 //   update     := conversion
 //               | ("to_add" | "to_subtract" | "to_multiply" | "to_divide")
 //               value+
-//   conversion := ("to_f32" | "to_i32") value
+//   conversion := ("to_f32" | "to_i32" | "to_sin" | "to_cos") value
+//               | "to_atan2" value value
 //   condition  := comparison (("and" | "or") comparison)*
 //   comparison := value compare value
 //   compare    := "gt" | "lt" | "eq" | "not_eq" | "eq_3" | "eq_6" | "not_eq_3"
@@ -48,7 +49,9 @@
 // other values from the first, and negates a single value. to_divide divides
 // the first value by the others, and inverts a single value, so it is 1 divided
 // by that value. Dividing an i32 truncates toward zero, and dividing by zero is
-// a runtime error.
+// a runtime error. to_sin, to_cos and to_atan2 work on f32 angles in radians.
+// to_atan2 takes y and then x, like atan2 in C, and gives an angle from -pi to
+// pi, which is 0 when both are 0.
 //
 // A gfx program has one gfx_main and at most one of each other section, in any
 // order, except that gfx_global must be the first. A callback, which is any
@@ -115,6 +118,9 @@ typedef enum {
   DARIA_OP_FLAGS_OR,              // slot |= left
   DARIA_OP_CONVERT_TO_F32,        // slot = left, as f32
   DARIA_OP_CONVERT_TO_I32,        // slot = left, truncated to i32
+  DARIA_OP_SIN,                   // slot = sin(left)
+  DARIA_OP_COS,                   // slot = cos(left)
+  DARIA_OP_ATAN2,                 // slot = atan2(left, right)
   DARIA_OP_ACCUMULATOR_LOAD,      // accumulator = left
   DARIA_OP_ACCUMULATOR_ADD,       // accumulator += left
   DARIA_OP_ACCUMULATOR_SUBTRACT,  // accumulator -= left

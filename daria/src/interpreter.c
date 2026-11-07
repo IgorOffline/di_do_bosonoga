@@ -1,5 +1,6 @@
 #include "interpreter.h"
 
+#include <math.h>
 #include <stdarg.h>
 
 #include "daria.h"
@@ -188,6 +189,27 @@ static DariaExecutionState daria_execute(DariaExecution *execution,
         slots[op->slot].kind = DARIA_VALUE_I32;
         slots[op->slot].i32 = (gint32)left->f32;
         break;
+      // The result is computed before it is stored, because the slot can be
+      // that of left or right, as in set a to_sin a.
+      case DARIA_OP_SIN: {
+        const gfloat result = (gfloat)sin((gdouble)left->f32);
+        slots[op->slot].kind = DARIA_VALUE_F32;
+        slots[op->slot].f32 = result;
+        break;
+      }
+      case DARIA_OP_COS: {
+        const gfloat result = (gfloat)cos((gdouble)left->f32);
+        slots[op->slot].kind = DARIA_VALUE_F32;
+        slots[op->slot].f32 = result;
+        break;
+      }
+      case DARIA_OP_ATAN2: {
+        const gfloat result =
+            (gfloat)atan2((gdouble)left->f32, (gdouble)right->f32);
+        slots[op->slot].kind = DARIA_VALUE_F32;
+        slots[op->slot].f32 = result;
+        break;
+      }
       case DARIA_OP_ACCUMULATOR_LOAD:
         if (left->kind == DARIA_VALUE_F32) {
           accumulator->real = (gdouble)left->f32;
