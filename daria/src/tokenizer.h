@@ -7,6 +7,7 @@ typedef enum {
   DARIA_TOKEN_END,
   DARIA_TOKEN_WORD,
   DARIA_TOKEN_INTEGER,
+  DARIA_TOKEN_REAL,
   DARIA_TOKEN_STRING,
 } DariaTokenKind;
 
@@ -17,6 +18,7 @@ typedef struct {
   gsize line;
   gsize column;
   gint32 integer;
+  gfloat real;
 } DariaToken;
 
 typedef struct {
