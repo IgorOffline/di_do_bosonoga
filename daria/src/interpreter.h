@@ -8,16 +8,18 @@
 typedef struct _DariaExecution DariaExecution;
 
 typedef struct {
-  gfloat position[3];
+  gfloat x;
+  gfloat y;
+  gfloat width;
+  gfloat height;
   DariaColorName color;
-} DariaGfxVertex;
+} DariaGfxRectangle;
 
-// What the gfx statements ask for. The interpreter only records it here, so
-// that it can run without a window, and whoever owns the window acts on it.
+// What the statements of a gfx_frame ask for. The interpreter only records it
+// here, and whoever owns the window acts on it.
 typedef struct {
-  GArray *vertices;            // Of DariaGfxVertex, added to by gfx_vertex.
+  GArray *rectangles;          // Of DariaGfxRectangle, from draw_rectangle.
   DariaColorName clear_color;  // Set by gfx_clear.
-  gboolean draw;               // Set by gfx_draw.
 } DariaGfxScene;
 
 typedef enum {
@@ -28,9 +30,9 @@ typedef enum {
 } DariaExecutionState;
 
 // Returns a new execution of a section of the program, which must outlive it.
-// The gfx statements record in scene, which must also outlive it, or do nothing
-// if scene is NULL. What the info statements print is appended to output or, if
-// output is NULL, goes to stdout.
+// The statements of a gfx_frame record in scene, which must also outlive it and
+// can only be NULL for other sections. What the info statements print is
+// appended to output or, if output is NULL, goes to stdout.
 DariaExecution *daria_execution_new(const DariaProgram *program,
                                     DariaSection section, DariaGfxScene *scene,
                                     GString *output);

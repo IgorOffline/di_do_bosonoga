@@ -1,30 +1,9 @@
 // main.bosonoga
 
-gfx_init
-di
-  var position_0 is 0d0_f32
-  var position_1 is 0d5_f32
-  var position_2 is 0d5_f32
-  var color_0 is color_triangle
-  gfx_vertex position_0 position_1 position_2 color_0
-
-  var position_3 is 0d5_f32
-  var position_4 is -0d5_f32
-  var position_5 is 0d5_f32
-  var color_1 is color_triangle
-  gfx_vertex position_3 position_4 position_5 color_1
-
-  var position_6 is -0d5_f32
-  var position_7 is -0d5_f32
-  var position_8 is 0d5_f32
-  var color_2 is color_triangle
-  gfx_vertex position_6 position_7 position_8 color_2
-do
-
 gfx_frame
 di
   gfx_clear color_background
-  gfx_draw
+  draw_rectangle 120d0_f32 240d0_f32 32d0_f32 18d0_f32 color_rectangle
 do
 
 gfx_main

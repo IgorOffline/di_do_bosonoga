@@ -93,54 +93,23 @@ static gboolean daria_parse_return(DariaParser *parser, const DariaToken *start,
   return daria_advance(parser, error);
 }
 
-// Checks that the statement, located at the token, is in the only section that
-// can have it.
-static gboolean daria_check_section(const DariaParser *parser,
-                                    const DariaToken *start,
-                                    DariaSection section,
-                                    const gchar *section_word, GError **error) {
-  if (parser->section == section) {
+// Checks that the statement, located at the token, is in gfx_frame, the only
+// section that can have it.
+static gboolean daria_check_in_frame(const DariaParser *parser,
+                                     const DariaToken *start, GError **error) {
+  if (parser->section == DARIA_SECTION_GFX_FRAME) {
     return TRUE;
   }
   g_autofree gchar *shown = daria_token_shown(start);
   return daria_fail_at(parser, start, error, DARIA_ERROR_SYNTAX,
-                       "%s can only be in %s", shown, section_word);
-}
-
-// Parses a gfx_vertex statement, whose keyword is already consumed.
-static gboolean daria_parse_gfx_vertex(DariaParser *parser,
-                                       const DariaToken *start,
-                                       GError **error) {
-  DariaOperand x;
-  DariaOperand y;
-  DariaOperand z;
-  DariaOperand color;
-  if (!daria_check_section(parser, start, DARIA_SECTION_GFX_INIT, "gfx_init",
-                           error) ||
-      !daria_parse_value_of_kind(parser, DARIA_VALUE_F32, "gfx_vertex", &x,
-                                 error) ||
-      !daria_parse_value_of_kind(parser, DARIA_VALUE_F32, "gfx_vertex", &y,
-                                 error) ||
-      !daria_parse_value_of_kind(parser, DARIA_VALUE_F32, "gfx_vertex", &z,
-                                 error) ||
-      !daria_parse_value_of_kind(parser, DARIA_VALUE_COLOR, "gfx_vertex",
-                                 &color, error)) {
-    return FALSE;
-  }
-  DariaOp *op = daria_emit(parser, DARIA_OP_GFX_VERTEX, start);
-  op->left = x;
-  op->right = y;
-  op->third = z;
-  op->fourth = color;
-  return TRUE;
+                       "%s can only be in gfx_frame", shown);
 }
 
 // Parses a gfx_clear statement, whose keyword is already consumed.
 static gboolean daria_parse_gfx_clear(DariaParser *parser,
                                       const DariaToken *start, GError **error) {
   DariaOperand color;
-  if (!daria_check_section(parser, start, DARIA_SECTION_GFX_FRAME, "gfx_frame",
-                           error) ||
+  if (!daria_check_in_frame(parser, start, error) ||
       !daria_parse_value_of_kind(parser, DARIA_VALUE_COLOR, "gfx_clear", &color,
                                  error)) {
     return FALSE;
@@ -149,14 +118,33 @@ static gboolean daria_parse_gfx_clear(DariaParser *parser,
   return TRUE;
 }
 
-// Parses a gfx_draw statement, whose keyword is already consumed.
-static gboolean daria_parse_gfx_draw(DariaParser *parser,
-                                     const DariaToken *start, GError **error) {
-  if (!daria_check_section(parser, start, DARIA_SECTION_GFX_FRAME, "gfx_frame",
-                           error)) {
+// Parses a draw_rectangle statement, whose keyword is already consumed.
+static gboolean daria_parse_draw_rectangle(DariaParser *parser,
+                                           const DariaToken *start,
+                                           GError **error) {
+  const gchar *context = "draw_rectangle";
+  DariaOperand x;
+  DariaOperand y;
+  DariaOperand width;
+  DariaOperand height;
+  DariaOperand color;
+  if (!daria_check_in_frame(parser, start, error) ||
+      !daria_parse_value_of_kind(parser, DARIA_VALUE_F32, context, &x, error) ||
+      !daria_parse_value_of_kind(parser, DARIA_VALUE_F32, context, &y, error) ||
+      !daria_parse_value_of_kind(parser, DARIA_VALUE_F32, context, &width,
+                                 error) ||
+      !daria_parse_value_of_kind(parser, DARIA_VALUE_F32, context, &height,
+                                 error) ||
+      !daria_parse_value_of_kind(parser, DARIA_VALUE_COLOR, context, &color,
+                                 error)) {
     return FALSE;
   }
-  daria_emit(parser, DARIA_OP_GFX_DRAW, start);
+  DariaOp *op = daria_emit(parser, DARIA_OP_DRAW_RECTANGLE, start);
+  op->left = x;
+  op->right = y;
+  op->third = width;
+  op->fourth = height;
+  op->fifth = color;
   return TRUE;
 }
 
@@ -172,9 +160,8 @@ static gboolean daria_parse_statement(DariaParser *parser, GError **error) {
       !daria_token_is_word(&start, "nihil") &&
       !daria_token_is_word(&start, "sleep_ms") &&
       !daria_token_is_word(&start, "return") &&
-      !daria_token_is_word(&start, "gfx_vertex") &&
       !daria_token_is_word(&start, "gfx_clear") &&
-      !daria_token_is_word(&start, "gfx_draw")) {
+      !daria_token_is_word(&start, "draw_rectangle")) {
     return daria_parse_error(parser, "a statement", error);
   }
   if (!daria_advance(parser, error)) {
@@ -199,14 +186,11 @@ static gboolean daria_parse_statement(DariaParser *parser, GError **error) {
   if (daria_token_is_word(&start, "return")) {
     return daria_parse_return(parser, &start, error);
   }
-  if (daria_token_is_word(&start, "gfx_vertex")) {
-    return daria_parse_gfx_vertex(parser, &start, error);
-  }
   if (daria_token_is_word(&start, "gfx_clear")) {
     return daria_parse_gfx_clear(parser, &start, error);
   }
-  if (daria_token_is_word(&start, "gfx_draw")) {
-    return daria_parse_gfx_draw(parser, &start, error);
+  if (daria_token_is_word(&start, "draw_rectangle")) {
+    return daria_parse_draw_rectangle(parser, &start, error);
   }
   return TRUE;  // nihil
 }
