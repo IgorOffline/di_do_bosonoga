@@ -25,8 +25,7 @@ static gboolean daria_run_main_program(const DariaSettings *settings,
     return FALSE;
   }
   if (program->is_gfx) {
-    return daria_gfx_run(program, settings->gfx_width, settings->gfx_height,
-                         exit_status, error);
+    return daria_gfx_run(program, settings, exit_status, error);
   }
   return daria_run(program, NULL, exit_status, error);
 }
@@ -63,7 +62,7 @@ int main(int argc, char **argv) {
     return DARIA_EXIT_SUCCESS;
   }
 
-  g_auto(DariaSettings) settings = {NULL, NULL, 0, 0};
+  g_auto(DariaSettings) settings = {0};
   if (!daria_read_settings(&settings, &error)) {
     g_printerr("%s\n", error->message);
     return DARIA_EXIT_FAILURE;

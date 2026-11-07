@@ -7,6 +7,19 @@
 
 typedef struct _DariaExecution DariaExecution;
 
+typedef struct {
+  gfloat position[3];
+  DariaColorName color;
+} DariaGfxVertex;
+
+// What the gfx statements ask for. The interpreter only records it here, so
+// that it can run without a window, and whoever owns the window acts on it.
+typedef struct {
+  GArray *vertices;            // Of DariaGfxVertex, added to by gfx_vertex.
+  DariaColorName clear_color;  // Set by gfx_clear.
+  gboolean draw;               // Set by gfx_draw.
+} DariaGfxScene;
+
 typedef enum {
   DARIA_EXECUTION_RUNNING,   // Used up its ops and has more to run.
   DARIA_EXECUTION_SLEEPING,  // Is in a sleep_ms statement.
@@ -15,10 +28,12 @@ typedef enum {
 } DariaExecutionState;
 
 // Returns a new execution of a section of the program, which must outlive it.
-// What the info statements print is appended to output or, if output is NULL,
-// goes to stdout.
+// The gfx statements record in scene, which must also outlive it, or do nothing
+// if scene is NULL. What the info statements print is appended to output or, if
+// output is NULL, goes to stdout.
 DariaExecution *daria_execution_new(const DariaProgram *program,
-                                    DariaSection section, GString *output);
+                                    DariaSection section, DariaGfxScene *scene,
+                                    GString *output);
 
 void daria_execution_free(DariaExecution *execution);
 
@@ -32,10 +47,11 @@ DariaExecutionState daria_execution_advance(DariaExecution *execution,
                                             GError **error);
 
 // Runs a section of the program until it ends, and blocks while it sleeps.
-// Output is the same as in daria_execution_new, and returns whether there was
-// no error.
+// Scene and output are the same as in daria_execution_new, and returns whether
+// there was no error.
 gboolean daria_run_section(const DariaProgram *program, DariaSection section,
-                           GString *output, gint *exit_status, GError **error);
+                           DariaGfxScene *scene, GString *output,
+                           gint *exit_status, GError **error);
 
 // Runs the program from daria_parse without a window, see parser.h. Output is
 // the same as in daria_execution_new. Returns whether there was no error, and

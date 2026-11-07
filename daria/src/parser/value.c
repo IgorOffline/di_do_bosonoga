@@ -43,9 +43,12 @@ gboolean daria_at_value(const DariaParser *parser) {
     case DARIA_TOKEN_INTEGER:
     case DARIA_TOKEN_REAL:
       return TRUE;
-    case DARIA_TOKEN_WORD:
+    case DARIA_TOKEN_WORD: {
+      DariaColorName color;
       return !daria_token_is_reserved(token) ||
-             daria_token_is_numbered(token, DARIA_SHIFT_PREFIX);
+             daria_token_is_numbered(token, DARIA_SHIFT_PREFIX) ||
+             daria_token_color(token, &color);
+    }
     case DARIA_TOKEN_END:
     case DARIA_TOKEN_UNSIGNED:
     case DARIA_TOKEN_STRING:
@@ -62,6 +65,7 @@ gboolean daria_parse_value(DariaParser *parser, DariaOperand *operand,
   }
 
   memset(operand, 0, sizeof(*operand));
+  DariaColorName color;
   if (token->kind == DARIA_TOKEN_INTEGER) {
     operand->literal.kind = DARIA_VALUE_I32;
     operand->literal.i32 = token->integer;
@@ -79,6 +83,9 @@ gboolean daria_parse_value(DariaParser *parser, DariaOperand *operand,
     }
     operand->literal.kind = DARIA_VALUE_FLAGS;
     operand->literal.flags = 1U << bit;
+  } else if (daria_token_color(token, &color)) {
+    operand->literal.kind = DARIA_VALUE_COLOR;
+    operand->literal.color = color;
   } else {
     const DariaVariable *variable = daria_find_variable(parser, token);
     if (variable == NULL) {

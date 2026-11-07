@@ -3,6 +3,8 @@
 
 #include <glib.h>
 
+#include "daria.h"
+
 // The grammar of a .bosonoga program, in which whitespace only separates tokens
 // and // starts a comment that runs to the end of the line:
 //
@@ -18,6 +20,9 @@
 //               | "nihil"
 //               | "sleep_ms" UNSIGNED
 //               | "return" ("exit_success" | "exit_failure")
+//               | "gfx_vertex" value value value value
+//               | "gfx_clear" value
+//               | "gfx_draw"
 //   argument   := value | STRING
 //   initial    := conversion | value ("shift_or" value)*
 //   update     := conversion | ("to_add" | "to_subtract") value+
@@ -26,11 +31,12 @@
 //   comparison := value compare value
 //   compare    := "gt" | "lt" | "eq" | "not_eq" | "eq_3" | "eq_6" | "not_eq_3"
 //               | "not_eq_6" | "shift_has"
-//   value      := INTEGER | REAL | SHIFT | NAME
+//   value      := INTEGER | REAL | SHIFT | COLOR | NAME
 //   INTEGER    := "-"? digit+ "_i32"
 //   UNSIGNED   := digit+ "_u32"
 //   REAL       := "-"? digit+ ("d" digit+)? "_f32"
 //   SHIFT      := "shift_" digit+
+//   COLOR      := "color_background" | "color_triangle"
 //   LOOP       := "to_" digit+
 //
 // "and" binds tighter than "or". A variable is visible until the end of its
@@ -45,6 +51,14 @@
 // which closes the window. As a test there is no window and no frames, so
 // gfx_frame does not run, and the others run in the order gfx_init, gfx_main,
 // gfx_cleanup.
+//
+// A COLOR names a color of the [color] group of regina.ini, whose value is only
+// looked up when a window is open, and it can be stored and printed but not
+// computed with. Only gfx_init can have gfx_vertex, which adds a vertex with
+// the f32 values x, y and z and a color. Only gfx_frame can have gfx_clear,
+// which sets the color that the frame is cleared to before anything is drawn,
+// by default color_background, and gfx_draw, which makes the frame draw all
+// vertices as triangles.
 
 // Where the execution of a program can start.
 typedef enum {
@@ -59,6 +73,7 @@ typedef enum {
   DARIA_VALUE_I32,
   DARIA_VALUE_F32,
   DARIA_VALUE_FLAGS,
+  DARIA_VALUE_COLOR,
 } DariaValueKind;
 
 typedef struct {
@@ -67,6 +82,7 @@ typedef struct {
     gint32 i32;
     gfloat f32;
     guint32 flags;
+    DariaColorName color;
   };
 } DariaValue;
 
@@ -109,6 +125,9 @@ typedef enum {
   DARIA_OP_RETURN,                // Ends the program with status integer.
   DARIA_OP_MISSING_RETURN,        // Fails: the program ended without a return.
   DARIA_OP_SECTION_END,           // Ends a callback section.
+  DARIA_OP_GFX_VERTEX,            // Adds a vertex: left, right, third, fourth.
+  DARIA_OP_GFX_CLEAR,             // Sets the clear color of the frame to left.
+  DARIA_OP_GFX_DRAW,              // Makes the frame draw the vertices.
 } DariaOpKind;
 
 typedef struct {
@@ -122,7 +141,9 @@ typedef struct {
   guint32 milliseconds;
   DariaOperand left;
   DariaOperand right;
-  const gchar *text;  // Slice of the source, without the quotes.
+  DariaOperand third;   // Only of DARIA_OP_GFX_VERTEX.
+  DariaOperand fourth;  // Only of DARIA_OP_GFX_VERTEX.
+  const gchar *text;    // Slice of the source, without the quotes.
   gsize length;
 } DariaOp;
 

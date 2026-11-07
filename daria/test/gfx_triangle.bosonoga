@@ -1,0 +1,23 @@
+// gfx_triangle.bosonoga
+
+gfx_init
+di
+  var position_0 is 0d0_f32
+  var position_1 is 0d5_f32
+  var position_2 is 0d5_f32
+  var color_0 is color_triangle
+  gfx_vertex position_0 position_1 position_2 color_0
+  gfx_vertex 0d5_f32 -0d5_f32 0d5_f32 color_background
+  info position_1 " " position_2 " " color_0 " " color_background
+do
+
+gfx_frame
+di
+  gfx_clear color_background
+  gfx_draw
+do
+
+gfx_main
+di
+  return exit_success
+do

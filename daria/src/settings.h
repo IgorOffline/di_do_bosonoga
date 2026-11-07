@@ -3,11 +3,16 @@
 
 #include <glib.h>
 
+#include "daria.h"
+
+#define DARIA_COLOR_CHANNELS 4
+
 typedef struct {
   gchar *name;
   gchar *version;
   gint gfx_width;
   gint gfx_height;
+  gfloat colors[DARIA_COLOR_COUNT][DARIA_COLOR_CHANNELS];  // Opaque RGBA.
 } DariaSettings;
 
 void daria_settings_clear(DariaSettings *settings);

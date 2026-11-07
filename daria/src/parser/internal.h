@@ -26,7 +26,7 @@ typedef struct {
   GArray *variables;  // Of DariaVariable, the ones visible at the cursor.
   guint slot_count;
   guint block_depth;
-  gboolean in_callback;  // Whether the cursor is in a callback section.
+  DariaSection section;  // The section that the cursor is in.
   gboolean has_section[DARIA_SECTION_COUNT];
   DariaProgram *program;
 } DariaParser;
@@ -38,6 +38,9 @@ gboolean daria_token_is_word(const DariaToken *token, const gchar *word);
 // Returns whether the token is a word made of the prefix
 // and at least one digit.
 gboolean daria_token_is_numbered(const DariaToken *token, const gchar *prefix);
+
+// Returns whether the token is the word of a color, and stores which in color.
+gboolean daria_token_color(const DariaToken *token, DariaColorName *color);
 
 gboolean daria_token_is_reserved(const DariaToken *token);
 
