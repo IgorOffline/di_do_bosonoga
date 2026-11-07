@@ -44,10 +44,11 @@ gboolean daria_at_value(const DariaParser *parser) {
     case DARIA_TOKEN_REAL:
       return TRUE;
     case DARIA_TOKEN_WORD: {
-      guint32 color = 0;
+      DariaValue value;
       return !daria_token_is_reserved(parser, token) ||
              daria_token_is_numbered(token, DARIA_SHIFT_PREFIX) ||
-             daria_token_color(parser, token, &color);
+             daria_token_is_word(token, DARIA_DELTA_TIME_WORD) ||
+             daria_token_setting(parser, token, &value);
     }
     case DARIA_TOKEN_END:
     case DARIA_TOKEN_UNSIGNED:
@@ -65,7 +66,6 @@ gboolean daria_parse_value(DariaParser *parser, DariaOperand *operand,
   }
 
   memset(operand, 0, sizeof(*operand));
-  guint32 color = 0;
   if (token->kind == DARIA_TOKEN_INTEGER) {
     operand->literal.kind = DARIA_VALUE_I32;
     operand->literal.i32 = token->integer;
@@ -83,9 +83,17 @@ gboolean daria_parse_value(DariaParser *parser, DariaOperand *operand,
     }
     operand->literal.kind = DARIA_VALUE_FLAGS;
     operand->literal.flags = 1U << bit;
-  } else if (daria_token_color(parser, token, &color)) {
-    operand->literal.kind = DARIA_VALUE_COLOR;
-    operand->literal.color = color;
+  } else if (daria_token_is_word(token, DARIA_DELTA_TIME_WORD)) {
+    if (parser->section != DARIA_SECTION_GFX_FRAME) {
+      return daria_fail_at(parser, token, error, DARIA_ERROR_SYNTAX,
+                           "%s can only be in gfx_frame",
+                           DARIA_DELTA_TIME_WORD);
+    }
+    operand->literal.kind = DARIA_VALUE_F32;
+    operand->is_variable = TRUE;
+    operand->slot = parser->delta_time_slot;
+  } else if (daria_token_setting(parser, token, &operand->literal)) {
+    // The value of a color or global is known now, so it is a literal.
   } else {
     const DariaVariable *variable = daria_find_variable(parser, token);
     if (variable == NULL) {

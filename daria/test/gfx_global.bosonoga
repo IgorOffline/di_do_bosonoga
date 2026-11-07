@@ -1,0 +1,35 @@
+// gfx_global.bosonoga
+
+gfx_global
+di
+  var counter is 1_i32
+  var speed is global_speed
+  if counter eq 1_i32
+  di
+    var only_here is 7_i32
+    info "global " only_here
+  do
+do
+
+gfx_init
+di
+  info "init " counter " " speed
+  set counter to_add counter 1_i32
+do
+
+gfx_frame
+di
+  set speed to_add speed gfx_delta_time
+do
+
+gfx_cleanup
+di
+  info "cleanup " counter
+do
+
+gfx_main
+di
+  set counter to_multiply counter 10_i32
+  info "main " counter
+  return exit_success
+do

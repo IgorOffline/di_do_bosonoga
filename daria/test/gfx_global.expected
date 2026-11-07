@@ -1,0 +1,4 @@
+global 7
+init 1 100
+main 20
+cleanup 20
