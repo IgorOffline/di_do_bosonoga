@@ -1,0 +1,42 @@
+// multiply_divide.bosonoga
+
+main
+di
+  var whole is 0_i32
+  set whole to_multiply 2_i32 3_i32 7_i32
+  info whole
+  set whole to_multiply 9_i32
+  info whole
+  set whole to_multiply -4_i32 5_i32
+  info whole
+  var squared is 5_i32
+  set squared to_multiply squared squared
+  info squared
+  set whole to_multiply 100000_i32 100000_i32 0_i32
+  info whole
+
+  set whole to_divide 100_i32 5_i32 2_i32
+  info whole
+  set whole to_divide 7_i32 2_i32
+  info whole
+  set whole to_divide -7_i32 2_i32
+  info whole
+  set whole to_divide -1_i32
+  info whole
+  set whole to_divide 4_i32
+  info whole
+
+  var real is 0d0_f32
+  set real to_multiply 1d5_f32 2d0_f32 0d5_f32
+  info real
+  set real to_multiply 9d5_f32
+  info real
+  set real to_divide 7d0_f32 2d0_f32
+  info real
+  set real to_divide 4d0_f32
+  info real
+  set real to_divide -0d5_f32
+  info real
+
+  return exit_success
+do

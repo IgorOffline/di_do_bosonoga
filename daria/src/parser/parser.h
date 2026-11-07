@@ -24,7 +24,9 @@
 //               | "draw_rectangle" value value value value value
 //   argument   := value | STRING
 //   initial    := conversion | value ("shift_or" value)*
-//   update     := conversion | ("to_add" | "to_subtract") value+
+//   update     := conversion
+//               | ("to_add" | "to_subtract" | "to_multiply" | "to_divide")
+//               value+
 //   conversion := ("to_f32" | "to_i32") value
 //   condition  := comparison (("and" | "or") comparison)*
 //   comparison := value compare value
@@ -40,7 +42,10 @@
 //
 // "and" binds tighter than "or". A variable is visible until the end of its
 // block and cannot hide another visible variable. to_subtract subtracts the
-// other values from the first, and negates a single value.
+// other values from the first, and negates a single value. to_divide divides
+// the first value by the others, and inverts a single value, so it is 1 divided
+// by that value. Dividing an i32 truncates toward zero, and dividing by zero is
+// a runtime error.
 //
 // A gfx program has one gfx_main and at most one of each other section, in any
 // order. Sections share no variables, and a callback cannot return. A window is
@@ -117,6 +122,8 @@ typedef enum {
   DARIA_OP_ACCUMULATOR_LOAD,      // accumulator = left
   DARIA_OP_ACCUMULATOR_ADD,       // accumulator += left
   DARIA_OP_ACCUMULATOR_SUBTRACT,  // accumulator -= left
+  DARIA_OP_ACCUMULATOR_MULTIPLY,  // accumulator *= left
+  DARIA_OP_ACCUMULATOR_DIVIDE,    // accumulator /= left
   DARIA_OP_ACCUMULATOR_STORE,     // slot = accumulator
   DARIA_OP_JUMP,                  // Continues at target.
   DARIA_OP_JUMP_UNLESS,           // Continues at target if compare is false.
