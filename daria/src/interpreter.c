@@ -210,6 +210,43 @@ static DariaExecutionState daria_execute(DariaExecution *execution,
         slots[op->slot].f32 = result;
         break;
       }
+      case DARIA_OP_SQRT: {
+        if (left->f32 < 0.0f) {
+          gchar text[G_ASCII_DTOSTR_BUF_SIZE];
+          daria_runtime_error(program, op, error,
+                              "to_sqrt of a negative number (%s)",
+                              daria_format_real(text, (gdouble)left->f32));
+          return DARIA_EXECUTION_FAILED;
+        }
+        const gfloat result = (gfloat)sqrt((gdouble)left->f32);
+        slots[op->slot].kind = DARIA_VALUE_F32;
+        slots[op->slot].f32 = result;
+        break;
+      }
+      case DARIA_OP_POW: {
+        const gdouble result = pow((gdouble)left->f32, (gdouble)right->f32);
+        if (isnan(result)) {
+          gchar base[G_ASCII_DTOSTR_BUF_SIZE];
+          gchar exponent[G_ASCII_DTOSTR_BUF_SIZE];
+          daria_runtime_error(
+              program, op, error,
+              "to_pow of a negative number (%s) to a fractional power (%s)",
+              daria_format_real(base, (gdouble)left->f32),
+              daria_format_real(exponent, (gdouble)right->f32));
+          return DARIA_EXECUTION_FAILED;
+        }
+        // Infinity, from overflow or from 0 to a negative power, is outside.
+        if (!(ABS(result) <= (gdouble)G_MAXFLOAT)) {
+          gchar text[G_ASCII_DTOSTR_BUF_SIZE];
+          daria_runtime_error(program, op, error,
+                              "the result (%s) is outside the f32 range",
+                              daria_format_real(text, result));
+          return DARIA_EXECUTION_FAILED;
+        }
+        slots[op->slot].kind = DARIA_VALUE_F32;
+        slots[op->slot].f32 = (gfloat)result;
+        break;
+      }
       case DARIA_OP_ACCUMULATOR_LOAD:
         if (left->kind == DARIA_VALUE_F32) {
           accumulator->real = (gdouble)left->f32;
