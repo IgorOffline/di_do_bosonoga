@@ -3,7 +3,7 @@
 
 #include <glib.h>
 
-#include "parser.h"
+#include "parser/parser.h"
 
 // Runs the program from daria_parse in a window of the given size until
 // gfx_main returns, see parser.h, and prints what its info statements print to

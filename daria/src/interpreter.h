@@ -3,7 +3,7 @@
 
 #include <glib.h>
 
-#include "parser.h"
+#include "parser/parser.h"
 
 typedef struct _DariaExecution DariaExecution;
 
