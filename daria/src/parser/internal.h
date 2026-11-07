@@ -12,6 +12,7 @@
 
 #define DARIA_SHIFT_PREFIX "shift_"
 #define DARIA_LOOP_PREFIX "to_"
+#define DARIA_COLOR_PREFIX "color_"
 
 typedef struct {
   const gchar *name;  // Slice of the source.
@@ -29,6 +30,7 @@ typedef struct {
   DariaSection section;  // The section that the cursor is in.
   gboolean has_section[DARIA_SECTION_COUNT];
   DariaProgram *program;
+  const DariaSettings *settings;
 } DariaParser;
 
 // support.c: tokens, errors and ops.
@@ -39,10 +41,13 @@ gboolean daria_token_is_word(const DariaToken *token, const gchar *word);
 // and at least one digit.
 gboolean daria_token_is_numbered(const DariaToken *token, const gchar *prefix);
 
-// Returns whether the token is the word of a color, and stores which in color.
-gboolean daria_token_color(const DariaToken *token, DariaColorName *color);
+// Returns whether the token is the color prefix and a key of the [color] group
+// of the settings, and stores the value of the key in color.
+gboolean daria_token_color(const DariaParser *parser, const DariaToken *token,
+                           guint32 *color);
 
-gboolean daria_token_is_reserved(const DariaToken *token);
+gboolean daria_token_is_reserved(const DariaParser *parser,
+                                 const DariaToken *token);
 
 // Reads the digits after the prefix of a word
 // that daria_token_is_numbered accepted.

@@ -132,7 +132,7 @@ static void daria_print_value(GString *output, const DariaValue *value) {
       g_string_append_printf(output, "%" G_GUINT32_FORMAT, value->flags);
       break;
     case DARIA_VALUE_COLOR:
-      g_string_append(output, daria_color_word(value->color));
+      g_string_append_printf(output, "%06" G_GINT32_MODIFIER "X", value->color);
       break;
   }
 }

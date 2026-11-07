@@ -3,7 +3,7 @@
 
 #include <glib.h>
 
-#include "daria.h"
+#include "settings.h"
 
 // The grammar of a .bosonoga program, in which whitespace only separates tokens
 // and // starts a comment that runs to the end of the line:
@@ -35,7 +35,7 @@
 //   UNSIGNED   := digit+ "_u32"
 //   REAL       := "-"? digit+ ("d" digit+)? "_f32"
 //   SHIFT      := "shift_" digit+
-//   COLOR      := "color_background" | "color_rectangle"
+//   COLOR      := "color_" KEY
 //   LOOP       := "to_" digit+
 //
 // "and" binds tighter than "or". A variable is visible until the end of its
@@ -51,14 +51,15 @@
 // gfx_frame does not run, and the others run in the order gfx_init, gfx_main,
 // gfx_cleanup.
 //
-// A COLOR names a color of the [color] group of regina.ini, whose value is only
-// looked up when a window is open, and it can be stored and printed but not
-// computed with. Only gfx_frame can have gfx_clear, which sets the color that
-// the frame is cleared to before anything is drawn, by default
-// color_background, and draw_rectangle, whose f32 values are x, y, width and
-// height in pixels, with the origin in the top left corner of the window and y
-// growing down, and whose last value is a color. Later rectangles of a frame
-// cover earlier ones.
+// A KEY is any key of the [color] group of regina.ini, so that group decides
+// which COLOR words exist, and a word like color_0 without a key is an ordinary
+// name. A COLOR is the value of its key, which is printed as RRGGBB, and it can
+// be stored and printed but not computed with. Only gfx_frame can have
+// gfx_clear, which sets the color that the frame is cleared to before anything
+// is drawn, by default color_background, and draw_rectangle, whose f32 values
+// are x, y, width and height in pixels, with the origin in the top left corner
+// of the window and y growing down, and whose last value is a color. Later
+// rectangles of a frame cover earlier ones.
 
 // Where the execution of a program can start.
 typedef enum {
@@ -82,7 +83,7 @@ typedef struct {
     gint32 i32;
     gfloat f32;
     guint32 flags;
-    DariaColorName color;
+    guint32 color;  // 0xRRGGBB
   };
 } DariaValue;
 
@@ -159,9 +160,10 @@ typedef struct {
 
 // Returns a new program, or NULL on failure. The program points into path and
 // source, which must outlive it. Path is only used in error messages, so it
-// must be UTF-8.
+// must be UTF-8. The settings decide which colors exist, and are not used after
+// this returns.
 DariaProgram *daria_parse(const gchar *path, const gchar *source, gsize length,
-                          GError **error);
+                          const DariaSettings *settings, GError **error);
 
 void daria_program_free(DariaProgram *program);
 

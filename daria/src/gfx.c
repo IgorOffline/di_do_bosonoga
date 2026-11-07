@@ -18,6 +18,7 @@
 #define DARIA_GFX_FRAME_MICROSECONDS (G_USEC_PER_SEC / 60)
 // A rectangle is drawn as two triangles.
 #define DARIA_GFX_VERTICES_PER_RECTANGLE 6U
+#define DARIA_GFX_COLOR_CHANNELS 4
 
 static const gchar daria_gfx_vertex_shader[] =
     "#version 330\n"
@@ -40,7 +41,7 @@ static const gchar daria_gfx_fragment_shader[] =
 // A vertex as the GPU reads it, in the order of the attributes.
 typedef struct {
   gfloat position[2];
-  gfloat color[DARIA_COLOR_CHANNELS];
+  gfloat color[DARIA_GFX_COLOR_CHANNELS];
 } DariaGfxGpuVertex;
 
 typedef struct {
@@ -128,12 +129,22 @@ static void daria_gfx_wait_for_frame_time(DariaGfxRun *run) {
   }
 }
 
+// Converts 0xRRGGBB to the opaque RGBA of the GPU.
+static void daria_gfx_color_channels(
+    guint32 color, gfloat channels[DARIA_GFX_COLOR_CHANNELS]) {
+  channels[0] = (gfloat)((color >> 16) & 0xffU) / 255.0f;
+  channels[1] = (gfloat)((color >> 8) & 0xffU) / 255.0f;
+  channels[2] = (gfloat)(color & 0xffU) / 255.0f;
+  channels[3] = 1.0f;
+}
+
 // Stores the corners of a rectangle in vertices, converted from pixels to the
 // coordinates of the GPU, which go from -1 to 1 with y growing up.
 static void daria_gfx_rectangle_vertices(
     const DariaGfxRectangle *rectangle,
-    const gfloat color[DARIA_COLOR_CHANNELS],
     DariaGfxGpuVertex vertices[DARIA_GFX_VERTICES_PER_RECTANGLE]) {
+  gfloat channels[DARIA_GFX_COLOR_CHANNELS];
+  daria_gfx_color_channels(rectangle->color, channels);
   const gfloat left = 2.0f * rectangle->x / sapp_widthf() - 1.0f;
   const gfloat right =
       2.0f * (rectangle->x + rectangle->width) / sapp_widthf() - 1.0f;
@@ -146,12 +157,12 @@ static void daria_gfx_rectangle_vertices(
   };
   for (guint i = 0; i < DARIA_GFX_VERTICES_PER_RECTANGLE; ++i) {
     memcpy(vertices[i].position, corners[i], sizeof(vertices[i].position));
-    memcpy(vertices[i].color, color, sizeof(vertices[i].color));
+    memcpy(vertices[i].color, channels, sizeof(vertices[i].color));
   }
 }
 
-// Writes the rectangles of the frame to the GPU, with their colors looked up in
-// the settings, and makes the buffer larger if they do not fit.
+// Writes the rectangles of the frame to the GPU, and makes the buffer larger if
+// they do not fit.
 static void daria_gfx_upload_rectangles(DariaGfxRun *run) {
   const GArray *rectangles = run->scene.rectangles;
   if (rectangles->len == 0) {
@@ -174,10 +185,8 @@ static void daria_gfx_upload_rectangles(DariaGfxRun *run) {
   g_autofree DariaGfxGpuVertex *vertices =
       g_new(DariaGfxGpuVertex, vertex_count);
   for (guint i = 0; i < rectangles->len; ++i) {
-    const DariaGfxRectangle *rectangle =
-        &g_array_index(rectangles, DariaGfxRectangle, i);
     daria_gfx_rectangle_vertices(
-        rectangle, run->settings->colors[rectangle->color],
+        &g_array_index(rectangles, DariaGfxRectangle, i),
         &vertices[(gsize)i * DARIA_GFX_VERTICES_PER_RECTANGLE]);
   }
   sg_write_buffer_transient(&(sg_write_buffer_desc){
@@ -189,7 +198,8 @@ static void daria_gfx_upload_rectangles(DariaGfxRun *run) {
 static void daria_gfx_render_scene(DariaGfxRun *run) {
   daria_gfx_upload_rectangles(run);
   const guint rectangle_count = run->scene.rectangles->len;
-  const gfloat *clear = run->settings->colors[run->scene.clear_color];
+  gfloat clear[DARIA_GFX_COLOR_CHANNELS];
+  daria_gfx_color_channels(run->scene.clear_color, clear);
   sg_begin_pass(&(sg_pass){
       .action.colors[0] =
           {
@@ -214,7 +224,7 @@ static void daria_gfx_frame(void *user_data) {
   }
   daria_gfx_wait_for_frame_time(run);
 
-  run->scene.clear_color = DARIA_COLOR_BACKGROUND;
+  run->scene.clear_color = run->settings->background_color;
   g_array_set_size(run->scene.rectangles, 0);
   if (!daria_gfx_run_callback(run, DARIA_SECTION_GFX_FRAME)) {
     return;

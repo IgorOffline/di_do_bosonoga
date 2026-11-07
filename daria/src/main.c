@@ -20,7 +20,7 @@ static gboolean daria_run_main_program(const DariaSettings *settings,
     return FALSE;
   }
   g_autoptr(DariaProgram) program =
-      daria_parse(DARIA_MAIN_PATH, source, source_length, error);
+      daria_parse(DARIA_MAIN_PATH, source, source_length, settings, error);
   if (program == NULL) {
     return FALSE;
   }
@@ -44,12 +44,19 @@ int main(int argc, char **argv) {
     return DARIA_EXIT_FAILURE;
   }
 
+  // Programs can name the colors of the settings, tests included.
+  g_auto(DariaSettings) settings = {0};
+  if (!daria_read_settings(&settings, &error)) {
+    g_printerr("%s\n", error->message);
+    return DARIA_EXIT_FAILURE;
+  }
+
   guint passed = 0;
   guint total = 0;
   if (argc == 2) {
     total = 1;
-    passed = daria_test_passes(argv[1]) ? 1 : 0;
-  } else if (!daria_run_test_directory(&passed, &total, &error)) {
+    passed = daria_test_passes(argv[1], &settings) ? 1 : 0;
+  } else if (!daria_run_test_directory(&settings, &passed, &total, &error)) {
     g_printerr("%s\n", error->message);
     return DARIA_EXIT_FAILURE;
   }
@@ -62,11 +69,6 @@ int main(int argc, char **argv) {
     return DARIA_EXIT_SUCCESS;
   }
 
-  g_auto(DariaSettings) settings = {0};
-  if (!daria_read_settings(&settings, &error)) {
-    g_printerr("%s\n", error->message);
-    return DARIA_EXIT_FAILURE;
-  }
   g_print("%s %s\n", settings.name, settings.version);
 
   gint exit_status = DARIA_EXIT_FAILURE;

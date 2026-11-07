@@ -12,14 +12,14 @@ typedef struct {
   gfloat y;
   gfloat width;
   gfloat height;
-  DariaColorName color;
+  guint32 color;  // 0xRRGGBB
 } DariaGfxRectangle;
 
 // What the statements of a gfx_frame ask for. The interpreter only records it
 // here, and whoever owns the window acts on it.
 typedef struct {
-  GArray *rectangles;          // Of DariaGfxRectangle, from draw_rectangle.
-  DariaColorName clear_color;  // Set by gfx_clear.
+  GArray *rectangles;   // Of DariaGfxRectangle, from draw_rectangle.
+  guint32 clear_color;  // 0xRRGGBB, set by gfx_clear.
 } DariaGfxScene;
 
 typedef enum {

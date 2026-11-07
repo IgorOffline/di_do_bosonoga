@@ -109,7 +109,7 @@ static gboolean daria_parse_accumulation(DariaParser *parser,
 
 gboolean daria_parse_set(DariaParser *parser, GError **error) {
   const DariaToken name = parser->tokenizer.token;
-  if (name.kind != DARIA_TOKEN_WORD || daria_token_is_reserved(&name)) {
+  if (name.kind != DARIA_TOKEN_WORD || daria_token_is_reserved(parser, &name)) {
     return daria_parse_error(parser, "a variable name", error);
   }
   g_autofree gchar *shown = daria_token_shown(&name);

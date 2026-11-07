@@ -16,16 +16,6 @@ typedef enum {
   DARIA_ERROR_TEST,
 } DariaError;
 
-// The keys of the [color] group of regina.ini, which a program refers to by the
-// word of daria_color_word.
-typedef enum {
-  DARIA_COLOR_BACKGROUND,
-  DARIA_COLOR_RECTANGLE,
-  DARIA_COLOR_COUNT,
-} DariaColorName;
-
 GQuark daria_error_quark(void);
-
-const gchar *daria_color_word(DariaColorName color);
 
 #endif  // DARIA_DARIA_H_
