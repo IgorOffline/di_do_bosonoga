@@ -38,7 +38,8 @@ static gboolean daria_check_output(const gchar *path, const gchar *display_path,
 }
 
 // A test passes if it returns exit_success and prints the expected output.
-static gboolean daria_run_test(const gchar *path, GError **error) {
+static gboolean daria_run_test(const gchar *path, const DariaSettings *settings,
+                               GError **error) {
   g_autofree gchar *source = NULL;
   gsize source_length = 0;
   if (!g_file_get_contents(path, &source, &source_length, error)) {
@@ -47,7 +48,7 @@ static gboolean daria_run_test(const gchar *path, GError **error) {
 
   g_autofree gchar *display_path = g_filename_display_name(path);
   g_autoptr(DariaProgram) program =
-      daria_parse(display_path, source, source_length, error);
+      daria_parse(display_path, source, source_length, settings, error);
   g_autoptr(GString) output = g_string_new(NULL);
   gint exit_status = DARIA_EXIT_FAILURE;
   if (program == NULL || !daria_run(program, output, &exit_status, error)) {
@@ -61,16 +62,17 @@ static gboolean daria_run_test(const gchar *path, GError **error) {
   return daria_check_output(path, display_path, output, error);
 }
 
-gboolean daria_test_passes(const gchar *path) {
+gboolean daria_test_passes(const gchar *path, const DariaSettings *settings) {
   g_autoptr(GError) error = NULL;
-  if (!daria_run_test(path, &error)) {
+  if (!daria_run_test(path, settings, &error)) {
     g_debug("FAIL %s", error->message);
     return FALSE;
   }
   return TRUE;
 }
 
-gboolean daria_run_test_directory(guint *passed, guint *total, GError **error) {
+gboolean daria_run_test_directory(const DariaSettings *settings, guint *passed,
+                                  guint *total, GError **error) {
   g_autoptr(GDir) directory = g_dir_open(DARIA_TEST_DIRECTORY, 0, error);
   if (directory == NULL) {
     return FALSE;
@@ -82,7 +84,7 @@ gboolean daria_run_test_directory(guint *passed, guint *total, GError **error) {
       g_autofree gchar *path =
           g_build_filename(DARIA_TEST_DIRECTORY, name, NULL);
       ++*total;
-      if (daria_test_passes(path)) {
+      if (daria_test_passes(path, settings)) {
         ++*passed;
       }
     }

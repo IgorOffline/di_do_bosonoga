@@ -88,7 +88,7 @@ void daria_program_free(DariaProgram *program) {
 }
 
 DariaProgram *daria_parse(const gchar *path, const gchar *source, gsize length,
-                          GError **error) {
+                          const DariaSettings *settings, GError **error) {
   g_autoptr(GArray) variables =
       g_array_new(FALSE, FALSE, sizeof(DariaVariable));
   g_autoptr(DariaProgram) program = g_new0(DariaProgram, 1);
@@ -101,6 +101,7 @@ DariaProgram *daria_parse(const gchar *path, const gchar *source, gsize length,
   parser.ops = program->ops;
   parser.variables = variables;
   parser.program = program;
+  parser.settings = settings;
   if (!daria_parse_program(&parser, error)) {
     return NULL;
   }
