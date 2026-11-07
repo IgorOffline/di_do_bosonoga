@@ -1,6 +1,0 @@
-main
-di
-  info 1_i32 "ada" 23_i32 "dido" 456_i32
-  info 2_i32 "dada" 345_i32 "dida" 6789_i32
-  return exit_success
-do

@@ -10,6 +10,10 @@
 
 typedef enum {
   DARIA_ERROR_SYNTAX,
+  DARIA_ERROR_NAME,
+  DARIA_ERROR_TYPE,
+  DARIA_ERROR_RUNTIME,
+  DARIA_ERROR_TEST,
 } DariaError;
 
 GQuark daria_error_quark(void);
