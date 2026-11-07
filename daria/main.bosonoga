@@ -1,0 +1,22 @@
+// main.bosonoga
+
+gfx_init
+di
+  info "init"
+do
+
+gfx_frame
+di
+  nihil
+do
+
+gfx_cleanup
+di
+  info "cleanup"
+do
+
+gfx_main
+di
+  sleep_ms 2200_u32
+  return exit_success
+do

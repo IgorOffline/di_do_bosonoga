@@ -1,0 +1,26 @@
+// gfx_sections.bosonoga
+
+gfx_init
+di
+  var shared_name is 1_i32
+  info "init " shared_name
+do
+
+gfx_frame
+di
+  info "a test has no frames"
+do
+
+gfx_cleanup
+di
+  var shared_name is 3_i32
+  info "cleanup " shared_name
+do
+
+gfx_main
+di
+  var shared_name is 2_i32
+  sleep_ms 1_u32
+  info "main " shared_name
+  return exit_success
+do

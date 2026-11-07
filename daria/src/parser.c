@@ -19,6 +19,7 @@ static const gchar *const daria_reserved_words[] = {
     "eq_3",        "eq_6",         "not_eq_3",     "not_eq_6", "nihil",
     "return",      "exit_success", "exit_failure", "with",     "to_add",
     "to_subtract", "to_f32",       "to_i32",       "shift_or", "shift_has",
+    "sleep_ms",    "gfx_init",     "gfx_frame",    "gfx_main", "gfx_cleanup",
 };
 
 typedef struct {
@@ -34,6 +35,9 @@ typedef struct {
   GArray *variables;  // Of DariaVariable, the ones visible at the cursor.
   guint slot_count;
   guint block_depth;
+  gboolean in_callback;  // Whether the cursor is in a callback section.
+  gboolean has_section[DARIA_SECTION_COUNT];
+  DariaProgram *program;
 } DariaParser;
 
 static gboolean daria_parse_statement(DariaParser *parser, GError **error);
@@ -212,6 +216,7 @@ static gboolean daria_at_value(const DariaParser *parser) {
       return !daria_token_is_reserved(token) ||
              daria_token_is_numbered(token, DARIA_SHIFT_PREFIX);
     case DARIA_TOKEN_END:
+    case DARIA_TOKEN_UNSIGNED:
     case DARIA_TOKEN_STRING:
       return FALSE;
   }
@@ -629,6 +634,14 @@ static gboolean daria_parse_block(DariaParser *parser, GError **error) {
   return daria_expect_word(parser, "do", error);
 }
 
+// Parses the block of a callback section, which cannot return.
+static gboolean daria_parse_callback(DariaParser *parser, GError **error) {
+  parser->in_callback = TRUE;
+  const gboolean parsed = daria_parse_block(parser, error);
+  parser->in_callback = FALSE;
+  return parsed;
+}
+
 // Parses an if statement, whose keyword is already consumed.
 static gboolean daria_parse_if(DariaParser *parser, GError **error) {
   g_autoptr(GArray) exit_jumps = g_array_new(FALSE, FALSE, sizeof(guint));
@@ -723,9 +736,25 @@ static gboolean daria_parse_loop(DariaParser *parser, GError **error) {
   return TRUE;
 }
 
+// Parses a sleep_ms statement, whose keyword is already consumed.
+static gboolean daria_parse_sleep(DariaParser *parser, const DariaToken *start,
+                                  GError **error) {
+  const DariaToken *token = &parser->tokenizer.token;
+  if (token->kind != DARIA_TOKEN_UNSIGNED) {
+    return daria_parse_error(parser, "a _u32 number of milliseconds", error);
+  }
+  daria_emit(parser, DARIA_OP_SLEEP, start)->milliseconds =
+      token->unsigned_integer;
+  return daria_advance(parser, error);
+}
+
 // Parses a return statement, whose keyword is already consumed.
 static gboolean daria_parse_return(DariaParser *parser, const DariaToken *start,
                                    GError **error) {
+  if (parser->in_callback) {
+    return daria_fail_at(parser, start, error, DARIA_ERROR_SYNTAX,
+                         "only main and gfx_main can return");
+  }
   gint32 status = DARIA_EXIT_SUCCESS;
   if (daria_at_word(parser, "exit_failure")) {
     status = DARIA_EXIT_FAILURE;
@@ -746,6 +775,7 @@ static gboolean daria_parse_statement(DariaParser *parser, GError **error) {
       !daria_token_is_word(&start, "set") &&
       !daria_token_is_word(&start, "if") &&
       !daria_token_is_word(&start, "nihil") &&
+      !daria_token_is_word(&start, "sleep_ms") &&
       !daria_token_is_word(&start, "return")) {
     return daria_parse_error(parser, "a statement", error);
   }
@@ -765,22 +795,91 @@ static gboolean daria_parse_statement(DariaParser *parser, GError **error) {
   if (daria_token_is_word(&start, "if")) {
     return daria_parse_if(parser, error);
   }
+  if (daria_token_is_word(&start, "sleep_ms")) {
+    return daria_parse_sleep(parser, &start, error);
+  }
   if (daria_token_is_word(&start, "return")) {
     return daria_parse_return(parser, &start, error);
   }
   return TRUE;  // nihil
 }
 
+// Parses a program that does not start with main, so it must be a gfx program.
+static gboolean daria_parse_gfx_sections(DariaParser *parser, GError **error) {
+  static const struct {
+    const gchar *word;
+    DariaSection section;
+  } sections[] = {
+      {"gfx_init", DARIA_SECTION_GFX_INIT},
+      {"gfx_frame", DARIA_SECTION_GFX_FRAME},
+      {"gfx_cleanup", DARIA_SECTION_GFX_CLEANUP},
+      {"gfx_main", DARIA_SECTION_MAIN},
+  };
+  const gchar *expected = "main, gfx_init, gfx_frame, gfx_cleanup or gfx_main";
+  do {
+    gsize i = 0;
+    while (i < G_N_ELEMENTS(sections) &&
+           !daria_at_word(parser, sections[i].word)) {
+      ++i;
+    }
+    if (i == G_N_ELEMENTS(sections)) {
+      return daria_parse_error(parser, expected, error);
+    }
+    expected = "gfx_init, gfx_frame, gfx_cleanup or gfx_main";
+
+    const DariaSection section = sections[i].section;
+    if (parser->has_section[section]) {
+      return daria_fail_at(parser, &parser->tokenizer.token, error,
+                           DARIA_ERROR_SYNTAX, "there is already a %s block",
+                           sections[i].word);
+    }
+    parser->has_section[section] = TRUE;
+    parser->program->entries[section] = parser->ops->len;
+    if (!daria_advance(parser, error)) {
+      return FALSE;
+    }
+
+    const gboolean is_main = section == DARIA_SECTION_MAIN;
+    if (!(is_main ? daria_parse_block(parser, error)
+                  : daria_parse_callback(parser, error))) {
+      return FALSE;
+    }
+    daria_emit(parser, is_main ? DARIA_OP_MISSING_RETURN : DARIA_OP_SECTION_END,
+               &parser->tokenizer.token);
+  } while (parser->tokenizer.token.kind != DARIA_TOKEN_END);
+
+  if (!parser->has_section[DARIA_SECTION_MAIN]) {
+    return daria_fail_at(parser, &parser->tokenizer.token, error,
+                         DARIA_ERROR_SYNTAX,
+                         "a gfx program needs a gfx_main block");
+  }
+  parser->program->is_gfx = TRUE;
+  return TRUE;
+}
+
 static gboolean daria_parse_program(DariaParser *parser, GError **error) {
-  if (!daria_advance(parser, error) ||
-      !daria_expect_word(parser, "main", error) ||
-      !daria_parse_block(parser, error)) {
+  if (!daria_advance(parser, error)) {
     return FALSE;
   }
-  if (parser->tokenizer.token.kind != DARIA_TOKEN_END) {
-    return daria_parse_error(parser, "end of file", error);
+  if (daria_at_word(parser, "main")) {
+    parser->has_section[DARIA_SECTION_MAIN] = TRUE;
+    if (!daria_advance(parser, error) || !daria_parse_block(parser, error)) {
+      return FALSE;
+    }
+    if (parser->tokenizer.token.kind != DARIA_TOKEN_END) {
+      return daria_parse_error(parser, "end of file", error);
+    }
+    daria_emit(parser, DARIA_OP_MISSING_RETURN, &parser->tokenizer.token);
+  } else if (!daria_parse_gfx_sections(parser, error)) {
+    return FALSE;
   }
-  daria_emit(parser, DARIA_OP_MISSING_RETURN, &parser->tokenizer.token);
+
+  for (guint section = 0; section < DARIA_SECTION_COUNT; ++section) {
+    if (!parser->has_section[section]) {
+      parser->program->entries[section] = parser->ops->len;
+      daria_emit(parser, DARIA_OP_SECTION_END, &parser->tokenizer.token);
+    }
+  }
   return TRUE;
 }
 
@@ -802,6 +901,7 @@ DariaProgram *daria_parse(const gchar *path, const gchar *source, gsize length,
   daria_tokenizer_init(&parser.tokenizer, path, source, length);
   parser.ops = program->ops;
   parser.variables = variables;
+  parser.program = program;
   if (!daria_parse_program(&parser, error)) {
     return NULL;
   }

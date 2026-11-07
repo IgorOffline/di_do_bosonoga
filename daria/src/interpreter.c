@@ -83,6 +83,16 @@ typedef struct {
   gdouble real;
 } DariaAccumulator;
 
+struct _DariaExecution {
+  const DariaProgram *program;
+  DariaValue *slots;
+  DariaAccumulator accumulator;
+  guint next;          // Index of the op to run.
+  gint64 wake_time;    // In monotonic microseconds, a sleep ends at this time.
+  GString *output;     // What the info statements print goes here.
+  gboolean to_stdout;  // Whether output is a buffer for stdout, which is owned.
+};
+
 static gboolean daria_accumulator_store(const DariaProgram *program,
                                         const DariaOp *op,
                                         const DariaAccumulator *accumulator,
@@ -123,16 +133,22 @@ static void daria_print_value(GString *output, const DariaValue *value) {
   }
 }
 
-static gboolean daria_execute(const DariaProgram *program, DariaValue *slots,
-                              GString *output, gint *exit_status,
-                              GError **error) {
-  DariaAccumulator accumulator = {0, 0.0};
-  guint next = 0;
-  while (TRUE) {
-    const DariaOp *op = &g_array_index(program->ops, DariaOp, next);
+static DariaExecutionState daria_execute(DariaExecution *execution,
+                                         guint op_budget, gint *exit_status,
+                                         GError **error) {
+  const DariaProgram *program = execution->program;
+  DariaValue *slots = execution->slots;
+  GString *output = execution->output;
+  DariaAccumulator *accumulator = &execution->accumulator;
+
+  if (g_get_monotonic_time() < execution->wake_time) {
+    return DARIA_EXECUTION_SLEEPING;
+  }
+  for (guint i = 0; i < op_budget; ++i) {
+    const DariaOp *op = &g_array_index(program->ops, DariaOp, execution->next);
     const DariaValue *left = daria_operand_value(&op->left, slots);
     const DariaValue *right = daria_operand_value(&op->right, slots);
-    ++next;
+    ++execution->next;
 
     switch (op->kind) {
       case DARIA_OP_PRINT_VALUE:
@@ -158,69 +174,142 @@ static gboolean daria_execute(const DariaProgram *program, DariaValue *slots,
         if (!(left->f32 >= -DARIA_I32_RANGE_LIMIT &&
               left->f32 < DARIA_I32_RANGE_LIMIT)) {
           gchar text[G_ASCII_DTOSTR_BUF_SIZE];
-          return daria_runtime_error(
-              program, op, error, "%s is outside the i32 range",
-              daria_format_real(text, (gdouble)left->f32));
+          daria_runtime_error(program, op, error, "%s is outside the i32 range",
+                              daria_format_real(text, (gdouble)left->f32));
+          return DARIA_EXECUTION_FAILED;
         }
         slots[op->slot].kind = DARIA_VALUE_I32;
         slots[op->slot].i32 = (gint32)left->f32;
         break;
       case DARIA_OP_ACCUMULATOR_LOAD:
         if (left->kind == DARIA_VALUE_F32) {
-          accumulator.real = (gdouble)left->f32;
+          accumulator->real = (gdouble)left->f32;
         } else {
-          accumulator.whole = left->i32;
+          accumulator->whole = left->i32;
         }
         break;
       case DARIA_OP_ACCUMULATOR_ADD:
         if (left->kind == DARIA_VALUE_F32) {
-          accumulator.real += (gdouble)left->f32;
+          accumulator->real += (gdouble)left->f32;
         } else {
-          accumulator.whole += left->i32;
+          accumulator->whole += left->i32;
         }
         break;
       case DARIA_OP_ACCUMULATOR_SUBTRACT:
         if (left->kind == DARIA_VALUE_F32) {
-          accumulator.real -= (gdouble)left->f32;
+          accumulator->real -= (gdouble)left->f32;
         } else {
-          accumulator.whole -= left->i32;
+          accumulator->whole -= left->i32;
         }
         break;
       case DARIA_OP_ACCUMULATOR_STORE:
-        if (!daria_accumulator_store(program, op, &accumulator,
-                                     &slots[op->slot], error)) {
-          return FALSE;
+        if (!daria_accumulator_store(program, op, accumulator, &slots[op->slot],
+                                     error)) {
+          return DARIA_EXECUTION_FAILED;
         }
         break;
       case DARIA_OP_JUMP:
-        next = op->target;
+        execution->next = op->target;
         break;
       case DARIA_OP_JUMP_UNLESS:
         if (!daria_compare(op->compare, left, right)) {
-          next = op->target;
+          execution->next = op->target;
         }
         break;
       case DARIA_OP_LOOP_TEST:
         if (slots[op->slot].i32 >= op->integer) {
-          next = op->target;
+          execution->next = op->target;
         }
         break;
       case DARIA_OP_LOOP_NEXT:
         ++slots[op->slot].i32;
-        next = op->target;
+        execution->next = op->target;
         break;
+      case DARIA_OP_SLEEP:
+        execution->wake_time =
+            g_get_monotonic_time() +
+            (gint64)op->milliseconds * G_TIME_SPAN_MILLISECOND;
+        return DARIA_EXECUTION_SLEEPING;
       case DARIA_OP_RETURN:
         *exit_status = op->integer;
-        return TRUE;
+        return DARIA_EXECUTION_RETURNED;
       case DARIA_OP_MISSING_RETURN:
-        return daria_runtime_error(program, op, error,
-                                   "the program ended without a return");
+        daria_runtime_error(program, op, error,
+                            "the program ended without a return");
+        return DARIA_EXECUTION_FAILED;
+      case DARIA_OP_SECTION_END:
+        return DARIA_EXECUTION_RETURNED;
     }
   }
+  return DARIA_EXECUTION_RUNNING;
+}
+
+DariaExecution *daria_execution_new(const DariaProgram *program,
+                                    DariaSection section, GString *output) {
+  DariaExecution *execution = g_new0(DariaExecution, 1);
+  execution->program = program;
+  execution->next = program->entries[section];
+  execution->slots = g_new0(DariaValue, program->slot_count);
+  execution->to_stdout = output == NULL;
+  execution->output = output == NULL ? g_string_new(NULL) : output;
+  return execution;
+}
+
+void daria_execution_free(DariaExecution *execution) {
+  if (execution->to_stdout) {
+    g_string_free(execution->output, TRUE);
+  }
+  g_free(execution->slots);
+  g_free(execution);
+}
+
+DariaExecutionState daria_execution_advance(DariaExecution *execution,
+                                            guint op_budget, gint *exit_status,
+                                            GError **error) {
+  const DariaExecutionState state =
+      daria_execute(execution, op_budget, exit_status, error);
+  if (execution->to_stdout && execution->output->len > 0) {
+    g_print("%s", execution->output->str);
+    g_string_truncate(execution->output, 0);
+  }
+  return state;
 }
 
 gboolean daria_run(const DariaProgram *program, GString *output,
                    gint *exit_status, GError **error) {
-  g_autofree DariaValue *slots = g_new0(DariaValue, program->slot_count);
-  return daria_execute(program, slots, output, exit_status, error);
+  if (!daria_run_section(program, DARIA_SECTION_GFX_INIT, output, exit_status,
+                         error)) {
+    return FALSE;
+  }
+  const gboolean ran = daria_run_section(program, DARIA_SECTION_MAIN, output,
+                                         exit_status, error);
+  // The error of the main section is the one that is reported.
+  g_autoptr(GError) ignored = NULL;
+  const gboolean cleaned_up =
+      daria_run_section(program, DARIA_SECTION_GFX_CLEANUP, output, exit_status,
+                        ran ? error : &ignored);
+  return ran && cleaned_up;
+}
+
+gboolean daria_run_section(const DariaProgram *program, DariaSection section,
+                           GString *output, gint *exit_status, GError **error) {
+  g_autoptr(DariaExecution) execution =
+      daria_execution_new(program, section, output);
+  while (TRUE) {
+    switch (daria_execution_advance(execution, G_MAXUINT, exit_status, error)) {
+      case DARIA_EXECUTION_RUNNING:
+        break;
+      case DARIA_EXECUTION_SLEEPING: {
+        const gint64 remaining = execution->wake_time - g_get_monotonic_time();
+        if (remaining > 0) {
+          g_usleep((gulong)remaining);
+        }
+        break;
+      }
+      case DARIA_EXECUTION_RETURNED:
+        return TRUE;
+      case DARIA_EXECUTION_FAILED:
+        return FALSE;
+    }
+  }
 }

@@ -107,6 +107,20 @@ static gboolean daria_lex_number(DariaTokenizer *tokenizer, DariaToken *token,
     token->integer = (gint32)value;
     return TRUE;
   }
+  if (g_str_equal(suffix, "_u32")) {
+    if (has_fraction) {
+      return daria_lex_error(tokenizer, token->line, token->column,
+                             "an integer cannot have a fraction", error);
+    }
+    guint64 value = 0;
+    if (!g_ascii_string_to_unsigned(number, 10, 0, G_MAXUINT32, &value, NULL)) {
+      return daria_lex_error(tokenizer, token->line, token->column,
+                             "_u32 number is outside the u32 range", error);
+    }
+    token->kind = DARIA_TOKEN_UNSIGNED;
+    token->unsigned_integer = (guint32)value;
+    return TRUE;
+  }
   if (g_str_equal(suffix, "_f32")) {
     const gdouble value = g_ascii_strtod(g_strdelimit(number, "d", '.'), NULL);
     if (ABS(value) > (gdouble)G_MAXFLOAT) {
@@ -118,7 +132,8 @@ static gboolean daria_lex_number(DariaTokenizer *tokenizer, DariaToken *token,
     return TRUE;
   }
   return daria_lex_error(tokenizer, token->line, token->column,
-                         "number must have the suffix _i32 or _f32", error);
+                         "number must have the suffix _i32, _u32 or _f32",
+                         error);
 }
 
 void daria_tokenizer_init(DariaTokenizer *tokenizer, const gchar *path,
@@ -135,6 +150,7 @@ gboolean daria_tokenizer_advance(DariaTokenizer *tokenizer, GError **error) {
                       0,
                       tokenizer->line,
                       tokenizer->column,
+                      0,
                       0,
                       0.0f};
   if (tokenizer->cursor < tokenizer->end) {

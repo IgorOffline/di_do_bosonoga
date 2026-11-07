@@ -6,7 +6,8 @@
 // The grammar of a .bosonoga program, in which whitespace only separates tokens
 // and // starts a comment that runs to the end of the line:
 //
-//   program    := "main" block
+//   program    := "main" block | section+
+//   section    := ("gfx_init" | "gfx_frame" | "gfx_cleanup" | "gfx_main") block
 //   block      := "di" statement+ "do"
 //   statement  := "info" argument+
 //               | "var" NAME "is" initial
@@ -15,6 +16,7 @@
 //                 ("else" block)?
 //               | LOOP ("with" NAME)? block
 //               | "nihil"
+//               | "sleep_ms" UNSIGNED
 //               | "return" ("exit_success" | "exit_failure")
 //   argument   := value | STRING
 //   initial    := conversion | value ("shift_or" value)*
@@ -26,6 +28,7 @@
 //               | "not_eq_6" | "shift_has"
 //   value      := INTEGER | REAL | SHIFT | NAME
 //   INTEGER    := "-"? digit+ "_i32"
+//   UNSIGNED   := digit+ "_u32"
 //   REAL       := "-"? digit+ ("d" digit+)? "_f32"
 //   SHIFT      := "shift_" digit+
 //   LOOP       := "to_" digit+
@@ -33,6 +36,24 @@
 // "and" binds tighter than "or". A variable is visible until the end of its
 // block and cannot hide another visible variable. to_subtract subtracts the
 // other values from the first, and negates a single value.
+//
+// A gfx program has one gfx_main and at most one of each other section, in any
+// order. Sections share no variables, and a callback cannot return. A window is
+// open while main.bosonoga runs a gfx program: gfx_init runs once before the
+// first frame, gfx_frame once per frame, gfx_cleanup once when the window
+// closes unless gfx_init failed, and gfx_main spans frames until it returns,
+// which closes the window. As a test there is no window and no frames, so
+// gfx_frame does not run, and the others run in the order gfx_init, gfx_main,
+// gfx_cleanup.
+
+// Where the execution of a program can start.
+typedef enum {
+  DARIA_SECTION_MAIN,  // main or gfx_main.
+  DARIA_SECTION_GFX_INIT,
+  DARIA_SECTION_GFX_FRAME,
+  DARIA_SECTION_GFX_CLEANUP,
+  DARIA_SECTION_COUNT,
+} DariaSection;
 
 typedef enum {
   DARIA_VALUE_I32,
@@ -84,8 +105,10 @@ typedef enum {
   DARIA_OP_JUMP_UNLESS,           // Continues at target if compare is false.
   DARIA_OP_LOOP_TEST,             // Continues at target if slot >= integer.
   DARIA_OP_LOOP_NEXT,             // ++slot, and continues at target.
+  DARIA_OP_SLEEP,                 // Pauses for milliseconds.
   DARIA_OP_RETURN,                // Ends the program with status integer.
   DARIA_OP_MISSING_RETURN,        // Fails: the program ended without a return.
+  DARIA_OP_SECTION_END,           // Ends a callback section.
 } DariaOpKind;
 
 typedef struct {
@@ -96,6 +119,7 @@ typedef struct {
   guint slot;
   guint target;  // Index of an op.
   gint32 integer;
+  guint32 milliseconds;
   DariaOperand left;
   DariaOperand right;
   const gchar *text;  // Slice of the source, without the quotes.
@@ -104,8 +128,12 @@ typedef struct {
 
 typedef struct {
   const gchar *path;  // Not owned.
-  GArray *ops;        // Of DariaOp, always ends in DARIA_OP_MISSING_RETURN.
+  GArray *ops;        // Of DariaOp.
   guint slot_count;   // Variables and loop counters.
+  gboolean is_gfx;    // Whether the program has a gfx_main.
+  // Index in ops where each section starts. A section that the program does not
+  // have is a DARIA_OP_SECTION_END, so that it can run and does nothing.
+  guint entries[DARIA_SECTION_COUNT];
 } DariaProgram;
 
 // Returns a new program, or NULL on failure. The program points into path and
