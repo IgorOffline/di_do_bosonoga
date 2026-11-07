@@ -17,6 +17,8 @@ static const struct {
     {"to_sin", DARIA_OP_SIN, DARIA_VALUE_F32, DARIA_VALUE_F32, FALSE},
     {"to_cos", DARIA_OP_COS, DARIA_VALUE_F32, DARIA_VALUE_F32, FALSE},
     {"to_atan2", DARIA_OP_ATAN2, DARIA_VALUE_F32, DARIA_VALUE_F32, TRUE},
+    {"to_sqrt", DARIA_OP_SQRT, DARIA_VALUE_F32, DARIA_VALUE_F32, FALSE},
+    {"to_pow", DARIA_OP_POW, DARIA_VALUE_F32, DARIA_VALUE_F32, TRUE},
 };
 
 // Returns the index in daria_conversions of the current token, or -1.

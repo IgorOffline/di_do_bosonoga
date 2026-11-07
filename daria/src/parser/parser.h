@@ -28,8 +28,9 @@
 //   update     := conversion
 //               | ("to_add" | "to_subtract" | "to_multiply" | "to_divide")
 //               value+
-//   conversion := ("to_f32" | "to_i32" | "to_sin" | "to_cos") value
-//               | "to_atan2" value value
+//   conversion := ("to_f32" | "to_i32" | "to_sin" | "to_cos" | "to_sqrt")
+//               value
+//               | ("to_atan2" | "to_pow") value value
 //   condition  := comparison (("and" | "or") comparison)*
 //   comparison := value compare value
 //   compare    := "gt" | "lt" | "eq" | "not_eq" | "eq_3" | "eq_6" | "not_eq_3"
@@ -51,7 +52,10 @@
 // by that value. Dividing an i32 truncates toward zero, and dividing by zero is
 // a runtime error. to_sin, to_cos and to_atan2 work on f32 angles in radians.
 // to_atan2 takes y and then x, like atan2 in C, and gives an angle from -pi to
-// pi, which is 0 when both are 0.
+// pi, which is 0 when both are 0. to_sqrt and to_pow work on f32 too. to_pow
+// takes the base and then the exponent. The square root of a negative number, a
+// negative number to a fractional power, and a result outside the f32 range, as
+// from 0 to a negative power, are runtime errors.
 //
 // A gfx program has one gfx_main and at most one of each other section, in any
 // order, except that gfx_global must be the first. A callback, which is any
@@ -121,6 +125,8 @@ typedef enum {
   DARIA_OP_SIN,                   // slot = sin(left)
   DARIA_OP_COS,                   // slot = cos(left)
   DARIA_OP_ATAN2,                 // slot = atan2(left, right)
+  DARIA_OP_SQRT,                  // slot = sqrt(left)
+  DARIA_OP_POW,                   // slot = pow(left, right)
   DARIA_OP_ACCUMULATOR_LOAD,      // accumulator = left
   DARIA_OP_ACCUMULATOR_ADD,       // accumulator += left
   DARIA_OP_ACCUMULATOR_SUBTRACT,  // accumulator -= left
