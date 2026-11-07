@@ -104,7 +104,7 @@ gboolean daria_read_settings(DariaSettings *settings, GError **error) {
          daria_read_color_setting(key_file, "background",
                                   settings->colors[DARIA_COLOR_BACKGROUND],
                                   error) &&
-         daria_read_color_setting(key_file, "triangle",
-                                  settings->colors[DARIA_COLOR_TRIANGLE],
+         daria_read_color_setting(key_file, "rectangle",
+                                  settings->colors[DARIA_COLOR_RECTANGLE],
                                   error);
 }

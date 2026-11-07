@@ -244,26 +244,20 @@ static DariaExecutionState daria_execute(DariaExecution *execution,
         return DARIA_EXECUTION_FAILED;
       case DARIA_OP_SECTION_END:
         return DARIA_EXECUTION_RETURNED;
-      case DARIA_OP_GFX_VERTEX:
-        if (scene != NULL) {
-          const DariaGfxVertex vertex = {
-              {left->f32, right->f32,
-               daria_operand_value(&op->third, slots)->f32},
-              daria_operand_value(&op->fourth, slots)->color,
-          };
-          g_array_append_val(scene->vertices, vertex);
-        }
-        break;
       case DARIA_OP_GFX_CLEAR:
-        if (scene != NULL) {
-          scene->clear_color = left->color;
-        }
+        scene->clear_color = left->color;
         break;
-      case DARIA_OP_GFX_DRAW:
-        if (scene != NULL) {
-          scene->draw = TRUE;
-        }
+      case DARIA_OP_DRAW_RECTANGLE: {
+        const DariaGfxRectangle rectangle = {
+            left->f32,
+            right->f32,
+            daria_operand_value(&op->third, slots)->f32,
+            daria_operand_value(&op->fourth, slots)->f32,
+            daria_operand_value(&op->fifth, slots)->color,
+        };
+        g_array_append_val(scene->rectangles, rectangle);
         break;
+      }
     }
   }
   return DARIA_EXECUTION_RUNNING;

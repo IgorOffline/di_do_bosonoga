@@ -20,9 +20,8 @@
 //               | "nihil"
 //               | "sleep_ms" UNSIGNED
 //               | "return" ("exit_success" | "exit_failure")
-//               | "gfx_vertex" value value value value
 //               | "gfx_clear" value
-//               | "gfx_draw"
+//               | "draw_rectangle" value value value value value
 //   argument   := value | STRING
 //   initial    := conversion | value ("shift_or" value)*
 //   update     := conversion | ("to_add" | "to_subtract") value+
@@ -36,7 +35,7 @@
 //   UNSIGNED   := digit+ "_u32"
 //   REAL       := "-"? digit+ ("d" digit+)? "_f32"
 //   SHIFT      := "shift_" digit+
-//   COLOR      := "color_background" | "color_triangle"
+//   COLOR      := "color_background" | "color_rectangle"
 //   LOOP       := "to_" digit+
 //
 // "and" binds tighter than "or". A variable is visible until the end of its
@@ -54,11 +53,12 @@
 //
 // A COLOR names a color of the [color] group of regina.ini, whose value is only
 // looked up when a window is open, and it can be stored and printed but not
-// computed with. Only gfx_init can have gfx_vertex, which adds a vertex with
-// the f32 values x, y and z and a color. Only gfx_frame can have gfx_clear,
-// which sets the color that the frame is cleared to before anything is drawn,
-// by default color_background, and gfx_draw, which makes the frame draw all
-// vertices as triangles.
+// computed with. Only gfx_frame can have gfx_clear, which sets the color that
+// the frame is cleared to before anything is drawn, by default
+// color_background, and draw_rectangle, whose f32 values are x, y, width and
+// height in pixels, with the origin in the top left corner of the window and y
+// growing down, and whose last value is a color. Later rectangles of a frame
+// cover earlier ones.
 
 // Where the execution of a program can start.
 typedef enum {
@@ -125,9 +125,8 @@ typedef enum {
   DARIA_OP_RETURN,                // Ends the program with status integer.
   DARIA_OP_MISSING_RETURN,        // Fails: the program ended without a return.
   DARIA_OP_SECTION_END,           // Ends a callback section.
-  DARIA_OP_GFX_VERTEX,            // Adds a vertex: left, right, third, fourth.
   DARIA_OP_GFX_CLEAR,             // Sets the clear color of the frame to left.
-  DARIA_OP_GFX_DRAW,              // Makes the frame draw the vertices.
+  DARIA_OP_DRAW_RECTANGLE,        // left, right, third, fourth, fifth.
 } DariaOpKind;
 
 typedef struct {
@@ -141,8 +140,9 @@ typedef struct {
   guint32 milliseconds;
   DariaOperand left;
   DariaOperand right;
-  DariaOperand third;   // Only of DARIA_OP_GFX_VERTEX.
-  DariaOperand fourth;  // Only of DARIA_OP_GFX_VERTEX.
+  DariaOperand third;   // Only of DARIA_OP_DRAW_RECTANGLE.
+  DariaOperand fourth;  // Only of DARIA_OP_DRAW_RECTANGLE.
+  DariaOperand fifth;   // Only of DARIA_OP_DRAW_RECTANGLE.
   const gchar *text;    // Slice of the source, without the quotes.
   gsize length;
 } DariaOp;

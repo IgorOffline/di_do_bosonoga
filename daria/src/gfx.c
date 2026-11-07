@@ -16,6 +16,8 @@
 // does not stop the window from responding.
 #define DARIA_GFX_OPS_PER_FRAME 100000U
 #define DARIA_GFX_FRAME_MICROSECONDS (G_USEC_PER_SEC / 60)
+// A rectangle is drawn as two triangles.
+#define DARIA_GFX_VERTICES_PER_RECTANGLE 6U
 
 static const gchar daria_gfx_vertex_shader[] =
     "#version 330\n"
@@ -37,7 +39,7 @@ static const gchar daria_gfx_fragment_shader[] =
 
 // A vertex as the GPU reads it, in the order of the attributes.
 typedef struct {
-  gfloat position[3];
+  gfloat position[2];
   gfloat color[DARIA_COLOR_CHANNELS];
 } DariaGfxGpuVertex;
 
@@ -48,7 +50,8 @@ typedef struct {
   DariaGfxScene scene;
   sg_pipeline pipeline;
   sg_bindings bindings;
-  gint64 next_frame_time;  // In monotonic microseconds.
+  gsize vertex_buffer_size;  // In bytes, 0 until a frame draws something.
+  gint64 next_frame_time;    // In monotonic microseconds.
   gint *exit_status;
   GError *error;         // The first error, which sets ended.
   gboolean initialized;  // Whether gfx_init finished.
@@ -74,28 +77,7 @@ static gboolean daria_gfx_run_callback(DariaGfxRun *run, DariaSection section) {
   return FALSE;
 }
 
-// Puts the vertices from gfx_init on the GPU, with their colors looked up in
-// the settings, and creates what draws them.
-static void daria_gfx_create_resources(DariaGfxRun *run) {
-  const GArray *vertices = run->scene.vertices;
-  if (vertices->len == 0) {
-    return;
-  }
-
-  g_autofree DariaGfxGpuVertex *gpu_vertices =
-      g_new(DariaGfxGpuVertex, vertices->len);
-  for (guint i = 0; i < vertices->len; ++i) {
-    const DariaGfxVertex *vertex = &g_array_index(vertices, DariaGfxVertex, i);
-    memcpy(gpu_vertices[i].position, vertex->position,
-           sizeof(gpu_vertices[i].position));
-    memcpy(gpu_vertices[i].color, run->settings->colors[vertex->color],
-           sizeof(gpu_vertices[i].color));
-  }
-  run->bindings.vertex_buffers[0] = sg_make_buffer(&(sg_buffer_desc){
-      .data = {gpu_vertices, vertices->len * sizeof(*gpu_vertices)},
-      .label = "daria-vertices",
-  });
-
+static void daria_gfx_create_pipeline(DariaGfxRun *run) {
   const sg_shader shader = sg_make_shader(&(sg_shader_desc){
       .vertex_func.source = daria_gfx_vertex_shader,
       .fragment_func.source = daria_gfx_fragment_shader,
@@ -105,7 +87,7 @@ static void daria_gfx_create_resources(DariaGfxRun *run) {
       .shader = shader,
       .layout.attrs =
           {
-              [0].format = SG_VERTEXFORMAT_FLOAT3,
+              [0].format = SG_VERTEXFORMAT_FLOAT2,
               [1].format = SG_VERTEXFORMAT_FLOAT4,
           },
       .label = "daria-pipeline",
@@ -127,7 +109,7 @@ static void daria_gfx_init(void *user_data) {
   });
   run->initialized = daria_gfx_run_callback(run, DARIA_SECTION_GFX_INIT);
   if (run->initialized) {
-    daria_gfx_create_resources(run);
+    daria_gfx_create_pipeline(run);
   }
 }
 
@@ -146,7 +128,67 @@ static void daria_gfx_wait_for_frame_time(DariaGfxRun *run) {
   }
 }
 
+// Stores the corners of a rectangle in vertices, converted from pixels to the
+// coordinates of the GPU, which go from -1 to 1 with y growing up.
+static void daria_gfx_rectangle_vertices(
+    const DariaGfxRectangle *rectangle,
+    const gfloat color[DARIA_COLOR_CHANNELS],
+    DariaGfxGpuVertex vertices[DARIA_GFX_VERTICES_PER_RECTANGLE]) {
+  const gfloat left = 2.0f * rectangle->x / sapp_widthf() - 1.0f;
+  const gfloat right =
+      2.0f * (rectangle->x + rectangle->width) / sapp_widthf() - 1.0f;
+  const gfloat top = 1.0f - 2.0f * rectangle->y / sapp_heightf();
+  const gfloat bottom =
+      1.0f - 2.0f * (rectangle->y + rectangle->height) / sapp_heightf();
+  const gfloat corners[DARIA_GFX_VERTICES_PER_RECTANGLE][2] = {
+      {left, top}, {right, top},    {right, bottom},
+      {left, top}, {right, bottom}, {left, bottom},
+  };
+  for (guint i = 0; i < DARIA_GFX_VERTICES_PER_RECTANGLE; ++i) {
+    memcpy(vertices[i].position, corners[i], sizeof(vertices[i].position));
+    memcpy(vertices[i].color, color, sizeof(vertices[i].color));
+  }
+}
+
+// Writes the rectangles of the frame to the GPU, with their colors looked up in
+// the settings, and makes the buffer larger if they do not fit.
+static void daria_gfx_upload_rectangles(DariaGfxRun *run) {
+  const GArray *rectangles = run->scene.rectangles;
+  if (rectangles->len == 0) {
+    return;
+  }
+
+  const gsize vertex_count =
+      (gsize)rectangles->len * DARIA_GFX_VERTICES_PER_RECTANGLE;
+  const gsize size = vertex_count * sizeof(DariaGfxGpuVertex);
+  if (size > run->vertex_buffer_size) {
+    sg_destroy_buffer(run->bindings.vertex_buffers[0]);
+    run->bindings.vertex_buffers[0] = sg_make_buffer(&(sg_buffer_desc){
+        .size = size,
+        .usage = {.vertex_buffer = true, .write_transient = true},
+        .label = "daria-rectangles",
+    });
+    run->vertex_buffer_size = size;
+  }
+
+  g_autofree DariaGfxGpuVertex *vertices =
+      g_new(DariaGfxGpuVertex, vertex_count);
+  for (guint i = 0; i < rectangles->len; ++i) {
+    const DariaGfxRectangle *rectangle =
+        &g_array_index(rectangles, DariaGfxRectangle, i);
+    daria_gfx_rectangle_vertices(
+        rectangle, run->settings->colors[rectangle->color],
+        &vertices[(gsize)i * DARIA_GFX_VERTICES_PER_RECTANGLE]);
+  }
+  sg_write_buffer_transient(&(sg_write_buffer_desc){
+      .src.data = {vertices, size},
+      .dst.buffer = run->bindings.vertex_buffers[0],
+  });
+}
+
 static void daria_gfx_render_scene(DariaGfxRun *run) {
+  daria_gfx_upload_rectangles(run);
+  const guint rectangle_count = run->scene.rectangles->len;
   const gfloat *clear = run->settings->colors[run->scene.clear_color];
   sg_begin_pass(&(sg_pass){
       .action.colors[0] =
@@ -156,10 +198,10 @@ static void daria_gfx_render_scene(DariaGfxRun *run) {
           },
       .swapchain = sglue_swapchain(),
   });
-  if (run->scene.draw && run->scene.vertices->len > 0) {
+  if (rectangle_count > 0) {
     sg_apply_pipeline(run->pipeline);
     sg_apply_bindings(&run->bindings);
-    sg_draw(0, (int)run->scene.vertices->len, 1);
+    sg_draw(0, (int)(rectangle_count * DARIA_GFX_VERTICES_PER_RECTANGLE), 1);
   }
   sg_end_pass();
   sg_commit();
@@ -173,7 +215,7 @@ static void daria_gfx_frame(void *user_data) {
   daria_gfx_wait_for_frame_time(run);
 
   run->scene.clear_color = DARIA_COLOR_BACKGROUND;
-  run->scene.draw = FALSE;
+  g_array_set_size(run->scene.rectangles, 0);
   if (!daria_gfx_run_callback(run, DARIA_SECTION_GFX_FRAME)) {
     return;
   }
@@ -210,13 +252,13 @@ gboolean daria_gfx_run(const DariaProgram *program,
                        GError **error) {
   g_autoptr(DariaExecution) main_execution =
       daria_execution_new(program, DARIA_SECTION_MAIN, NULL, NULL);
-  g_autoptr(GArray) vertices =
-      g_array_new(FALSE, FALSE, sizeof(DariaGfxVertex));
+  g_autoptr(GArray) rectangles =
+      g_array_new(FALSE, FALSE, sizeof(DariaGfxRectangle));
   DariaGfxRun run = {
       .program = program,
       .settings = settings,
       .main_execution = main_execution,
-      .scene.vertices = vertices,
+      .scene.rectangles = rectangles,
       .exit_status = exit_status,
   };
   sapp_run(&(sapp_desc){

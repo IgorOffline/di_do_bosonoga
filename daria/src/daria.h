@@ -20,7 +20,7 @@ typedef enum {
 // word of daria_color_word.
 typedef enum {
   DARIA_COLOR_BACKGROUND,
-  DARIA_COLOR_TRIANGLE,
+  DARIA_COLOR_RECTANGLE,
   DARIA_COLOR_COUNT,
 } DariaColorName;
 
