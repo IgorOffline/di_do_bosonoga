@@ -77,7 +77,8 @@ static gboolean daria_compare(DariaCompareKind compare, const DariaValue *left,
 }
 
 // Intermediate results may leave the range of the variable, only the final
-// result that is stored has to fit.
+// result that is stored has to fit. A whole number that does not even fit here
+// is an error when it is computed.
 typedef struct {
   gint64 whole;
   gdouble real;
@@ -99,7 +100,8 @@ static gboolean daria_accumulator_store(const DariaProgram *program,
                                         const DariaAccumulator *accumulator,
                                         DariaValue *slot, GError **error) {
   if (slot->kind == DARIA_VALUE_F32) {
-    if (ABS(accumulator->real) > (gdouble)G_MAXFLOAT) {
+    // Written so that NaN, from infinity times 0, is outside the range too.
+    if (!(ABS(accumulator->real) <= (gdouble)G_MAXFLOAT)) {
       gchar text[G_ASCII_DTOSTR_BUF_SIZE];
       return daria_runtime_error(program, op, error,
                                  "the result (%s) is outside the f32 range",
@@ -205,6 +207,29 @@ static DariaExecutionState daria_execute(DariaExecution *execution,
           accumulator->real -= (gdouble)left->f32;
         } else {
           accumulator->whole -= left->i32;
+        }
+        break;
+      case DARIA_OP_ACCUMULATOR_MULTIPLY:
+        if (left->kind == DARIA_VALUE_F32) {
+          accumulator->real *= (gdouble)left->f32;
+        } else if (__builtin_mul_overflow(accumulator->whole, (gint64)left->i32,
+                                          &accumulator->whole)) {
+          daria_runtime_error(program, op, error,
+                              "the result is outside the i32 range");
+          return DARIA_EXECUTION_FAILED;
+        }
+        break;
+      case DARIA_OP_ACCUMULATOR_DIVIDE:
+        if (left->kind == DARIA_VALUE_F32
+                ? !(left->f32 < 0.0f || left->f32 > 0.0f)
+                : left->i32 == 0) {
+          daria_runtime_error(program, op, error, "division by zero");
+          return DARIA_EXECUTION_FAILED;
+        }
+        if (left->kind == DARIA_VALUE_F32) {
+          accumulator->real /= (gdouble)left->f32;
+        } else {
+          accumulator->whole /= left->i32;
         }
         break;
       case DARIA_OP_ACCUMULATOR_STORE:

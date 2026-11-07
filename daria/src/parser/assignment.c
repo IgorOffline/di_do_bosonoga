@@ -70,15 +70,15 @@ gboolean daria_parse_var(DariaParser *parser, GError **error) {
   return TRUE;
 }
 
-// Parses the values of to_add or to_subtract, whose keyword is
-// already consumed.
+// Parses the values of an update that applies step to them one after another,
+// whose keyword is already consumed and is the context.
 static gboolean daria_parse_accumulation(DariaParser *parser,
                                          const DariaVariable *target,
                                          const DariaToken *start,
-                                         gboolean subtract, GError **error) {
-  const gchar *context = subtract ? "to_subtract" : "to_add";
-  const DariaOpKind step =
-      subtract ? DARIA_OP_ACCUMULATOR_SUBTRACT : DARIA_OP_ACCUMULATOR_ADD;
+                                         const gchar *context, DariaOpKind step,
+                                         GError **error) {
+  const gboolean has_inverse = step == DARIA_OP_ACCUMULATOR_SUBTRACT ||
+                               step == DARIA_OP_ACCUMULATOR_DIVIDE;
   const DariaValueKind kind = target->kind;
   const guint slot = target->slot;
 
@@ -86,11 +86,18 @@ static gboolean daria_parse_accumulation(DariaParser *parser,
   if (!daria_parse_value_of_kind(parser, kind, context, &first, error)) {
     return FALSE;
   }
-  if (subtract && !daria_at_value(parser)) {
-    DariaOperand zero;
-    memset(&zero, 0, sizeof(zero));
-    zero.literal.kind = kind;
-    daria_emit(parser, DARIA_OP_ACCUMULATOR_LOAD, start)->left = zero;
+  if (has_inverse && !daria_at_value(parser)) {
+    DariaOperand identity;
+    memset(&identity, 0, sizeof(identity));
+    identity.literal.kind = kind;
+    if (step == DARIA_OP_ACCUMULATOR_DIVIDE) {
+      if (kind == DARIA_VALUE_F32) {
+        identity.literal.f32 = 1.0f;
+      } else {
+        identity.literal.i32 = 1;
+      }
+    }
+    daria_emit(parser, DARIA_OP_ACCUMULATOR_LOAD, start)->left = identity;
     daria_emit(parser, step, start)->left = first;
   } else {
     daria_emit(parser, DARIA_OP_ACCUMULATOR_LOAD, start)->left = first;
@@ -138,16 +145,31 @@ gboolean daria_parse_set(DariaParser *parser, GError **error) {
     return TRUE;
   }
 
-  const gboolean subtract = daria_at_word(parser, "to_subtract");
-  if (!subtract && !daria_at_word(parser, "to_add")) {
-    return daria_parse_error(parser, "to_add, to_subtract, to_f32 or to_i32",
-                             error);
+  static const struct {
+    const gchar *word;
+    DariaOpKind step;
+  } accumulations[] = {
+      {"to_add", DARIA_OP_ACCUMULATOR_ADD},
+      {"to_subtract", DARIA_OP_ACCUMULATOR_SUBTRACT},
+      {"to_multiply", DARIA_OP_ACCUMULATOR_MULTIPLY},
+      {"to_divide", DARIA_OP_ACCUMULATOR_DIVIDE},
+  };
+  gsize i = 0;
+  while (i < G_N_ELEMENTS(accumulations) &&
+         !daria_at_word(parser, accumulations[i].word)) {
+    ++i;
+  }
+  if (i == G_N_ELEMENTS(accumulations)) {
+    return daria_parse_error(
+        parser, "to_add, to_subtract, to_multiply, to_divide, to_f32 or to_i32",
+        error);
   }
   if (target.kind == DARIA_VALUE_FLAGS || target.kind == DARIA_VALUE_COLOR) {
     return daria_fail_at(parser, &operation, error, DARIA_ERROR_TYPE,
-                         "'%s' is %s, which cannot be added or subtracted",
+                         "'%s' is %s, which cannot be used in arithmetic",
                          shown, daria_value_kind_name(target.kind));
   }
   return daria_advance(parser, error) &&
-         daria_parse_accumulation(parser, &target, &name, subtract, error);
+         daria_parse_accumulation(parser, &target, &name, accumulations[i].word,
+                                  accumulations[i].step, error);
 }
