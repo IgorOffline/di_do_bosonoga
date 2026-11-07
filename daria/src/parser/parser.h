@@ -9,7 +9,8 @@
 // and // starts a comment that runs to the end of the line:
 //
 //   program    := "main" block | section+
-//   section    := ("gfx_init" | "gfx_frame" | "gfx_cleanup" | "gfx_main") block
+//   section    := ("gfx_global" | "gfx_init" | "gfx_frame" | "gfx_cleanup"
+//                 | "gfx_main") block
 //   block      := "di" statement+ "do"
 //   statement  := "info" argument+
 //               | "var" NAME "is" initial
@@ -32,12 +33,14 @@
 //   comparison := value compare value
 //   compare    := "gt" | "lt" | "eq" | "not_eq" | "eq_3" | "eq_6" | "not_eq_3"
 //               | "not_eq_6" | "shift_has"
-//   value      := INTEGER | REAL | SHIFT | COLOR | NAME
+//   value      := INTEGER | REAL | SHIFT | COLOR | GLOBAL | "gfx_delta_time"
+//               | NAME
 //   INTEGER    := "-"? digit+ "_i32"
 //   UNSIGNED   := digit+ "_u32"
 //   REAL       := "-"? digit+ ("d" digit+)? "_f32"
 //   SHIFT      := "shift_" digit+
 //   COLOR      := "color_" KEY
+//   GLOBAL     := "global_" KEY
 //   LOOP       := "to_" digit+
 //
 // "and" binds tighter than "or". A variable is visible until the end of its
@@ -48,13 +51,17 @@
 // a runtime error.
 //
 // A gfx program has one gfx_main and at most one of each other section, in any
-// order. Sections share no variables, and a callback cannot return. A window is
-// open while main.bosonoga runs a gfx program: gfx_init runs once before the
-// first frame, gfx_frame once per frame, gfx_cleanup once when the window
-// closes unless gfx_init failed, and gfx_main spans frames until it returns,
-// which closes the window. As a test there is no window and no frames, so
-// gfx_frame does not run, and the others run in the order gfx_init, gfx_main,
-// gfx_cleanup.
+// order, except that gfx_global must be the first. A callback, which is any
+// section but gfx_main, cannot return. The variables declared at the top of the
+// block of gfx_global are visible in all other sections, which share them, so a
+// value that one section sets is the value that the others see, also in later
+// frames. Other variables belong to their section. A window is open while
+// main.bosonoga runs a gfx program: gfx_global runs once first, then gfx_init
+// once before the first frame, gfx_frame once per frame, gfx_cleanup once when
+// the window closes unless gfx_global or gfx_init failed, and gfx_main spans
+// frames until it returns, which closes the window. As a test there is no
+// window and no frames, so gfx_frame does not run, and the others run in the
+// order gfx_global, gfx_init, gfx_main, gfx_cleanup.
 //
 // A KEY is any key of the [color] group of regina.ini, so that group decides
 // which COLOR words exist, and a word like color_0 without a key is an ordinary
@@ -65,6 +72,11 @@
 // are x, y, width and height in pixels, with the origin in the top left corner
 // of the window and y growing down, and whose last value is a color. Later
 // rectangles of a frame cover earlier ones.
+//
+// The KEY of a GLOBAL is a key of the [global] group of regina.ini in the same
+// way, whose value is one INTEGER or REAL, like 100d0_f32, and has its type.
+// Only gfx_frame can have gfx_delta_time, the f32 number of seconds since the
+// previous frame.
 
 // Where the execution of a program can start.
 typedef enum {
@@ -72,25 +84,9 @@ typedef enum {
   DARIA_SECTION_GFX_INIT,
   DARIA_SECTION_GFX_FRAME,
   DARIA_SECTION_GFX_CLEANUP,
+  DARIA_SECTION_GFX_GLOBAL,
   DARIA_SECTION_COUNT,
 } DariaSection;
-
-typedef enum {
-  DARIA_VALUE_I32,
-  DARIA_VALUE_F32,
-  DARIA_VALUE_FLAGS,
-  DARIA_VALUE_COLOR,
-} DariaValueKind;
-
-typedef struct {
-  DariaValueKind kind;
-  union {
-    gint32 i32;
-    gfloat f32;
-    guint32 flags;
-    guint32 color;  // 0xRRGGBB
-  };
-} DariaValue;
 
 // A literal, or the variable in a slot. Either way, literal.kind is its type.
 typedef struct {
@@ -135,6 +131,7 @@ typedef enum {
   DARIA_OP_SECTION_END,           // Ends a callback section.
   DARIA_OP_GFX_CLEAR,             // Sets the clear color of the frame to left.
   DARIA_OP_DRAW_RECTANGLE,        // left, right, third, fourth, fifth.
+  DARIA_OP_GFX_DELTA_TIME,        // slot = the delta time of the scene.
 } DariaOpKind;
 
 typedef struct {
@@ -167,8 +164,8 @@ typedef struct {
 
 // Returns a new program, or NULL on failure. The program points into path and
 // source, which must outlive it. Path is only used in error messages, so it
-// must be UTF-8. The settings decide which colors exist, and are not used after
-// this returns.
+// must be UTF-8. The settings decide which colors and globals exist, and are
+// not used after this returns.
 DariaProgram *daria_parse(const gchar *path, const gchar *source, gsize length,
                           const DariaSettings *settings, GError **error);
 

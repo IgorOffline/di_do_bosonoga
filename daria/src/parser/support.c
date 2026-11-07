@@ -6,19 +6,47 @@
 #define DARIA_MESSAGE_TOKEN_MAX 32
 
 static const gchar *const daria_reserved_words[] = {
-    "main",         "di",           "do",
-    "info",         "var",          "set",
-    "is",           "if",           "else",
-    "and",          "or",           "gt",
-    "lt",           "eq",           "not_eq",
-    "eq_3",         "eq_6",         "not_eq_3",
-    "not_eq_6",     "nihil",        "return",
-    "exit_success", "exit_failure", "with",
-    "to_add",       "to_subtract",  "to_multiply",
-    "to_divide",    "to_f32",       "to_i32",
-    "shift_or",     "shift_has",    "sleep_ms",
-    "gfx_init",     "gfx_frame",    "gfx_main",
-    "gfx_cleanup",  "gfx_clear",    "draw_rectangle",
+    "main",
+    "di",
+    "do",
+    "info",
+    "var",
+    "set",
+    "is",
+    "if",
+    "else",
+    "and",
+    "or",
+    "gt",
+    "lt",
+    "eq",
+    "not_eq",
+    "eq_3",
+    "eq_6",
+    "not_eq_3",
+    "not_eq_6",
+    "nihil",
+    "return",
+    "exit_success",
+    "exit_failure",
+    "with",
+    "to_add",
+    "to_subtract",
+    "to_multiply",
+    "to_divide",
+    "to_f32",
+    "to_i32",
+    "shift_or",
+    "shift_has",
+    "sleep_ms",
+    "gfx_init",
+    "gfx_frame",
+    "gfx_main",
+    "gfx_cleanup",
+    "gfx_clear",
+    "draw_rectangle",
+    "gfx_global",
+    DARIA_DELTA_TIME_WORD,
 };
 
 gboolean daria_token_is_word(const DariaToken *token, const gchar *word) {
@@ -40,16 +68,27 @@ gboolean daria_token_is_numbered(const DariaToken *token, const gchar *prefix) {
   return TRUE;
 }
 
-gboolean daria_token_color(const DariaParser *parser, const DariaToken *token,
-                           guint32 *color) {
-  const gsize prefix_length = strlen(DARIA_COLOR_PREFIX);
+// Returns a new string with what follows the prefix of the word, or NULL if the
+// token is not a word that starts with the prefix.
+static gchar *daria_token_key(const DariaToken *token, const gchar *prefix) {
+  const gsize prefix_length = strlen(prefix);
   if (token->kind != DARIA_TOKEN_WORD || token->length <= prefix_length ||
-      memcmp(token->text, DARIA_COLOR_PREFIX, prefix_length) != 0) {
-    return FALSE;
+      memcmp(token->text, prefix, prefix_length) != 0) {
+    return NULL;
   }
-  g_autofree gchar *key =
-      g_strndup(token->text + prefix_length, token->length - prefix_length);
-  return daria_settings_color(parser->settings, key, color);
+  return g_strndup(token->text + prefix_length, token->length - prefix_length);
+}
+
+gboolean daria_token_setting(const DariaParser *parser, const DariaToken *token,
+                             DariaValue *value) {
+  g_autofree gchar *color_key = daria_token_key(token, DARIA_COLOR_PREFIX);
+  if (color_key != NULL) {
+    value->kind = DARIA_VALUE_COLOR;
+    return daria_settings_color(parser->settings, color_key, &value->color);
+  }
+  g_autofree gchar *global_key = daria_token_key(token, DARIA_GLOBAL_PREFIX);
+  return global_key != NULL &&
+         daria_settings_global(parser->settings, global_key, value);
 }
 
 gboolean daria_token_is_reserved(const DariaParser *parser,
@@ -59,10 +98,10 @@ gboolean daria_token_is_reserved(const DariaParser *parser,
       return TRUE;
     }
   }
-  guint32 color = 0;
+  DariaValue value;
   return daria_token_is_numbered(token, DARIA_SHIFT_PREFIX) ||
          daria_token_is_numbered(token, DARIA_LOOP_PREFIX) ||
-         daria_token_color(parser, token, &color);
+         daria_token_setting(parser, token, &value);
 }
 
 const gchar *daria_value_kind_name(DariaValueKind kind) {

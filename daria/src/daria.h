@@ -16,6 +16,23 @@ typedef enum {
   DARIA_ERROR_TEST,
 } DariaError;
 
+typedef enum {
+  DARIA_VALUE_I32,
+  DARIA_VALUE_F32,
+  DARIA_VALUE_FLAGS,
+  DARIA_VALUE_COLOR,
+} DariaValueKind;
+
+typedef struct {
+  DariaValueKind kind;
+  union {
+    gint32 i32;
+    gfloat f32;
+    guint32 flags;
+    guint32 color;  // 0xRRGGBB
+  };
+} DariaValue;
+
 GQuark daria_error_quark(void);
 
 #endif  // DARIA_DARIA_H_

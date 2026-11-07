@@ -13,6 +13,8 @@
 #define DARIA_SHIFT_PREFIX "shift_"
 #define DARIA_LOOP_PREFIX "to_"
 #define DARIA_COLOR_PREFIX "color_"
+#define DARIA_GLOBAL_PREFIX "global_"
+#define DARIA_DELTA_TIME_WORD "gfx_delta_time"
 
 typedef struct {
   const gchar *name;  // Slice of the source.
@@ -27,7 +29,8 @@ typedef struct {
   GArray *variables;  // Of DariaVariable, the ones visible at the cursor.
   guint slot_count;
   guint block_depth;
-  DariaSection section;  // The section that the cursor is in.
+  DariaSection section;   // The section that the cursor is in.
+  guint delta_time_slot;  // Holds gfx_delta_time in gfx_frame.
   gboolean has_section[DARIA_SECTION_COUNT];
   DariaProgram *program;
   const DariaSettings *settings;
@@ -41,10 +44,11 @@ gboolean daria_token_is_word(const DariaToken *token, const gchar *word);
 // and at least one digit.
 gboolean daria_token_is_numbered(const DariaToken *token, const gchar *prefix);
 
-// Returns whether the token is the color prefix and a key of the [color] group
-// of the settings, and stores the value of the key in color.
-gboolean daria_token_color(const DariaParser *parser, const DariaToken *token,
-                           guint32 *color);
+// Returns whether the token is a word for a value of the settings, the color
+// prefix and a key of [color] or the global prefix and a key of [global], and
+// stores the value of the key in value.
+gboolean daria_token_setting(const DariaParser *parser, const DariaToken *token,
+                             DariaValue *value);
 
 gboolean daria_token_is_reserved(const DariaParser *parser,
                                  const DariaToken *token);

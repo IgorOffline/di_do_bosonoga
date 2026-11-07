@@ -3,11 +3,13 @@
 #include <string.h>
 
 #include "daria.h"
+#include "tokenizer.h"
 
 #define DARIA_SETTINGS_PATH "regina.ini"
 #define DARIA_SETTINGS_GROUP_META "meta"
 #define DARIA_SETTINGS_GROUP_GFX "gfx"
 #define DARIA_SETTINGS_GROUP_COLOR "color"
+#define DARIA_SETTINGS_GROUP_GLOBAL "global"
 #define DARIA_SETTINGS_KEY_BACKGROUND "background"
 #define DARIA_COLOR_HEX_LENGTH 6
 
@@ -17,6 +19,19 @@ void daria_settings_clear(DariaSettings *settings) {
   if (settings->colors != NULL) {
     g_hash_table_unref(settings->colors);
   }
+  if (settings->globals != NULL) {
+    g_hash_table_unref(settings->globals);
+  }
+}
+
+gboolean daria_settings_global(const DariaSettings *settings, const gchar *key,
+                               DariaValue *value) {
+  const DariaValue *found = g_hash_table_lookup(settings->globals, key);
+  if (found == NULL) {
+    return FALSE;
+  }
+  *value = *found;
+  return TRUE;
 }
 
 gboolean daria_settings_color(const DariaSettings *settings, const gchar *key,
@@ -119,6 +134,61 @@ static gboolean daria_read_color_settings(GKeyFile *key_file,
   return TRUE;
 }
 
+// Reads a global written as one number of a program, like 100d0_f32, with the
+// tokenizer of programs, so that it has the same rules.
+static gboolean daria_read_global_setting(GKeyFile *key_file, const gchar *key,
+                                          DariaValue *value, GError **error) {
+  g_autofree gchar *text = daria_read_text_setting(
+      key_file, DARIA_SETTINGS_GROUP_GLOBAL, key, error);
+  if (text == NULL) {
+    return FALSE;
+  }
+  DariaTokenizer tokenizer;
+  daria_tokenizer_init(&tokenizer, DARIA_SETTINGS_PATH, text, strlen(text));
+  if (daria_tokenizer_advance(&tokenizer, NULL)) {
+    const DariaToken number = tokenizer.token;
+    if ((number.kind == DARIA_TOKEN_INTEGER ||
+         number.kind == DARIA_TOKEN_REAL) &&
+        daria_tokenizer_advance(&tokenizer, NULL) &&
+        tokenizer.token.kind == DARIA_TOKEN_END) {
+      if (number.kind == DARIA_TOKEN_INTEGER) {
+        value->kind = DARIA_VALUE_I32;
+        value->i32 = number.integer;
+      } else {
+        value->kind = DARIA_VALUE_F32;
+        value->f32 = number.real;
+      }
+      return TRUE;
+    }
+  }
+  g_set_error(error, DARIA_ERROR, DARIA_ERROR_RUNTIME,
+              "%s: %s must be one _i32 or _f32 number, like 100d0_f32",
+              DARIA_SETTINGS_PATH, key);
+  return FALSE;
+}
+
+// Reads whatever keys the [global] group has, if it is there.
+static gboolean daria_read_global_settings(GKeyFile *key_file,
+                                           DariaSettings *settings,
+                                           GError **error) {
+  settings->globals =
+      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+  if (!g_key_file_has_group(key_file, DARIA_SETTINGS_GROUP_GLOBAL)) {
+    return TRUE;
+  }
+  g_auto(GStrv) keys =
+      g_key_file_get_keys(key_file, DARIA_SETTINGS_GROUP_GLOBAL, NULL, NULL);
+  for (gsize i = 0; keys != NULL && keys[i] != NULL; ++i) {
+    DariaValue *value = g_new0(DariaValue, 1);
+    if (!daria_read_global_setting(key_file, keys[i], value, error)) {
+      g_free(value);
+      return FALSE;
+    }
+    g_hash_table_insert(settings->globals, g_strdup(keys[i]), value);
+  }
+  return TRUE;
+}
+
 gboolean daria_read_settings(DariaSettings *settings, GError **error) {
   g_autoptr(GKeyFile) key_file = g_key_file_new();
   GError *load_error = NULL;
@@ -141,5 +211,6 @@ gboolean daria_read_settings(DariaSettings *settings, GError **error) {
                                      error) &&
          daria_read_positive_setting(key_file, "height", &settings->gfx_height,
                                      error) &&
-         daria_read_color_settings(key_file, settings, error);
+         daria_read_color_settings(key_file, settings, error) &&
+         daria_read_global_settings(key_file, settings, error);
 }

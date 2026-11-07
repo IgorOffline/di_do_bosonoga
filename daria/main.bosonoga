@@ -1,13 +1,37 @@
 // main.bosonoga
 
+gfx_global
+di
+  // How far right of the original position the rectangle is, and which way it
+  // is moving: 1 is right and -1 is left.
+  var offset is 0d0_f32
+  var direction is 1d0_f32
+do
+
 gfx_frame
 di
+  var step is 0d0_f32
+  set step to_multiply global_speed gfx_delta_time direction
+  set offset to_add offset step
+  if offset gt 100d0_f32
+  di
+    set offset to_add 100d0_f32
+    set direction to_add -1d0_f32
+  do
+  if offset lt 0d0_f32
+  di
+    set offset to_add 0d0_f32
+    set direction to_add 1d0_f32
+  do
+
+  var x is 120d0_f32
+  set x to_add x offset
   gfx_clear color_background
-  draw_rectangle 120d0_f32 240d0_f32 32d0_f32 18d0_f32 color_rectangle
+  draw_rectangle x 240d0_f32 32d0_f32 18d0_f32 color_rectangle
 do
 
 gfx_main
 di
-  sleep_ms 2200_u32
+  sleep_ms 12600_u32
   return exit_success
 do

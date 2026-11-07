@@ -47,12 +47,14 @@ typedef struct {
 typedef struct {
   const DariaProgram *program;
   const DariaSettings *settings;
+  DariaValue *slots;  // The variables, shared by all sections.
   DariaExecution *main_execution;
   DariaGfxScene scene;
   sg_pipeline pipeline;
   sg_bindings bindings;
   gsize vertex_buffer_size;  // In bytes, 0 until a frame draws something.
   gint64 next_frame_time;    // In monotonic microseconds.
+  gint64 last_frame_start;   // In monotonic microseconds, 0 before a frame.
   gint *exit_status;
   GError *error;         // The first error, which sets ended.
   gboolean initialized;  // Whether gfx_init finished.
@@ -67,7 +69,7 @@ static void daria_gfx_fail(DariaGfxRun *run) {
 
 static gboolean daria_gfx_run_callback(DariaGfxRun *run, DariaSection section) {
   g_autoptr(GError) error = NULL;
-  if (daria_run_section(run->program, section, &run->scene, NULL,
+  if (daria_run_section(run->program, section, run->slots, &run->scene, NULL,
                         run->exit_status, &error)) {
     return TRUE;
   }
@@ -76,6 +78,17 @@ static gboolean daria_gfx_run_callback(DariaGfxRun *run, DariaSection section) {
   }
   daria_gfx_fail(run);
   return FALSE;
+}
+
+// Measures the time since the previous frame started, which the first frame
+// takes to be one frame at 60 frames per second.
+static void daria_gfx_measure_delta_time(DariaGfxRun *run) {
+  const gint64 now = g_get_monotonic_time();
+  const gint64 elapsed = run->last_frame_start == 0
+                             ? DARIA_GFX_FRAME_MICROSECONDS
+                             : now - run->last_frame_start;
+  run->scene.delta_time = (gfloat)elapsed / (gfloat)G_USEC_PER_SEC;
+  run->last_frame_start = now;
 }
 
 static void daria_gfx_create_pipeline(DariaGfxRun *run) {
@@ -108,7 +121,8 @@ static void daria_gfx_init(void *user_data) {
       .environment = sglue_environment(),
       .logger.func = slog_func,
   });
-  run->initialized = daria_gfx_run_callback(run, DARIA_SECTION_GFX_INIT);
+  run->initialized = daria_gfx_run_callback(run, DARIA_SECTION_GFX_GLOBAL) &&
+                     daria_gfx_run_callback(run, DARIA_SECTION_GFX_INIT);
   if (run->initialized) {
     daria_gfx_create_pipeline(run);
   }
@@ -223,6 +237,7 @@ static void daria_gfx_frame(void *user_data) {
     return;
   }
   daria_gfx_wait_for_frame_time(run);
+  daria_gfx_measure_delta_time(run);
 
   run->scene.clear_color = run->settings->background_color;
   g_array_set_size(run->scene.rectangles, 0);
@@ -260,13 +275,15 @@ static void daria_gfx_cleanup(void *user_data) {
 gboolean daria_gfx_run(const DariaProgram *program,
                        const DariaSettings *settings, gint *exit_status,
                        GError **error) {
+  g_autofree DariaValue *slots = daria_slots_new(program);
   g_autoptr(DariaExecution) main_execution =
-      daria_execution_new(program, DARIA_SECTION_MAIN, NULL, NULL);
+      daria_execution_new(program, DARIA_SECTION_MAIN, slots, NULL, NULL);
   g_autoptr(GArray) rectangles =
       g_array_new(FALSE, FALSE, sizeof(DariaGfxRectangle));
   DariaGfxRun run = {
       .program = program,
       .settings = settings,
+      .slots = slots,
       .main_execution = main_execution,
       .scene.rectangles = rectangles,
       .exit_status = exit_status,

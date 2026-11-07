@@ -29,7 +29,11 @@ gboolean daria_parse_block(DariaParser *parser, GError **error) {
       return FALSE;
     }
   }
-  g_array_set_size(parser->variables, visible_count);
+  // The variables at the top of gfx_global stay visible in the sections after
+  // it, which share them.
+  if (parser->section != DARIA_SECTION_GFX_GLOBAL || parser->block_depth != 1) {
+    g_array_set_size(parser->variables, visible_count);
+  }
   --parser->block_depth;
   return daria_expect_word(parser, "do", error);
 }

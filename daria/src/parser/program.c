@@ -8,12 +8,15 @@ static gboolean daria_parse_gfx_sections(DariaParser *parser, GError **error) {
     const gchar *word;
     DariaSection section;
   } sections[] = {
+      {"gfx_global", DARIA_SECTION_GFX_GLOBAL},
       {"gfx_init", DARIA_SECTION_GFX_INIT},
       {"gfx_frame", DARIA_SECTION_GFX_FRAME},
       {"gfx_cleanup", DARIA_SECTION_GFX_CLEANUP},
       {"gfx_main", DARIA_SECTION_MAIN},
   };
-  const gchar *expected = "main, gfx_init, gfx_frame, gfx_cleanup or gfx_main";
+  const gchar *expected =
+      "main, gfx_global, gfx_init, gfx_frame, gfx_cleanup or gfx_main";
+  gboolean is_first = TRUE;
   do {
     gsize i = 0;
     while (i < G_N_ELEMENTS(sections) &&
@@ -31,6 +34,13 @@ static gboolean daria_parse_gfx_sections(DariaParser *parser, GError **error) {
                            DARIA_ERROR_SYNTAX, "there is already a %s block",
                            sections[i].word);
     }
+    // Its variables must be declared before the sections that use them.
+    if (section == DARIA_SECTION_GFX_GLOBAL && !is_first) {
+      return daria_fail_at(parser, &parser->tokenizer.token, error,
+                           DARIA_ERROR_SYNTAX,
+                           "gfx_global must be the first block");
+    }
+    is_first = FALSE;
     parser->has_section[section] = TRUE;
     parser->program->entries[section] = parser->ops->len;
     if (!daria_advance(parser, error)) {
@@ -38,6 +48,11 @@ static gboolean daria_parse_gfx_sections(DariaParser *parser, GError **error) {
     }
 
     parser->section = section;
+    if (section == DARIA_SECTION_GFX_FRAME) {
+      parser->delta_time_slot = parser->slot_count++;
+      daria_emit(parser, DARIA_OP_GFX_DELTA_TIME, &parser->tokenizer.token)
+          ->slot = parser->delta_time_slot;
+    }
     if (!daria_parse_block(parser, error)) {
       return FALSE;
     }
