@@ -13,6 +13,7 @@ static const gchar *const daria_reserved_words[] = {
     "return",      "exit_success", "exit_failure", "with",     "to_add",
     "to_subtract", "to_f32",       "to_i32",       "shift_or", "shift_has",
     "sleep_ms",    "gfx_init",     "gfx_frame",    "gfx_main", "gfx_cleanup",
+    "gfx_vertex",  "gfx_clear",    "gfx_draw",
 };
 
 gboolean daria_token_is_word(const DariaToken *token, const gchar *word) {
@@ -34,14 +35,26 @@ gboolean daria_token_is_numbered(const DariaToken *token, const gchar *prefix) {
   return TRUE;
 }
 
+gboolean daria_token_color(const DariaToken *token, DariaColorName *color) {
+  for (gint i = 0; i < DARIA_COLOR_COUNT; ++i) {
+    if (daria_token_is_word(token, daria_color_word((DariaColorName)i))) {
+      *color = (DariaColorName)i;
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
 gboolean daria_token_is_reserved(const DariaToken *token) {
   for (gsize i = 0; i < G_N_ELEMENTS(daria_reserved_words); ++i) {
     if (daria_token_is_word(token, daria_reserved_words[i])) {
       return TRUE;
     }
   }
+  DariaColorName color;
   return daria_token_is_numbered(token, DARIA_SHIFT_PREFIX) ||
-         daria_token_is_numbered(token, DARIA_LOOP_PREFIX);
+         daria_token_is_numbered(token, DARIA_LOOP_PREFIX) ||
+         daria_token_color(token, &color);
 }
 
 const gchar *daria_value_kind_name(DariaValueKind kind) {
@@ -52,6 +65,8 @@ const gchar *daria_value_kind_name(DariaValueKind kind) {
       return "f32";
     case DARIA_VALUE_FLAGS:
       return "flags";
+    case DARIA_VALUE_COLOR:
+      return "color";
   }
   g_return_val_if_reached("unknown");
 }

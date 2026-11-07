@@ -2,14 +2,6 @@
 
 #include "parser/internal.h"
 
-// Parses the block of a callback section, which cannot return.
-static gboolean daria_parse_callback(DariaParser *parser, GError **error) {
-  parser->in_callback = TRUE;
-  const gboolean parsed = daria_parse_block(parser, error);
-  parser->in_callback = FALSE;
-  return parsed;
-}
-
 // Parses a program that does not start with main, so it must be a gfx program.
 static gboolean daria_parse_gfx_sections(DariaParser *parser, GError **error) {
   static const struct {
@@ -45,12 +37,13 @@ static gboolean daria_parse_gfx_sections(DariaParser *parser, GError **error) {
       return FALSE;
     }
 
-    const gboolean is_main = section == DARIA_SECTION_MAIN;
-    if (!(is_main ? daria_parse_block(parser, error)
-                  : daria_parse_callback(parser, error))) {
+    parser->section = section;
+    if (!daria_parse_block(parser, error)) {
       return FALSE;
     }
-    daria_emit(parser, is_main ? DARIA_OP_MISSING_RETURN : DARIA_OP_SECTION_END,
+    daria_emit(parser,
+               section == DARIA_SECTION_MAIN ? DARIA_OP_MISSING_RETURN
+                                             : DARIA_OP_SECTION_END,
                &parser->tokenizer.token);
   } while (parser->tokenizer.token.kind != DARIA_TOKEN_END);
 

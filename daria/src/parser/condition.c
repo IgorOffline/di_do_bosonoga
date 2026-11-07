@@ -51,6 +51,10 @@ static gboolean daria_check_compare(const DariaParser *parser,
     return daria_fail_at(parser, token, error, DARIA_ERROR_TYPE,
                          "flags can only be compared with shift_has");
   }
+  if (left == DARIA_VALUE_COLOR) {
+    return daria_fail_at(parser, token, error, DARIA_ERROR_TYPE,
+                         "colors cannot be compared");
+  }
 
   switch (compare) {
     case DARIA_COMPARE_GT:

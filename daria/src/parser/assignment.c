@@ -143,10 +143,10 @@ gboolean daria_parse_set(DariaParser *parser, GError **error) {
     return daria_parse_error(parser, "to_add, to_subtract, to_f32 or to_i32",
                              error);
   }
-  if (target.kind == DARIA_VALUE_FLAGS) {
+  if (target.kind == DARIA_VALUE_FLAGS || target.kind == DARIA_VALUE_COLOR) {
     return daria_fail_at(parser, &operation, error, DARIA_ERROR_TYPE,
-                         "'%s' is flags, which cannot be added or subtracted",
-                         shown);
+                         "'%s' is %s, which cannot be added or subtracted",
+                         shown, daria_value_kind_name(target.kind));
   }
   return daria_advance(parser, error) &&
          daria_parse_accumulation(parser, &target, &name, subtract, error);

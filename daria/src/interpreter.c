@@ -87,9 +87,10 @@ struct _DariaExecution {
   const DariaProgram *program;
   DariaValue *slots;
   DariaAccumulator accumulator;
-  guint next;          // Index of the op to run.
-  gint64 wake_time;    // In monotonic microseconds, a sleep ends at this time.
-  GString *output;     // What the info statements print goes here.
+  guint next;        // Index of the op to run.
+  gint64 wake_time;  // In monotonic microseconds, a sleep ends at this time.
+  DariaGfxScene *scene;  // What the gfx statements record goes here, or NULL.
+  GString *output;       // What the info statements print goes here.
   gboolean to_stdout;  // Whether output is a buffer for stdout, which is owned.
 };
 
@@ -130,6 +131,9 @@ static void daria_print_value(GString *output, const DariaValue *value) {
     case DARIA_VALUE_FLAGS:
       g_string_append_printf(output, "%" G_GUINT32_FORMAT, value->flags);
       break;
+    case DARIA_VALUE_COLOR:
+      g_string_append(output, daria_color_word(value->color));
+      break;
   }
 }
 
@@ -139,6 +143,7 @@ static DariaExecutionState daria_execute(DariaExecution *execution,
   const DariaProgram *program = execution->program;
   DariaValue *slots = execution->slots;
   GString *output = execution->output;
+  DariaGfxScene *scene = execution->scene;
   DariaAccumulator *accumulator = &execution->accumulator;
 
   if (g_get_monotonic_time() < execution->wake_time) {
@@ -239,17 +244,39 @@ static DariaExecutionState daria_execute(DariaExecution *execution,
         return DARIA_EXECUTION_FAILED;
       case DARIA_OP_SECTION_END:
         return DARIA_EXECUTION_RETURNED;
+      case DARIA_OP_GFX_VERTEX:
+        if (scene != NULL) {
+          const DariaGfxVertex vertex = {
+              {left->f32, right->f32,
+               daria_operand_value(&op->third, slots)->f32},
+              daria_operand_value(&op->fourth, slots)->color,
+          };
+          g_array_append_val(scene->vertices, vertex);
+        }
+        break;
+      case DARIA_OP_GFX_CLEAR:
+        if (scene != NULL) {
+          scene->clear_color = left->color;
+        }
+        break;
+      case DARIA_OP_GFX_DRAW:
+        if (scene != NULL) {
+          scene->draw = TRUE;
+        }
+        break;
     }
   }
   return DARIA_EXECUTION_RUNNING;
 }
 
 DariaExecution *daria_execution_new(const DariaProgram *program,
-                                    DariaSection section, GString *output) {
+                                    DariaSection section, DariaGfxScene *scene,
+                                    GString *output) {
   DariaExecution *execution = g_new0(DariaExecution, 1);
   execution->program = program;
   execution->next = program->entries[section];
   execution->slots = g_new0(DariaValue, program->slot_count);
+  execution->scene = scene;
   execution->to_stdout = output == NULL;
   execution->output = output == NULL ? g_string_new(NULL) : output;
   return execution;
@@ -277,24 +304,25 @@ DariaExecutionState daria_execution_advance(DariaExecution *execution,
 
 gboolean daria_run(const DariaProgram *program, GString *output,
                    gint *exit_status, GError **error) {
-  if (!daria_run_section(program, DARIA_SECTION_GFX_INIT, output, exit_status,
-                         error)) {
+  if (!daria_run_section(program, DARIA_SECTION_GFX_INIT, NULL, output,
+                         exit_status, error)) {
     return FALSE;
   }
-  const gboolean ran = daria_run_section(program, DARIA_SECTION_MAIN, output,
-                                         exit_status, error);
+  const gboolean ran = daria_run_section(program, DARIA_SECTION_MAIN, NULL,
+                                         output, exit_status, error);
   // The error of the main section is the one that is reported.
   g_autoptr(GError) ignored = NULL;
   const gboolean cleaned_up =
-      daria_run_section(program, DARIA_SECTION_GFX_CLEANUP, output, exit_status,
-                        ran ? error : &ignored);
+      daria_run_section(program, DARIA_SECTION_GFX_CLEANUP, NULL, output,
+                        exit_status, ran ? error : &ignored);
   return ran && cleaned_up;
 }
 
 gboolean daria_run_section(const DariaProgram *program, DariaSection section,
-                           GString *output, gint *exit_status, GError **error) {
+                           DariaGfxScene *scene, GString *output,
+                           gint *exit_status, GError **error) {
   g_autoptr(DariaExecution) execution =
-      daria_execution_new(program, section, output);
+      daria_execution_new(program, section, scene, output);
   while (TRUE) {
     switch (daria_execution_advance(execution, G_MAXUINT, exit_status, error)) {
       case DARIA_EXECUTION_RUNNING:
