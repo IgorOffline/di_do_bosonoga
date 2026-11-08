@@ -2,10 +2,15 @@
 
 main
 di
-  var count is 1_i32
-  set count to_add 2_i32 count 3_i32
+  var count is 1_f32 // 1
+  set count to_add 2_f32 count 3_f32 // 6
+  set count to_pow count 3_f32 // 216
+  set count to_subtract count 6_f32 10_f32 // 200
+  set count to_divide count 10_f32 // 20
+  set count to_add count 5_f32 // 25
+  set count to_sqrt count // 5
 
-  if count eq 6_i32
+  if count eq_3 5_f32
   di
     return exit_success
   do
