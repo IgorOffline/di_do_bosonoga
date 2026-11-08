@@ -1,9 +1,15 @@
 // gfx_sections.bosonoga
 
+gfx_global
+di
+  var count is 1_i32
+do
+
 gfx_init
 di
-  var shared_name is 1_i32
-  info "init " shared_name
+  var local_count is 2_i32
+  set local_count to_add local_count count
+  info "init " local_count
 do
 
 gfx_frame
@@ -13,14 +19,16 @@ do
 
 gfx_cleanup
 di
-  var shared_name is 3_i32
-  info "cleanup " shared_name
+  var local_count is 500_i32
+  set local_count to_add local_count count
+  info "cleanup " local_count
 do
 
 gfx_main
 di
-  var shared_name is 2_i32
+  var local_count is 40_i32
+  set local_count to_add local_count count
   sleep_ms 1_u32
-  info "main " shared_name
+  info "main " local_count
   return exit_success
 do

@@ -65,6 +65,8 @@ static gboolean daria_run_test(const gchar *path, const DariaSettings *settings,
 gboolean daria_test_passes(const gchar *path, const DariaSettings *settings) {
   g_autoptr(GError) error = NULL;
   if (!daria_run_test(path, settings, &error)) {
+    g_autofree gchar *display_path = g_filename_display_name(path);
+    g_printerr("FAIL %s\n", display_path);
     g_debug("FAIL %s", error->message);
     return FALSE;
   }
