@@ -4,7 +4,7 @@
 // which shares them, and its info runs first.
 
 // A function before bosonoga_global, which only sees its own variables.
-fn doubled value_i32 ret i32
+fn doubled value_i32 ret 0_i32
 di
   var result is 0_i32
   set result to_add value_i32 value_i32
@@ -13,7 +13,7 @@ do
 
 bosonoga_global
 di
-  var count is doubled 3_i32
+  var count is doubled 3_i32 ret 0_i32
   var name is "global"_str
   info name " "_str count
   if count eq 6_i32
@@ -24,7 +24,7 @@ di
   do
 do
 
-array step i32
+array step 0_i32
 di
   row 10_i32
 do
@@ -33,7 +33,7 @@ bosonoga_main
 di
   // The variable inner was not at the top of bosonoga_global, so this is a
   // new one.
-  var inner is step 0_i32
+  var inner is step 0_i32 ret 0_i32
   set count to_add count inner
   info "main "_str count
   if count eq 17_i32 and name eq "global"_str

@@ -12,6 +12,9 @@ typedef enum {
   BOSONOGA_TOKEN_UNSIGNED,
   BOSONOGA_TOKEN_REAL,
   BOSONOGA_TOKEN_STRING,
+  // Digits and _flags, _color or _str, like 1_str, which only numbers a value
+  // in the types of a function or an array, as 0_i32 and 0_f32 do.
+  BOSONOGA_TOKEN_INDEXED_TYPE,
 } BosonogaTokenKind;
 
 typedef struct {

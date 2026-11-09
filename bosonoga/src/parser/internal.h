@@ -63,6 +63,8 @@ gboolean bosonoga_token_setting(const BosonogaParser *parser,
                                 const BosonogaToken *token,
                                 BosonogaValue *value);
 
+gboolean bosonoga_token_is_result(const BosonogaToken *token);
+
 gboolean bosonoga_token_is_reserved(const BosonogaParser *parser,
                                     const BosonogaToken *token);
 
@@ -160,6 +162,10 @@ gboolean bosonoga_parse_call(BosonogaParser *parser, guint *function,
 gboolean bosonoga_check_single_result(const BosonogaParser *parser,
                                       const BosonogaToken *token, guint index,
                                       GError **error);
+
+// The ret 0_TYPE that ends a call that var or set ... to takes.
+gboolean bosonoga_parse_taken_result(BosonogaParser *parser, guint index,
+                                     GError **error);
 
 gboolean bosonoga_result_operand(const BosonogaParser *parser,
                                  const BosonogaToken *token,
