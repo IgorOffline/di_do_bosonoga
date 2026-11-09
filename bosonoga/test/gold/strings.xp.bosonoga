@@ -1,0 +1,10 @@
+// strings.xp.bosonoga
+
+expect Hello, World!
+expect Lorem! lorem_ipsum Ipsum!
+expect count: 3, half: 1d5
+expect []
+  // A comment marker after expect is printed text, and this comment, with
+  // spaces in front of it, is a comment.
+expect // is not a comment here
+expect Lorem! lorem_ipsum Ipsum!

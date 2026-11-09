@@ -34,13 +34,11 @@ static gboolean bosonoga_parse_section(BosonogaParser *parser,
 
 // What lists the items that can be here, for the error if this is none.
 static gboolean bosonoga_parse_gfx_section(BosonogaParser *parser,
-                                           gboolean has_gfx_section,
                                            const gchar *what, GError **error) {
   static const struct {
     const gchar *word;
     BosonogaSection section;
   } sections[] = {
-      {"gfx_global", BOSONOGA_SECTION_GFX_GLOBAL},
       {"gfx_init", BOSONOGA_SECTION_GFX_INIT},
       {"gfx_frame", BOSONOGA_SECTION_GFX_FRAME},
       {"gfx_cleanup", BOSONOGA_SECTION_GFX_CLEANUP},
@@ -53,12 +51,6 @@ static gboolean bosonoga_parse_gfx_section(BosonogaParser *parser,
   }
   if (i == G_N_ELEMENTS(sections)) {
     return bosonoga_parse_error(parser, what, error);
-  }
-  // Its variables must be declared before the sections that use them.
-  if (sections[i].section == BOSONOGA_SECTION_GFX_GLOBAL && has_gfx_section) {
-    return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
-                            BOSONOGA_ERROR_SYNTAX,
-                            "gfx_global must be the first section");
   }
   parser->program->is_gfx = TRUE;
   return bosonoga_parse_section(parser, sections[i].section, sections[i].word,
@@ -80,11 +72,23 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
       if (!bosonoga_parse_array(parser, error)) {
         return FALSE;
       }
-    } else if (bosonoga_at_word(parser, "main") && !has_gfx_section &&
+    } else if (bosonoga_at_word(parser, "bosonoga_global")) {
+      // Its variables must be declared before the sections that use them.
+      if (has_main || has_gfx_section ||
+          parser->has_section[BOSONOGA_SECTION_GLOBAL]) {
+        return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                                BOSONOGA_ERROR_SYNTAX,
+                                "bosonoga_global must be the first section");
+      }
+      if (!bosonoga_parse_section(parser, BOSONOGA_SECTION_GLOBAL,
+                                  "bosonoga_global", error)) {
+        return FALSE;
+      }
+    } else if (bosonoga_at_word(parser, "bosonoga_main") && !has_gfx_section &&
                !has_main) {
       has_main = TRUE;
-      if (!bosonoga_parse_section(parser, BOSONOGA_SECTION_MAIN, "main",
-                                  error)) {
+      if (!bosonoga_parse_section(parser, BOSONOGA_SECTION_MAIN,
+                                  "bosonoga_main", error)) {
         return FALSE;
       }
     } else if (has_main) {
@@ -93,9 +97,12 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
       const gchar *what =
           has_gfx_section
               ? "fn, array, gfx_init, gfx_frame, gfx_cleanup or gfx_main"
-              : "fn, array, main, gfx_global, gfx_init, gfx_frame, "
-                "gfx_cleanup or gfx_main";
-      if (!bosonoga_parse_gfx_section(parser, has_gfx_section, what, error)) {
+          : parser->has_section[BOSONOGA_SECTION_GLOBAL]
+              ? "fn, array, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup "
+                "or gfx_main"
+              : "fn, array, bosonoga_global, bosonoga_main, gfx_init, "
+                "gfx_frame, gfx_cleanup or gfx_main";
+      if (!bosonoga_parse_gfx_section(parser, what, error)) {
         return FALSE;
       }
       has_gfx_section = TRUE;
@@ -106,7 +113,7 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
     return bosonoga_fail_at(
         parser, &parser->tokenizer.token, error, BOSONOGA_ERROR_SYNTAX,
         has_gfx_section ? "a gfx program needs a gfx_main block"
-                        : "a program needs a main block");
+                        : "a program needs a bosonoga_main block");
   }
 
   for (guint section = 0; section < BOSONOGA_SECTION_COUNT; ++section) {

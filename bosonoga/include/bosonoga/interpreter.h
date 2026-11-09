@@ -28,7 +28,7 @@ typedef enum {
   BOSONOGA_EXECUTION_FAILED,
 } BosonogaExecutionState;
 
-// Freed with g_free. All executions of one run share them, for gfx_global.
+// Freed with g_free. All executions of one run share them, for bosonoga_global.
 BosonogaValue *bosonoga_slots_new(const BosonogaProgram *program);
 
 // Program, slots and scene must outlive the execution. Scene can only be NULL

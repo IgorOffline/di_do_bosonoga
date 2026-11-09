@@ -30,15 +30,16 @@ Only `include/bosonoga/` is the public interface:
 - `gfx.h`: runs a gfx program in a window.
 - `test_runner.h`: runs one test or a directory of tests, in the byte order of
   their names, each of which passes when it returns `exit_success` and prints
-  exactly what its `.expected` file has.
+  what its `.xp.bosonoga` file expects, one `expect` line per printed line.
 
 ## Developing it
 
-`debug.txt` formats the sources, builds the library, and runs the tests of the
-language in `test/`, with the settings in `test/regina.ini`. The tests are in
+The `debug.txt` at the root of the repository formats the sources of the
+library and of daria, builds the library, runs the tests of the language in
+`test/`, with the settings in `test/regina.ini`, and then runs daria. The tests are in
 three tiers, each a directory, which are run in this order:
 
-- `test/silver/`: beginner, a `main` with values and arithmetic.
+- `test/silver/`: beginner, a `bosonoga_main` with values and arithmetic.
 - `test/gold/`: advanced, such as flags and a first gfx program.
 - `test/platinum/`: expert, such as every section of a gfx program and the
   variables that they share.

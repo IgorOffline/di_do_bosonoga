@@ -1,6 +1,6 @@
 // gfx_sections.bosonoga
 
-gfx_global
+bosonoga_global
 di
   var count is 1_i32
 do

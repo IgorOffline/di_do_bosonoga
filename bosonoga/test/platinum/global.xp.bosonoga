@@ -1,0 +1,4 @@
+// global.xp.bosonoga
+
+expect global 6
+expect main 17

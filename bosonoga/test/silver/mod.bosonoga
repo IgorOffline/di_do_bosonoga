@@ -1,6 +1,6 @@
 // mod.bosonoga
 
-main
+bosonoga_main
 di
   var passed_count is 0_i32
   var remainder is 0_i32

@@ -117,7 +117,7 @@ di
   return quotient
 do
 
-main
+bosonoga_main
 di
   var sum is 0_i32
   var message is ""_str

@@ -182,8 +182,8 @@ gboolean bosonoga_parse_function(BosonogaParser *parser, GError **error) {
   function.name = name.text;
   function.name_length = name.length;
 
-  // A function has its own variables and slots, sees no gfx_global, and
-  // parses as main does, without the statements of gfx_frame.
+  // A function has its own variables and slots, sees no bosonoga_global,
+  // and parses as bosonoga_main does, without the statements of gfx_frame.
   g_autoptr(GArray) variables =
       g_array_new(FALSE, FALSE, sizeof(BosonogaVariable));
   GArray *outer_variables = parser->variables;
@@ -400,10 +400,10 @@ gboolean bosonoga_parse_function_return(BosonogaParser *parser,
       parser->functions, BosonogaFunction, parser->functions->len - 1);
   if (bosonoga_at_word(parser, "exit_success") ||
       bosonoga_at_word(parser, "exit_failure")) {
-    return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
-                            BOSONOGA_ERROR_SYNTAX,
-                            "only main and gfx_main return an exit status, a "
-                            "function returns its values");
+    return bosonoga_fail_at(
+        parser, &parser->tokenizer.token, error, BOSONOGA_ERROR_SYNTAX,
+        "only bosonoga_main and gfx_main return an exit status, a "
+        "function returns its values");
   }
   g_autofree gchar *name = g_strndup(function->name, function->name_length);
   g_autofree gchar *results =

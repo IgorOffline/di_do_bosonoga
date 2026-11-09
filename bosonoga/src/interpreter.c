@@ -539,7 +539,7 @@ BosonogaExecutionState bosonoga_execution_advance(BosonogaExecution *execution,
 gboolean bosonoga_run(const BosonogaProgram *program, GString *output,
                       gint *exit_status, GError **error) {
   g_autofree BosonogaValue *slots = bosonoga_slots_new(program);
-  if (!bosonoga_run_section(program, BOSONOGA_SECTION_GFX_GLOBAL, slots, NULL,
+  if (!bosonoga_run_section(program, BOSONOGA_SECTION_GLOBAL, slots, NULL,
                             output, exit_status, error) ||
       !bosonoga_run_section(program, BOSONOGA_SECTION_GFX_INIT, slots, NULL,
                             output, exit_status, error)) {

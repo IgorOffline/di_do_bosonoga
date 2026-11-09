@@ -1,6 +1,6 @@
 // strings.bosonoga
 
-main
+bosonoga_main
 di
   var greeting is "Hello, World!"_str
   var other is "Lorem! lorem_ipsum Ipsum!"_str
@@ -29,7 +29,9 @@ di
   do
   info greeting
 
-  if passed_count eq 3_i32
+  // A program starts with bosonoga_main, so main is a name like any other.
+  var main is passed_count
+  if main eq 3_i32
   di
     return exit_success
   do
