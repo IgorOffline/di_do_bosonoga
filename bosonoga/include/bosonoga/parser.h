@@ -7,20 +7,26 @@
 // The grammar of a .bosonoga program. Whitespace separates tokens, and //
 // starts a comment that runs to the end of the line.
 //
-//   program    := "main" block | section+
+//   program    := item+
+//   item       := "main" block | section | function | array
 //   section    := ("gfx_global" | "gfx_init" | "gfx_frame" | "gfx_cleanup"
 //                 | "gfx_main") block
+//   function   := "fn" NAME PARAMETER* ("ret" TYPE+)? block
+//   array      := "array" NAME TYPE+ "di" row+ "do"
+//   row        := "row" value+
 //   block      := "di" statement+ "do"
 //   statement  := "info" value+
-//               | "var" NAME "is" initial
+//               | "var" NAME "is" (initial | call)
 //               | "set" NAME update
+//               | "set" NAME "to" call
+//               | "call" call ("with" "ret" block)?
 //               | "if" condition block ("else" "if" condition block)*
 //                 ("else" block)?
 //               | LOOP ("with" NAME)? block
 //               | "while" condition block
 //               | "break" | "continue" | "nihil"
 //               | "sleep_ms" UNSIGNED
-//               | "return" ("exit_success" | "exit_failure")
+//               | "return" ("exit_success" | "exit_failure" | value*)
 //               | "gfx_clear" value
 //               | "draw_rectangle" value value value value value
 //   initial    := conversion | value ("shift_or" value)*
@@ -30,12 +36,15 @@
 //   conversion := ("to_f32" | "to_i32" | "to_sin" | "to_cos" | "to_sqrt")
 //               value
 //               | ("to_atan2" | "to_pow") value value
+//   call       := NAME value*
 //   condition  := comparison (("and" | "or") comparison)*
 //   comparison := "not"? value compare value
 //   compare    := "gt" | "lt" | "ge" | "le" | "eq" | "not_eq" | "eq_3" | "eq_6"
 //               | "not_eq_3" | "not_eq_6" | "shift_has"
-//   value      := INTEGER | REAL | STRING | SHIFT | COLOR | GLOBAL
+//   value      := INTEGER | REAL | STRING | SHIFT | COLOR | GLOBAL | RESULT
 //               | "gfx_delta_time" | NAME
+//   TYPE       := "i32" | "f32" | "flags" | "color" | "str"
+//   PARAMETER  := NAME, which ends with "_" TYPE, like count_i32
 //   INTEGER    := "-"? digit+ "_i32"
 //   UNSIGNED   := digit+ "_u32"
 //   REAL       := "-"? digit+ ("d" digit+)? "_f32"
@@ -44,6 +53,7 @@
 //   COLOR      := "color_" KEY
 //   GLOBAL     := "global_" KEY
 //   LOOP       := "to_" digit+
+//   RESULT     := "ret_" digit+
 //
 // - "and" binds tighter than "or", and "not" negates only the comparison after
 //   it. A variable is visible to the end of its block and cannot hide another.
@@ -57,6 +67,18 @@
 // - A STRING has no escapes, and cannot hold a quote, a backslash, a newline or
 //   NUL. A str can be stored, printed, compared with eq and not_eq, and set
 //   with to_add and a single str, but not computed with.
+// - A program has either one main or the sections of a gfx program, and any
+//   number of functions and arrays, each of which can only be used after its
+//   definition, so a function can call itself but two cannot call each other.
+// - A function sees only its parameters and its own variables, and everything
+//   is passed and returned by value. A return gives one value per TYPE after
+//   ret, and the end of the block is a runtime error for a function with ret.
+//   var and set ... to take a call that returns one value. Otherwise "call ...
+//   with ret" and a block take them as ret_0, ret_1 and so on, those of the
+//   innermost call. Calls nest at most BOSONOGA_CALL_DEPTH_MAX deep, and a
+//   function cannot have the statements of gfx_frame.
+// - An array is a table of literal rows, read like a function of one i32 index
+//   from 0, which returns that row. An index without a row is a runtime error.
 // - A gfx program has one gfx_main and at most one of each other section, with
 //   gfx_global first. Only gfx_main can return. The variables at the top of
 //   gfx_global are shared by all sections. In a window, see gfx.h, gfx_global
@@ -129,6 +151,12 @@ typedef enum {
   BOSONOGA_OP_GFX_CLEAR,
   BOSONOGA_OP_DRAW_RECTANGLE,
   BOSONOGA_OP_GFX_DELTA_TIME,
+  BOSONOGA_OP_ARGUMENT,
+  BOSONOGA_OP_CALL,
+  BOSONOGA_OP_RESULT,
+  BOSONOGA_OP_FUNCTION_RETURN,
+  BOSONOGA_OP_TAKE_RESULT,
+  BOSONOGA_OP_ARRAY_READ,
 } BosonogaOpKind;
 
 typedef struct {
@@ -139,6 +167,8 @@ typedef struct {
   gsize column;
   guint slot;
   guint target;
+  guint function;
+  guint index;
   gint32 integer;
   guint32 milliseconds;
   BosonogaOperand left;
@@ -148,10 +178,32 @@ typedef struct {
   BosonogaOperand fifth;
 } BosonogaOp;
 
+// The most values that a function takes or returns, and of a row.
+#define BOSONOGA_FUNCTION_VALUES_MAX 16
+#define BOSONOGA_CALL_DEPTH_MAX 10000
+
+// An array is read like a function of its index that returns a row.
+typedef struct {
+  const gchar *name;  // Slice of the source.
+  gsize name_length;
+  gboolean is_array;
+  guint entry;
+  guint parameter_count;
+  guint result_count;
+  BosonogaValueKind parameters[BOSONOGA_FUNCTION_VALUES_MAX];
+  BosonogaValueKind results[BOSONOGA_FUNCTION_VALUES_MAX];
+  // Of its own frame, parameters first. Not of an array.
+  guint slot_count;
+  guint row_count;    // Only of an array.
+  guint first_value;  // Only of an array, index in program->rows of row 0.
+} BosonogaFunction;
+
 typedef struct {
   const gchar *path;  // Not owned.
   GArray *ops;
-  guint slot_count;
+  guint slot_count;  // Not of functions.
+  GArray *functions;
+  GArray *rows;  // Of all arrays, one row after another.
   gboolean is_gfx;
   // A missing section starts at a BOSONOGA_OP_SECTION_END, so it can still run.
   guint entries[BOSONOGA_SECTION_COUNT];

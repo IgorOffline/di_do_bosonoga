@@ -10,6 +10,8 @@
 #define BOSONOGA_TOLERANCE_6 1e-6
 // The first f32 above the i32 range, which G_MAXINT32 itself rounds up to.
 #define BOSONOGA_I32_RANGE_LIMIT 2147483648.0f
+// So that the stack has memory, which a frame of no values points into.
+#define BOSONOGA_STACK_RESERVED 256
 
 static gboolean bosonoga_runtime_error(const BosonogaProgram *program,
                                        const BosonogaOp *op, GError **error,
@@ -36,8 +38,8 @@ static const gchar *bosonoga_format_real(gchar text[G_ASCII_DTOSTR_BUF_SIZE],
 }
 
 static const BosonogaValue *bosonoga_operand_value(
-    const BosonogaOperand *operand, const BosonogaValue *slots) {
-  return operand->is_variable ? &slots[operand->slot] : &operand->literal;
+    const BosonogaOperand *operand, const BosonogaValue *frame) {
+  return operand->is_variable ? &frame[operand->slot] : &operand->literal;
 }
 
 static gboolean bosonoga_f32_close(gfloat left, gfloat right,
@@ -94,6 +96,12 @@ typedef struct {
   gdouble real;
 } BosonogaAccumulator;
 
+typedef struct {
+  guint function;
+  guint return_to;
+  guint base;  // Of its frame in the stack.
+} BosonogaCall;
+
 struct _BosonogaExecution {
   const BosonogaProgram *program;
   BosonogaValue *slots;
@@ -103,6 +111,11 @@ struct _BosonogaExecution {
   BosonogaGfxScene *scene;
   GString *output;
   gboolean to_stdout;  // Then output is an owned buffer for stdout.
+  // A frame per call, with copies of its arguments.
+  GArray *stack;
+  GArray *calls;  // Of BosonogaCall, innermost last.
+  BosonogaValue arguments[BOSONOGA_FUNCTION_VALUES_MAX];
+  BosonogaValue results[BOSONOGA_FUNCTION_VALUES_MAX];
 };
 
 static gboolean bosonoga_accumulator_store(
@@ -175,12 +188,76 @@ static void bosonoga_print_value(GString *output, const BosonogaValue *value) {
   }
 }
 
+// The variables of the innermost call, or of the section. A frame in the stack
+// moves when the stack grows.
+static BosonogaValue *bosonoga_frame(const BosonogaExecution *execution) {
+  if (execution->calls->len == 0) {
+    return execution->slots;
+  }
+  const BosonogaCall *call =
+      &g_array_index(execution->calls, BosonogaCall, execution->calls->len - 1);
+  return &g_array_index(execution->stack, BosonogaValue, call->base);
+}
+
+static gboolean bosonoga_call(BosonogaExecution *execution,
+                              const BosonogaOp *op, GError **error) {
+  const BosonogaFunction *function = &g_array_index(
+      execution->program->functions, BosonogaFunction, op->function);
+  if (execution->calls->len == BOSONOGA_CALL_DEPTH_MAX) {
+    return bosonoga_runtime_error(execution->program, op, error,
+                                  "calls are nested more than %d deep",
+                                  BOSONOGA_CALL_DEPTH_MAX);
+  }
+  const BosonogaCall call = {op->function, execution->next,
+                             execution->stack->len};
+  g_array_append_val(execution->calls, call);
+  g_array_set_size(execution->stack, call.base + function->slot_count);
+  memcpy(bosonoga_frame(execution), execution->arguments,
+         function->parameter_count * sizeof(BosonogaValue));
+  execution->next = function->entry;
+  return TRUE;
+}
+
+static void bosonoga_return(BosonogaExecution *execution) {
+  const BosonogaCall call =
+      g_array_index(execution->calls, BosonogaCall, execution->calls->len - 1);
+  g_array_set_size(execution->calls, execution->calls->len - 1);
+  g_array_set_size(execution->stack, call.base);
+  execution->next = call.return_to;
+}
+
+static gboolean bosonoga_read_array(BosonogaExecution *execution,
+                                    const BosonogaOp *op,
+                                    const BosonogaValue *index,
+                                    GError **error) {
+  const BosonogaProgram *program = execution->program;
+  const BosonogaFunction *array =
+      &g_array_index(program->functions, BosonogaFunction, op->function);
+  if (index->i32 < 0 || (guint)index->i32 >= array->row_count) {
+    if (array->row_count == 1) {
+      return bosonoga_runtime_error(
+          program, op, error, "'%.*s' has only row 0, not %" G_GINT32_FORMAT,
+          (gint)array->name_length, array->name, index->i32);
+    }
+    return bosonoga_runtime_error(
+        program, op, error, "'%.*s' has rows 0 to %u, not %" G_GINT32_FORMAT,
+        (gint)array->name_length, array->name, array->row_count - 1,
+        index->i32);
+  }
+  memcpy(execution->results,
+         &g_array_index(
+             program->rows, BosonogaValue,
+             array->first_value + (guint)index->i32 * array->result_count),
+         array->result_count * sizeof(BosonogaValue));
+  return TRUE;
+}
+
 static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
                                                guint op_budget,
                                                gint *exit_status,
                                                GError **error) {
   const BosonogaProgram *program = execution->program;
-  BosonogaValue *slots = execution->slots;
+  BosonogaValue *frame = bosonoga_frame(execution);
   GString *output = execution->output;
   BosonogaGfxScene *scene = execution->scene;
   BosonogaAccumulator *accumulator = &execution->accumulator;
@@ -191,8 +268,8 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
   for (guint i = 0; i < op_budget; ++i) {
     const BosonogaOp *op =
         &g_array_index(program->ops, BosonogaOp, execution->next);
-    const BosonogaValue *left = bosonoga_operand_value(&op->left, slots);
-    const BosonogaValue *right = bosonoga_operand_value(&op->right, slots);
+    const BosonogaValue *left = bosonoga_operand_value(&op->left, frame);
+    const BosonogaValue *right = bosonoga_operand_value(&op->right, frame);
     ++execution->next;
 
     switch (op->kind) {
@@ -203,14 +280,14 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         g_string_append_c(output, '\n');
         break;
       case BOSONOGA_OP_ASSIGN:
-        slots[op->slot] = *left;
+        frame[op->slot] = *left;
         break;
       case BOSONOGA_OP_FLAGS_OR:
-        slots[op->slot].flags |= left->flags;
+        frame[op->slot].flags |= left->flags;
         break;
       case BOSONOGA_OP_CONVERT_TO_F32:
-        slots[op->slot].kind = BOSONOGA_VALUE_F32;
-        slots[op->slot].f32 = (gfloat)left->i32;
+        frame[op->slot].kind = BOSONOGA_VALUE_F32;
+        frame[op->slot].f32 = (gfloat)left->i32;
         break;
       case BOSONOGA_OP_CONVERT_TO_I32:
         if (!(left->f32 >= -BOSONOGA_I32_RANGE_LIMIT &&
@@ -221,28 +298,28 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
               bosonoga_format_real(text, (gdouble)left->f32));
           return BOSONOGA_EXECUTION_FAILED;
         }
-        slots[op->slot].kind = BOSONOGA_VALUE_I32;
-        slots[op->slot].i32 = (gint32)left->f32;
+        frame[op->slot].kind = BOSONOGA_VALUE_I32;
+        frame[op->slot].i32 = (gint32)left->f32;
         break;
       // The result is computed first, as the slot can be left, as
       // in set a to_sin a.
       case BOSONOGA_OP_SIN: {
         const gfloat result = (gfloat)sin((gdouble)left->f32);
-        slots[op->slot].kind = BOSONOGA_VALUE_F32;
-        slots[op->slot].f32 = result;
+        frame[op->slot].kind = BOSONOGA_VALUE_F32;
+        frame[op->slot].f32 = result;
         break;
       }
       case BOSONOGA_OP_COS: {
         const gfloat result = (gfloat)cos((gdouble)left->f32);
-        slots[op->slot].kind = BOSONOGA_VALUE_F32;
-        slots[op->slot].f32 = result;
+        frame[op->slot].kind = BOSONOGA_VALUE_F32;
+        frame[op->slot].f32 = result;
         break;
       }
       case BOSONOGA_OP_ATAN2: {
         const gfloat result =
             (gfloat)atan2((gdouble)left->f32, (gdouble)right->f32);
-        slots[op->slot].kind = BOSONOGA_VALUE_F32;
-        slots[op->slot].f32 = result;
+        frame[op->slot].kind = BOSONOGA_VALUE_F32;
+        frame[op->slot].f32 = result;
         break;
       }
       case BOSONOGA_OP_SQRT: {
@@ -254,8 +331,8 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
           return BOSONOGA_EXECUTION_FAILED;
         }
         const gfloat result = (gfloat)sqrt((gdouble)left->f32);
-        slots[op->slot].kind = BOSONOGA_VALUE_F32;
-        slots[op->slot].f32 = result;
+        frame[op->slot].kind = BOSONOGA_VALUE_F32;
+        frame[op->slot].f32 = result;
         break;
       }
       case BOSONOGA_OP_POW: {
@@ -277,8 +354,8 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
                                  bosonoga_format_real(text, result));
           return BOSONOGA_EXECUTION_FAILED;
         }
-        slots[op->slot].kind = BOSONOGA_VALUE_F32;
-        slots[op->slot].f32 = (gfloat)result;
+        frame[op->slot].kind = BOSONOGA_VALUE_F32;
+        frame[op->slot].f32 = (gfloat)result;
         break;
       }
       case BOSONOGA_OP_ACCUMULATOR_LOAD:
@@ -321,7 +398,7 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         break;
       case BOSONOGA_OP_ACCUMULATOR_STORE:
         if (!bosonoga_accumulator_store(program, op, accumulator,
-                                        &slots[op->slot], error)) {
+                                        &frame[op->slot], error)) {
           return BOSONOGA_EXECUTION_FAILED;
         }
         break;
@@ -335,12 +412,12 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         }
         break;
       case BOSONOGA_OP_LOOP_TEST:
-        if (slots[op->slot].i32 >= op->integer) {
+        if (frame[op->slot].i32 >= op->integer) {
           execution->next = op->target;
         }
         break;
       case BOSONOGA_OP_LOOP_NEXT:
-        ++slots[op->slot].i32;
+        ++frame[op->slot].i32;
         execution->next = op->target;
         break;
       case BOSONOGA_OP_SLEEP:
@@ -352,8 +429,19 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         *exit_status = op->integer;
         return BOSONOGA_EXECUTION_RETURNED;
       case BOSONOGA_OP_MISSING_RETURN:
-        bosonoga_runtime_error(program, op, error,
-                               "the program ended without a return");
+        if (execution->calls->len > 0) {
+          const BosonogaFunction *function =
+              &g_array_index(program->functions, BosonogaFunction,
+                             g_array_index(execution->calls, BosonogaCall,
+                                           execution->calls->len - 1)
+                                 .function);
+          bosonoga_runtime_error(program, op, error,
+                                 "the function '%.*s' ended without a return",
+                                 (gint)function->name_length, function->name);
+        } else {
+          bosonoga_runtime_error(program, op, error,
+                                 "the program ended without a return");
+        }
         return BOSONOGA_EXECUTION_FAILED;
       case BOSONOGA_OP_SECTION_END:
         return BOSONOGA_EXECUTION_RETURNED;
@@ -364,16 +452,40 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         const BosonogaGfxRectangle rectangle = {
             left->f32,
             right->f32,
-            bosonoga_operand_value(&op->third, slots)->f32,
-            bosonoga_operand_value(&op->fourth, slots)->f32,
-            bosonoga_operand_value(&op->fifth, slots)->color,
+            bosonoga_operand_value(&op->third, frame)->f32,
+            bosonoga_operand_value(&op->fourth, frame)->f32,
+            bosonoga_operand_value(&op->fifth, frame)->color,
         };
         g_array_append_val(scene->rectangles, rectangle);
         break;
       }
+      case BOSONOGA_OP_ARGUMENT:
+        execution->arguments[op->index] = *left;
+        break;
+      case BOSONOGA_OP_CALL:
+        if (!bosonoga_call(execution, op, error)) {
+          return BOSONOGA_EXECUTION_FAILED;
+        }
+        frame = bosonoga_frame(execution);
+        break;
+      case BOSONOGA_OP_RESULT:
+        execution->results[op->index] = *left;
+        break;
+      case BOSONOGA_OP_FUNCTION_RETURN:
+        bosonoga_return(execution);
+        frame = bosonoga_frame(execution);
+        break;
+      case BOSONOGA_OP_TAKE_RESULT:
+        frame[op->slot] = execution->results[op->index];
+        break;
+      case BOSONOGA_OP_ARRAY_READ:
+        if (!bosonoga_read_array(execution, op, left, error)) {
+          return BOSONOGA_EXECUTION_FAILED;
+        }
+        break;
       case BOSONOGA_OP_GFX_DELTA_TIME:
-        slots[op->slot].kind = BOSONOGA_VALUE_F32;
-        slots[op->slot].f32 = scene->delta_time;
+        frame[op->slot].kind = BOSONOGA_VALUE_F32;
+        frame[op->slot].f32 = scene->delta_time;
         break;
     }
   }
@@ -396,6 +508,9 @@ BosonogaExecution *bosonoga_execution_new(const BosonogaProgram *program,
   execution->scene = scene;
   execution->to_stdout = output == NULL;
   execution->output = output == NULL ? g_string_new(NULL) : output;
+  execution->stack = g_array_sized_new(FALSE, TRUE, sizeof(BosonogaValue),
+                                       BOSONOGA_STACK_RESERVED);
+  execution->calls = g_array_new(FALSE, FALSE, sizeof(BosonogaCall));
   return execution;
 }
 
@@ -403,6 +518,8 @@ void bosonoga_execution_free(BosonogaExecution *execution) {
   if (execution->to_stdout) {
     g_string_free(execution->output, TRUE);
   }
+  g_array_unref(execution->stack);
+  g_array_unref(execution->calls);
   g_free(execution);
 }
 
