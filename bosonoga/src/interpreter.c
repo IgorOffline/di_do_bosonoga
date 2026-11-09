@@ -8,8 +8,6 @@
 
 #define BOSONOGA_TOLERANCE_3 1e-3
 #define BOSONOGA_TOLERANCE_6 1e-6
-// The first f32 above the i32 range, which G_MAXINT32 itself rounds up to.
-#define BOSONOGA_I32_RANGE_LIMIT 2147483648.0f
 // So that the stack has memory, which a frame of no values points into.
 #define BOSONOGA_STACK_RESERVED 256
 
@@ -42,13 +40,21 @@ static const BosonogaValue *bosonoga_operand_value(
   return operand->is_variable ? &frame[operand->slot] : &operand->literal;
 }
 
-static gboolean bosonoga_f32_close(gfloat left, gfloat right,
-                                   gdouble tolerance) {
-  const gdouble a = (gdouble)left;
-  const gdouble b = (gdouble)right;
+static gboolean bosonoga_is_real(const BosonogaValue *value) {
+  return value->kind == BOSONOGA_VALUE_F32 || value->kind == BOSONOGA_VALUE_F64;
+}
+
+static gdouble bosonoga_number(const BosonogaValue *value) {
+  return value->kind == BOSONOGA_VALUE_F64   ? value->f64
+         : value->kind == BOSONOGA_VALUE_F32 ? (gdouble)value->f32
+                                             : (gdouble)value->i32;
+}
+
+static gboolean bosonoga_real_close(gdouble a, gdouble b, gdouble tolerance) {
   const gdouble difference = ABS(a - b);
-  return difference <= tolerance * MAX(ABS(a), ABS(b)) ||
-         difference <= tolerance;
+  return difference <= tolerance ||
+         (MAX(ABS(a), ABS(b)) > 0.0 &&
+          difference / MAX(ABS(a), ABS(b)) <= tolerance);
 }
 
 static gboolean bosonoga_str_equal(const BosonogaValue *left,
@@ -60,30 +66,32 @@ static gboolean bosonoga_str_equal(const BosonogaValue *left,
 static gboolean bosonoga_compare(BosonogaCompareKind compare,
                                  const BosonogaValue *left,
                                  const BosonogaValue *right) {
-  const gboolean is_f32 = left->kind == BOSONOGA_VALUE_F32;
+  const gboolean is_real = bosonoga_is_real(left);
+  const gdouble a = is_real ? bosonoga_number(left) : 0.0;
+  const gdouble b = is_real ? bosonoga_number(right) : 0.0;
   const gboolean is_str = left->kind == BOSONOGA_VALUE_STR;
   switch (compare) {
     case BOSONOGA_COMPARE_GT:
-      return is_f32 ? left->f32 > right->f32 : left->i32 > right->i32;
+      return is_real ? a > b : left->i32 > right->i32;
     case BOSONOGA_COMPARE_LT:
-      return is_f32 ? left->f32 < right->f32 : left->i32 < right->i32;
+      return is_real ? a < b : left->i32 < right->i32;
     case BOSONOGA_COMPARE_GE:
-      return is_f32 ? left->f32 >= right->f32 : left->i32 >= right->i32;
+      return is_real ? a >= b : left->i32 >= right->i32;
     case BOSONOGA_COMPARE_LE:
-      return is_f32 ? left->f32 <= right->f32 : left->i32 <= right->i32;
+      return is_real ? a <= b : left->i32 <= right->i32;
     case BOSONOGA_COMPARE_EQ:
       return is_str ? bosonoga_str_equal(left, right) : left->i32 == right->i32;
     case BOSONOGA_COMPARE_NOT_EQ:
       return is_str ? !bosonoga_str_equal(left, right)
                     : left->i32 != right->i32;
     case BOSONOGA_COMPARE_EQ_3:
-      return bosonoga_f32_close(left->f32, right->f32, BOSONOGA_TOLERANCE_3);
+      return bosonoga_real_close(a, b, BOSONOGA_TOLERANCE_3);
     case BOSONOGA_COMPARE_EQ_6:
-      return bosonoga_f32_close(left->f32, right->f32, BOSONOGA_TOLERANCE_6);
+      return bosonoga_real_close(a, b, BOSONOGA_TOLERANCE_6);
     case BOSONOGA_COMPARE_NOT_EQ_3:
-      return !bosonoga_f32_close(left->f32, right->f32, BOSONOGA_TOLERANCE_3);
+      return !bosonoga_real_close(a, b, BOSONOGA_TOLERANCE_3);
     case BOSONOGA_COMPARE_NOT_EQ_6:
-      return !bosonoga_f32_close(left->f32, right->f32, BOSONOGA_TOLERANCE_6);
+      return !bosonoga_real_close(a, b, BOSONOGA_TOLERANCE_6);
     case BOSONOGA_COMPARE_SHIFT_HAS:
       return (left->flags & right->flags) == right->flags;
   }
@@ -122,6 +130,14 @@ static gboolean bosonoga_accumulator_store(
     const BosonogaProgram *program, const BosonogaOp *op,
     const BosonogaAccumulator *accumulator, BosonogaValue *slot,
     GError **error) {
+  if (slot->kind == BOSONOGA_VALUE_F64) {
+    if (!isfinite(accumulator->real)) {
+      return bosonoga_runtime_error(program, op, error,
+                                    "the result is outside the f64 range");
+    }
+    slot->f64 = accumulator->real;
+    return TRUE;
+  }
   if (slot->kind == BOSONOGA_VALUE_F32) {
     // Written so that NaN, from infinity times 0, is outside the range too.
     if (!(ABS(accumulator->real) <= (gdouble)G_MAXFLOAT)) {
@@ -150,12 +166,12 @@ static gboolean bosonoga_accumulator_divide(const BosonogaProgram *program,
                                             const BosonogaValue *left,
                                             GError **error) {
   const gboolean is_mod = op->kind == BOSONOGA_OP_ACCUMULATOR_MOD;
-  if (left->kind == BOSONOGA_VALUE_F32) {
-    if (!(left->f32 < 0.0f || left->f32 > 0.0f)) {
+  if (bosonoga_is_real(left)) {
+    if (!(bosonoga_number(left) < 0.0 || bosonoga_number(left) > 0.0)) {
       return bosonoga_runtime_error(program, op, error, "division by zero");
     }
-    accumulator->real = is_mod ? fmod(accumulator->real, (gdouble)left->f32)
-                               : accumulator->real / (gdouble)left->f32;
+    accumulator->real = is_mod ? fmod(accumulator->real, bosonoga_number(left))
+                               : accumulator->real / bosonoga_number(left);
     return TRUE;
   }
   if (left->i32 == 0) {
@@ -174,6 +190,12 @@ static void bosonoga_print_value(GString *output, const BosonogaValue *value) {
     case BOSONOGA_VALUE_F32: {
       gchar text[G_ASCII_DTOSTR_BUF_SIZE];
       g_string_append(output, bosonoga_format_real(text, (gdouble)value->f32));
+      break;
+    }
+    case BOSONOGA_VALUE_F64: {
+      gchar text[G_ASCII_DTOSTR_BUF_SIZE];
+      g_ascii_formatd(text, sizeof(text), "%.17g", value->f64);
+      g_string_append(output, g_strdelimit(text, ".", 'd'));
       break;
     }
     case BOSONOGA_VALUE_FLAGS:
@@ -252,6 +274,120 @@ static gboolean bosonoga_read_array(BosonogaExecution *execution,
   return TRUE;
 }
 
+static gboolean bosonoga_math(const BosonogaProgram *program,
+                              const BosonogaOp *op, const BosonogaValue *left,
+                              const BosonogaValue *right, BosonogaValue *slot,
+                              GError **error) {
+  const gdouble a = bosonoga_number(left);
+  const gdouble b = bosonoga_number(right);
+  gdouble result = 0.0;
+  const gchar *domain = NULL;
+  switch ((gint)op->kind) {
+    case BOSONOGA_OP_ABS:
+      if (left->kind == BOSONOGA_VALUE_I32 && left->i32 == G_MININT32) {
+        return bosonoga_runtime_error(program, op, error,
+                                      "to_abs result is outside the i32 range");
+      }
+      result = fabs(a);
+      break;
+    case BOSONOGA_OP_MIN:
+      result = fmin(a, b);
+      break;
+    case BOSONOGA_OP_MAX:
+      result = fmax(a, b);
+      break;
+    case BOSONOGA_OP_FLOOR:
+      result = floor(a);
+      break;
+    case BOSONOGA_OP_CEIL:
+      result = ceil(a);
+      break;
+    case BOSONOGA_OP_ROUND:
+      result = round(a);
+      break;
+    case BOSONOGA_OP_SIN:
+      result = sin(a);
+      break;
+    case BOSONOGA_OP_COS:
+      result = cos(a);
+      break;
+    case BOSONOGA_OP_TAN:
+      result = tan(a);
+      break;
+    case BOSONOGA_OP_ASIN:
+      if (a < -1.0 || a > 1.0)
+        domain = "to_asin needs a value from -1 to 1";
+      else
+        result = asin(a);
+      break;
+    case BOSONOGA_OP_ACOS:
+      if (a < -1.0 || a > 1.0)
+        domain = "to_acos needs a value from -1 to 1";
+      else
+        result = acos(a);
+      break;
+    case BOSONOGA_OP_ATAN2:
+      result = atan2(a, b);
+      break;
+    case BOSONOGA_OP_SQRT:
+      if (a < 0.0)
+        domain = "to_sqrt of a negative number";
+      else
+        result = sqrt(a);
+      break;
+    case BOSONOGA_OP_POW:
+      if (a < 0.0 && trunc(b) != b)
+        domain = "to_pow of a negative number to a fractional power";
+      else if (a == 0.0 && b < 0.0)
+        domain = "to_pow of zero to a negative power is division by zero";
+      else
+        result = pow(a, b);
+      break;
+    case BOSONOGA_OP_LOG:
+    case BOSONOGA_OP_LOG10:
+      if (a <= 0.0)
+        domain = "logarithms need a positive value";
+      else
+        result = op->kind == BOSONOGA_OP_LOG ? log(a) : log10(a);
+      break;
+    case BOSONOGA_OP_EXP:
+      result = exp(a);
+      break;
+    case BOSONOGA_OP_LOG1P:
+      if (a <= -1.0)
+        domain = "to_log1p needs a value greater than -1";
+      else
+        result = log1p(a);
+      break;
+    case BOSONOGA_OP_EXPM1:
+      result = expm1(a);
+      break;
+    case BOSONOGA_OP_HYPOT:
+      result = hypot(a, b);
+      break;
+    default:
+      g_return_val_if_reached(FALSE);
+  }
+  if (domain != NULL) {
+    return bosonoga_runtime_error(program, op, error, "%s", domain);
+  }
+  if (!isfinite(result) ||
+      (left->kind == BOSONOGA_VALUE_F32 && ABS(result) > (gdouble)G_MAXFLOAT)) {
+    return bosonoga_runtime_error(
+        program, op, error, "the result is outside the %s range",
+        left->kind == BOSONOGA_VALUE_F32 ? "f32" : "f64");
+  }
+  const BosonogaValueKind kind = left->kind;
+  slot->kind = kind;
+  if (kind == BOSONOGA_VALUE_F64)
+    slot->f64 = result;
+  else if (kind == BOSONOGA_VALUE_F32)
+    slot->f32 = (gfloat)result;
+  else
+    slot->i32 = (gint32)result;
+  return TRUE;
+}
+
 static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
                                                guint op_budget,
                                                gint *exit_status,
@@ -286,102 +422,81 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         frame[op->slot].flags |= left->flags;
         break;
       case BOSONOGA_OP_CONVERT_TO_F32:
-        frame[op->slot].kind = BOSONOGA_VALUE_F32;
-        frame[op->slot].f32 = (gfloat)left->i32;
+      case BOSONOGA_OP_CONVERT_TO_F64:
+      case BOSONOGA_OP_CONVERT_TO_I32: {
+        const gdouble value = bosonoga_number(left);
+        BosonogaValue result = {0};
+        if (op->kind == BOSONOGA_OP_CONVERT_TO_I32) {
+          if (!(value >= -2147483648.0 && value < 2147483648.0)) {
+            bosonoga_runtime_error(program, op, error,
+                                   "value is outside the i32 range");
+            return BOSONOGA_EXECUTION_FAILED;
+          }
+          result.kind = BOSONOGA_VALUE_I32;
+          result.i32 = (gint32)value;
+        } else if (op->kind == BOSONOGA_OP_CONVERT_TO_F32) {
+          if (!(ABS(value) <= (gdouble)G_MAXFLOAT)) {
+            bosonoga_runtime_error(program, op, error,
+                                   "value is outside the f32 range");
+            return BOSONOGA_EXECUTION_FAILED;
+          }
+          result.kind = BOSONOGA_VALUE_F32;
+          result.f32 = (gfloat)value;
+        } else {
+          result.kind = BOSONOGA_VALUE_F64;
+          result.f64 = value;
+        }
+        frame[op->slot] = result;
         break;
-      case BOSONOGA_OP_CONVERT_TO_I32:
-        if (!(left->f32 >= -BOSONOGA_I32_RANGE_LIMIT &&
-              left->f32 < BOSONOGA_I32_RANGE_LIMIT)) {
-          gchar text[G_ASCII_DTOSTR_BUF_SIZE];
-          bosonoga_runtime_error(
-              program, op, error, "%s is outside the i32 range",
-              bosonoga_format_real(text, (gdouble)left->f32));
+      }
+      case BOSONOGA_OP_ABS:
+      case BOSONOGA_OP_MIN:
+      case BOSONOGA_OP_MAX:
+      case BOSONOGA_OP_FLOOR:
+      case BOSONOGA_OP_CEIL:
+      case BOSONOGA_OP_ROUND:
+      case BOSONOGA_OP_SIN:
+      case BOSONOGA_OP_COS:
+      case BOSONOGA_OP_TAN:
+      case BOSONOGA_OP_ASIN:
+      case BOSONOGA_OP_ACOS:
+      case BOSONOGA_OP_ATAN2:
+      case BOSONOGA_OP_SQRT:
+      case BOSONOGA_OP_POW:
+      case BOSONOGA_OP_LOG:
+      case BOSONOGA_OP_LOG10:
+      case BOSONOGA_OP_EXP:
+      case BOSONOGA_OP_LOG1P:
+      case BOSONOGA_OP_EXPM1:
+      case BOSONOGA_OP_HYPOT:
+        if (!bosonoga_math(program, op, left, right, &frame[op->slot], error)) {
           return BOSONOGA_EXECUTION_FAILED;
         }
-        frame[op->slot].kind = BOSONOGA_VALUE_I32;
-        frame[op->slot].i32 = (gint32)left->f32;
         break;
-      // The result is computed first, as the slot can be left, as
-      // in set a to_sin a.
-      case BOSONOGA_OP_SIN: {
-        const gfloat result = (gfloat)sin((gdouble)left->f32);
-        frame[op->slot].kind = BOSONOGA_VALUE_F32;
-        frame[op->slot].f32 = result;
-        break;
-      }
-      case BOSONOGA_OP_COS: {
-        const gfloat result = (gfloat)cos((gdouble)left->f32);
-        frame[op->slot].kind = BOSONOGA_VALUE_F32;
-        frame[op->slot].f32 = result;
-        break;
-      }
-      case BOSONOGA_OP_ATAN2: {
-        const gfloat result =
-            (gfloat)atan2((gdouble)left->f32, (gdouble)right->f32);
-        frame[op->slot].kind = BOSONOGA_VALUE_F32;
-        frame[op->slot].f32 = result;
-        break;
-      }
-      case BOSONOGA_OP_SQRT: {
-        if (left->f32 < 0.0f) {
-          gchar text[G_ASCII_DTOSTR_BUF_SIZE];
-          bosonoga_runtime_error(
-              program, op, error, "to_sqrt of a negative number (%s)",
-              bosonoga_format_real(text, (gdouble)left->f32));
-          return BOSONOGA_EXECUTION_FAILED;
-        }
-        const gfloat result = (gfloat)sqrt((gdouble)left->f32);
-        frame[op->slot].kind = BOSONOGA_VALUE_F32;
-        frame[op->slot].f32 = result;
-        break;
-      }
-      case BOSONOGA_OP_POW: {
-        const gdouble result = pow((gdouble)left->f32, (gdouble)right->f32);
-        if (isnan(result)) {
-          gchar base[G_ASCII_DTOSTR_BUF_SIZE];
-          gchar exponent[G_ASCII_DTOSTR_BUF_SIZE];
-          bosonoga_runtime_error(
-              program, op, error,
-              "to_pow of a negative number (%s) to a fractional power (%s)",
-              bosonoga_format_real(base, (gdouble)left->f32),
-              bosonoga_format_real(exponent, (gdouble)right->f32));
-          return BOSONOGA_EXECUTION_FAILED;
-        }
-        if (!(ABS(result) <= (gdouble)G_MAXFLOAT)) {
-          gchar text[G_ASCII_DTOSTR_BUF_SIZE];
-          bosonoga_runtime_error(program, op, error,
-                                 "the result (%s) is outside the f32 range",
-                                 bosonoga_format_real(text, result));
-          return BOSONOGA_EXECUTION_FAILED;
-        }
-        frame[op->slot].kind = BOSONOGA_VALUE_F32;
-        frame[op->slot].f32 = (gfloat)result;
-        break;
-      }
       case BOSONOGA_OP_ACCUMULATOR_LOAD:
-        if (left->kind == BOSONOGA_VALUE_F32) {
-          accumulator->real = (gdouble)left->f32;
+        if (bosonoga_is_real(left)) {
+          accumulator->real = bosonoga_number(left);
         } else {
           accumulator->whole = left->i32;
         }
         break;
       case BOSONOGA_OP_ACCUMULATOR_ADD:
-        if (left->kind == BOSONOGA_VALUE_F32) {
-          accumulator->real += (gdouble)left->f32;
+        if (bosonoga_is_real(left)) {
+          accumulator->real += bosonoga_number(left);
         } else {
           accumulator->whole += left->i32;
         }
         break;
       case BOSONOGA_OP_ACCUMULATOR_SUBTRACT:
-        if (left->kind == BOSONOGA_VALUE_F32) {
-          accumulator->real -= (gdouble)left->f32;
+        if (bosonoga_is_real(left)) {
+          accumulator->real -= bosonoga_number(left);
         } else {
           accumulator->whole -= left->i32;
         }
         break;
       case BOSONOGA_OP_ACCUMULATOR_MULTIPLY:
-        if (left->kind == BOSONOGA_VALUE_F32) {
-          accumulator->real *= (gdouble)left->f32;
+        if (bosonoga_is_real(left)) {
+          accumulator->real *= bosonoga_number(left);
         } else if (__builtin_mul_overflow(accumulator->whole, (gint64)left->i32,
                                           &accumulator->whole)) {
           bosonoga_runtime_error(program, op, error,

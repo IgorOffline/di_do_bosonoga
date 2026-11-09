@@ -24,7 +24,8 @@ static gboolean bosonoga_parse_rows(BosonogaParser *parser,
       }
       const BosonogaToken *token = &parser->tokenizer.token;
       if (token->kind == BOSONOGA_TOKEN_WORD &&
-          !bosonoga_token_is_reserved(parser, token)) {
+          !bosonoga_token_is_reserved(parser, token) &&
+          bosonoga_find_constant(parser, token) == NULL) {
         g_autofree gchar *shown = bosonoga_token_shown(token);
         return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_SYNTAX,
                                 "the values of a row are literals, like 7_i32, "

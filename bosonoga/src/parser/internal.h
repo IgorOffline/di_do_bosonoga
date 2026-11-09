@@ -20,6 +20,12 @@
 #define BOSONOGA_VOID_WORD "ret_void"
 
 typedef struct {
+  const gchar *name;
+  gsize length;
+  BosonogaValue value;
+} BosonogaConstant;
+
+typedef struct {
   const gchar *name;  // Slice of the source.
   gsize length;
   BosonogaValueKind kind;
@@ -43,6 +49,7 @@ typedef struct {
   BosonogaTokenizer tokenizer;
   GArray *ops;
   GArray *variables;
+  GArray *constants;  // Top-level compile-time values, shared by functions.
   guint slot_count;
   guint block_depth;
   GArray *loops;  // Of BosonogaLoop, innermost last.
@@ -132,6 +139,10 @@ gboolean bosonoga_parse_value_of_kind(BosonogaParser *parser,
                                       BosonogaValueKind kind,
                                       const gchar *context,
                                       BosonogaOperand *operand, GError **error);
+
+const BosonogaConstant *bosonoga_find_constant(const BosonogaParser *parser,
+                                               const BosonogaToken *token);
+gboolean bosonoga_parse_constant(BosonogaParser *parser, GError **error);
 
 gboolean bosonoga_parse_var(BosonogaParser *parser, GError **error);
 
