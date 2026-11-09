@@ -7,7 +7,43 @@
 #include "bosonoga/parser.h"
 
 #define BOSONOGA_TEST_SUFFIX ".bosonoga"
-#define BOSONOGA_EXPECTED_SUFFIX ".expected"
+#define BOSONOGA_EXPECTED_SUFFIX ".xp.bosonoga"
+#define BOSONOGA_EXPECT_WORD "expect"
+#define BOSONOGA_COMMENT_START "//"
+
+// NULL if a line is neither blank, a comment nor an expect line.
+static gchar *bosonoga_read_expected(const gchar *display_path,
+                                     const gchar *text, GError **error) {
+  g_autoptr(GString) expected = g_string_new(NULL);
+  g_auto(GStrv) lines = g_strsplit(text, "\n", -1);
+  for (gsize i = 0; lines[i] != NULL; ++i) {
+    const gchar *line = lines[i];
+    const gchar *start = line;
+    while (*start == ' ' || *start == '\t') {
+      ++start;
+    }
+    if (*start == '\0' || g_str_has_prefix(start, BOSONOGA_COMMENT_START)) {
+      continue;
+    }
+
+    // A single space follows the word, so that the line keeps its own spaces.
+    const gchar *printed = line + strlen(BOSONOGA_EXPECT_WORD);
+    if (!g_str_has_prefix(line, BOSONOGA_EXPECT_WORD) ||
+        (*printed != '\0' && *printed != ' ')) {
+      g_set_error(error, BOSONOGA_ERROR, BOSONOGA_ERROR_SYNTAX,
+                  "%s:%" G_GSIZE_FORMAT
+                  ": a line that is not a comment starts with expect",
+                  display_path, i + 1);
+      return NULL;
+    }
+    if (*printed == ' ') {
+      ++printed;
+    }
+    g_string_append(expected, printed);
+    g_string_append_c(expected, '\n');
+  }
+  return g_string_free_and_steal(g_steal_pointer(&expected));
+}
 
 // A test without an expected file can print anything.
 static gboolean bosonoga_check_output(const gchar *path,
@@ -23,8 +59,15 @@ static gboolean bosonoga_check_output(const gchar *path,
     return TRUE;
   }
 
-  g_autofree gchar *expected = NULL;
-  if (!g_file_get_contents(expected_path, &expected, NULL, error)) {
+  g_autofree gchar *text = NULL;
+  if (!g_file_get_contents(expected_path, &text, NULL, error)) {
+    return FALSE;
+  }
+  g_autofree gchar *expected_display_path =
+      g_filename_display_name(expected_path);
+  g_autofree gchar *expected =
+      bosonoga_read_expected(expected_display_path, text, error);
+  if (expected == NULL) {
     return FALSE;
   }
   if (!g_str_equal(expected, output->str)) {
@@ -90,7 +133,8 @@ gboolean bosonoga_run_test_directory(const gchar *directory,
   g_autoptr(GPtrArray) names = g_ptr_array_new_with_free_func(g_free);
   const gchar *name = NULL;
   while ((name = g_dir_read_name(entries)) != NULL) {
-    if (g_str_has_suffix(name, BOSONOGA_TEST_SUFFIX)) {
+    if (g_str_has_suffix(name, BOSONOGA_TEST_SUFFIX) &&
+        !g_str_has_suffix(name, BOSONOGA_EXPECTED_SUFFIX)) {
       g_ptr_array_add(names, g_strdup(name));
     }
   }

@@ -43,7 +43,7 @@ di
   do
 do
 
-main
+bosonoga_main
 di
   var digits is 0_i32
   to_4 with column

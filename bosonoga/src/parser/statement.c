@@ -30,9 +30,8 @@ gboolean bosonoga_parse_block(BosonogaParser *parser, GError **error) {
       return FALSE;
     }
   }
-  // The variables at the top of gfx_global are shared by later sections.
-  if (parser->section != BOSONOGA_SECTION_GFX_GLOBAL ||
-      parser->block_depth != 1) {
+  // The variables at the top of bosonoga_global are shared by later sections.
+  if (parser->section != BOSONOGA_SECTION_GLOBAL || parser->block_depth != 1) {
     g_array_set_size(parser->variables, visible_count);
   }
   --parser->block_depth;
@@ -75,7 +74,7 @@ static gboolean bosonoga_parse_return(BosonogaParser *parser,
                                       GError **error) {
   if (parser->section != BOSONOGA_SECTION_MAIN) {
     return bosonoga_fail_at(parser, start, error, BOSONOGA_ERROR_SYNTAX,
-                            "only main and gfx_main can return");
+                            "only bosonoga_main and gfx_main can return");
   }
   gint32 status = BOSONOGA_EXIT_SUCCESS;
   if (bosonoga_at_word(parser, "exit_failure")) {

@@ -8,9 +8,10 @@
 // starts a comment that runs to the end of the line.
 //
 //   program    := item+
-//   item       := "main" block | section | function | array
-//   section    := ("gfx_global" | "gfx_init" | "gfx_frame" | "gfx_cleanup"
-//                 | "gfx_main") block
+//   item       := ("bosonoga_global" | "bosonoga_main") block | section
+//                 | function | array
+//   section    := ("gfx_init" | "gfx_frame" | "gfx_cleanup" | "gfx_main")
+//                 block
 //   function   := "fn" NAME PARAMETER* ("ret" TYPE+)? block
 //   array      := "array" NAME TYPE+ "di" row+ "do"
 //   row        := "row" value+
@@ -67,9 +68,10 @@
 // - A STRING has no escapes, and cannot hold a quote, a backslash, a newline or
 //   NUL. A str can be stored, printed, compared with eq and not_eq, and set
 //   with to_add and a single str, but not computed with.
-// - A program has either one main or the sections of a gfx program, and any
-//   number of functions and arrays, each of which can only be used after its
-//   definition, so a function can call itself but two cannot call each other.
+// - A program has either one bosonoga_main or the sections of a gfx program,
+//   before either of which it can have one bosonoga_global, and any number of
+//   functions and arrays. Each can only be used after its definition, so a
+//   function can call itself but two cannot call each other.
 // - A function sees only its parameters and its own variables, and everything
 //   is passed and returned by value. A return gives one value per TYPE after
 //   ret, and the end of the block is a runtime error for a function with ret.
@@ -79,12 +81,13 @@
 //   function cannot have the statements of gfx_frame.
 // - An array is a table of literal rows, read like a function of one i32 index
 //   from 0, which returns that row. An index without a row is a runtime error.
-// - A gfx program has one gfx_main and at most one of each other section, with
-//   gfx_global first. Only gfx_main can return. The variables at the top of
-//   gfx_global are shared by all sections. In a window, see gfx.h, gfx_global
-//   and gfx_init run once, gfx_frame once per frame, gfx_main across frames
-//   until it returns, and gfx_cleanup when the window closes. Without a window,
-//   gfx_frame never runs.
+// - bosonoga_global runs first and cannot return. The variables at the top of
+//   its block are shared by bosonoga_main and all sections.
+// - A gfx program has one gfx_main and at most one of each other section, in
+//   any order. Only gfx_main can return. In a window, see gfx.h, gfx_init runs
+//   once, gfx_frame once per frame, gfx_main across frames until it returns,
+//   and gfx_cleanup when the window closes. Without a window, gfx_frame never
+//   runs.
 // - A KEY is a key of the [color] or [global] group of the settings, see
 //   settings.h. A color can be stored and printed, and is printed as RRGGBB. A
 //   global is one INTEGER or REAL. gfx_clear, draw_rectangle (x, y, width,
@@ -96,7 +99,7 @@ typedef enum {
   BOSONOGA_SECTION_GFX_INIT,
   BOSONOGA_SECTION_GFX_FRAME,
   BOSONOGA_SECTION_GFX_CLEANUP,
-  BOSONOGA_SECTION_GFX_GLOBAL,
+  BOSONOGA_SECTION_GLOBAL,
   BOSONOGA_SECTION_COUNT,
 } BosonogaSection;
 

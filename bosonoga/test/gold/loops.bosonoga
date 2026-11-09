@@ -1,6 +1,6 @@
 // loops.bosonoga
 
-main
+bosonoga_main
 di
   var passed_count is 0_i32
 

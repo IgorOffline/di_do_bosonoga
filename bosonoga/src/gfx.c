@@ -117,9 +117,8 @@ static void bosonoga_gfx_init(void *user_data) {
       .environment = sglue_environment(),
       .logger.func = slog_func,
   });
-  run->initialized =
-      bosonoga_gfx_run_callback(run, BOSONOGA_SECTION_GFX_GLOBAL) &&
-      bosonoga_gfx_run_callback(run, BOSONOGA_SECTION_GFX_INIT);
+  run->initialized = bosonoga_gfx_run_callback(run, BOSONOGA_SECTION_GLOBAL) &&
+                     bosonoga_gfx_run_callback(run, BOSONOGA_SECTION_GFX_INIT);
   if (run->initialized) {
     bosonoga_gfx_create_pipeline(run);
   }

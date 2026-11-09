@@ -1,13 +1,13 @@
 // gfx_functions.bosonoga
 
-// A function before gfx_global, which only sees its own variables.
+// A function before bosonoga_global, which only sees its own variables.
 fn next_count count_i32 ret i32
 di
   set count_i32 to_add count_i32 1_i32
   return count_i32
 do
 
-gfx_global
+bosonoga_global
 di
   var count is 1_i32
 do

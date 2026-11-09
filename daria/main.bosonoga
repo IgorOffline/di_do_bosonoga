@@ -1,6 +1,6 @@
 // main.bosonoga
 
-gfx_global
+bosonoga_global
 di
   // How far right of the original position the rectangle is, and which way it
   // is moving: 1 is right and -1 is left.

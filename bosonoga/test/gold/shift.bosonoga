@@ -1,6 +1,6 @@
 // shift.bosonoga
 
-main
+bosonoga_main
 di
   var read_flag is shift_0
   var write_flag is shift_1

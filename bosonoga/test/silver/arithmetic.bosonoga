@@ -1,6 +1,6 @@
 // arithmetic.bosonoga
 
-main
+bosonoga_main
 di
   var count is 1_f32 // 1
   set count to_add 2_f32 count 3_f32 // 6

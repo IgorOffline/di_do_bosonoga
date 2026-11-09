@@ -1,0 +1,3 @@
+expect init 3
+expect main 41
+expect cleanup 501
