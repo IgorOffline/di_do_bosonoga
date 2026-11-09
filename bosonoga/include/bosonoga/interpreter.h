@@ -11,34 +11,28 @@ typedef struct {
   gfloat y;
   gfloat width;
   gfloat height;
-  guint32 color;  // 0xRRGGBB
+  guint32 color;
 } BosonogaGfxRectangle;
 
-// What the statements of a gfx_frame ask for. The interpreter only records it
-// here, and whoever owns the window acts on it.
+// What a gfx_frame records, for the owner of the window to draw.
 typedef struct {
-  GArray *rectangles;   // Of BosonogaGfxRectangle, from draw_rectangle.
-  guint32 clear_color;  // 0xRRGGBB, set by gfx_clear.
-  gfloat delta_time;    // What gfx_delta_time is, set by the window.
+  GArray *rectangles;
+  guint32 clear_color;
+  gfloat delta_time;
 } BosonogaGfxScene;
 
 typedef enum {
-  BOSONOGA_EXECUTION_RUNNING,   // Used up its ops and has more to run.
-  BOSONOGA_EXECUTION_SLEEPING,  // Is in a sleep_ms statement.
-  BOSONOGA_EXECUTION_RETURNED,  // Reached a return or the end of a callback.
-  BOSONOGA_EXECUTION_FAILED,    // Stopped with an error.
+  BOSONOGA_EXECUTION_RUNNING,
+  BOSONOGA_EXECUTION_SLEEPING,
+  BOSONOGA_EXECUTION_RETURNED,
+  BOSONOGA_EXECUTION_FAILED,
 } BosonogaExecutionState;
 
-// Returns the zeroed variables of a program, to be freed with g_free. All
-// executions of one run of the program share them, so that the variables of
-// gfx_global are shared by all sections.
+// Freed with g_free. All executions of one run share them, for gfx_global.
 BosonogaValue *bosonoga_slots_new(const BosonogaProgram *program);
 
-// Returns a new execution of a section of the program, which must outlive it,
-// as must the slots from bosonoga_slots_new. The statements of a gfx_frame
-// record in scene, which must also outlive it and can only be NULL for other
-// sections. What the info statements print is appended to output or, if output
-// is NULL, goes to stdout.
+// Program, slots and scene must outlive the execution. Scene can only be NULL
+// outside gfx_frame. info appends to output, or prints to stdout if it is NULL.
 BosonogaExecution *bosonoga_execution_new(const BosonogaProgram *program,
                                           BosonogaSection section,
                                           BosonogaValue *slots,
@@ -49,25 +43,17 @@ void bosonoga_execution_free(BosonogaExecution *execution);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(BosonogaExecution, bosonoga_execution_free)
 
-// Runs at most op_budget ops without blocking, so that a caller can do other
-// work between the calls. While the execution sleeps, no ops are run. The
-// status of a return statement is stored in exit_status.
+// Runs at most op_budget ops, and none while asleep, without blocking.
 BosonogaExecutionState bosonoga_execution_advance(BosonogaExecution *execution,
                                                   guint op_budget,
                                                   gint *exit_status,
                                                   GError **error);
 
-// Runs a section of the program until it ends, and blocks while it sleeps.
-// Slots, scene and output are the same as in bosonoga_execution_new, and
-// returns whether there was no error.
 gboolean bosonoga_run_section(const BosonogaProgram *program,
                               BosonogaSection section, BosonogaValue *slots,
                               BosonogaGfxScene *scene, GString *output,
                               gint *exit_status, GError **error);
 
-// Runs the program from bosonoga_parse without a window, see parser.h. Output
-// is the same as in bosonoga_execution_new. Returns whether there was no error,
-// and the status of the return statement is stored in exit_status.
 gboolean bosonoga_run(const BosonogaProgram *program, GString *output,
                       gint *exit_status, GError **error);
 

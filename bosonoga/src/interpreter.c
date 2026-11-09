@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdarg.h>
+#include <string.h>
 
 #include "bosonoga/bosonoga.h"
 
@@ -28,7 +29,6 @@ static gboolean bosonoga_runtime_error(const BosonogaProgram *program,
   return FALSE;
 }
 
-// Formats a real number, whose decimal separator is the letter d in any locale.
 static const gchar *bosonoga_format_real(gchar text[G_ASCII_DTOSTR_BUF_SIZE],
                                          gdouble value) {
   g_ascii_formatd(text, G_ASCII_DTOSTR_BUF_SIZE, "%.6g", value);
@@ -40,8 +40,6 @@ static const BosonogaValue *bosonoga_operand_value(
   return operand->is_variable ? &slots[operand->slot] : &operand->literal;
 }
 
-// Close numbers count as equal, relative to their size or, near zero, in
-// absolute terms.
 static gboolean bosonoga_f32_close(gfloat left, gfloat right,
                                    gdouble tolerance) {
   const gdouble a = (gdouble)left;
@@ -51,20 +49,31 @@ static gboolean bosonoga_f32_close(gfloat left, gfloat right,
          difference <= tolerance;
 }
 
-// The parser has checked that the kinds fit the comparison.
+static gboolean bosonoga_str_equal(const BosonogaValue *left,
+                                   const BosonogaValue *right) {
+  return left->str.length == right->str.length &&
+         memcmp(left->str.text, right->str.text, left->str.length) == 0;
+}
+
 static gboolean bosonoga_compare(BosonogaCompareKind compare,
                                  const BosonogaValue *left,
                                  const BosonogaValue *right) {
   const gboolean is_f32 = left->kind == BOSONOGA_VALUE_F32;
+  const gboolean is_str = left->kind == BOSONOGA_VALUE_STR;
   switch (compare) {
     case BOSONOGA_COMPARE_GT:
       return is_f32 ? left->f32 > right->f32 : left->i32 > right->i32;
     case BOSONOGA_COMPARE_LT:
       return is_f32 ? left->f32 < right->f32 : left->i32 < right->i32;
+    case BOSONOGA_COMPARE_GE:
+      return is_f32 ? left->f32 >= right->f32 : left->i32 >= right->i32;
+    case BOSONOGA_COMPARE_LE:
+      return is_f32 ? left->f32 <= right->f32 : left->i32 <= right->i32;
     case BOSONOGA_COMPARE_EQ:
-      return left->i32 == right->i32;
+      return is_str ? bosonoga_str_equal(left, right) : left->i32 == right->i32;
     case BOSONOGA_COMPARE_NOT_EQ:
-      return left->i32 != right->i32;
+      return is_str ? !bosonoga_str_equal(left, right)
+                    : left->i32 != right->i32;
     case BOSONOGA_COMPARE_EQ_3:
       return bosonoga_f32_close(left->f32, right->f32, BOSONOGA_TOLERANCE_3);
     case BOSONOGA_COMPARE_EQ_6:
@@ -79,9 +88,7 @@ static gboolean bosonoga_compare(BosonogaCompareKind compare,
   g_return_val_if_reached(FALSE);
 }
 
-// Intermediate results may leave the range of the variable, only the final
-// result that is stored has to fit. A whole number that does not even fit here
-// is an error when it is computed.
+// Only the stored result has to fit in the variable.
 typedef struct {
   gint64 whole;
   gdouble real;
@@ -89,14 +96,13 @@ typedef struct {
 
 struct _BosonogaExecution {
   const BosonogaProgram *program;
-  BosonogaValue *slots;  // Shared by the executions of a run, not owned.
+  BosonogaValue *slots;
   BosonogaAccumulator accumulator;
-  guint next;        // Index of the op to run.
-  gint64 wake_time;  // In monotonic microseconds, a sleep ends at this time.
-  BosonogaGfxScene
-      *scene;          // What the gfx statements record goes here, or NULL.
-  GString *output;     // What the info statements print goes here.
-  gboolean to_stdout;  // Whether output is a buffer for stdout, which is owned.
+  guint next;
+  gint64 wake_time;
+  BosonogaGfxScene *scene;
+  GString *output;
+  gboolean to_stdout;  // Then output is an owned buffer for stdout.
 };
 
 static gboolean bosonoga_accumulator_store(
@@ -124,6 +130,29 @@ static gboolean bosonoga_accumulator_store(
   return TRUE;
 }
 
+// The accumulator is 64-bit, so the smallest i32 divided by -1 fits.
+static gboolean bosonoga_accumulator_divide(const BosonogaProgram *program,
+                                            const BosonogaOp *op,
+                                            BosonogaAccumulator *accumulator,
+                                            const BosonogaValue *left,
+                                            GError **error) {
+  const gboolean is_mod = op->kind == BOSONOGA_OP_ACCUMULATOR_MOD;
+  if (left->kind == BOSONOGA_VALUE_F32) {
+    if (!(left->f32 < 0.0f || left->f32 > 0.0f)) {
+      return bosonoga_runtime_error(program, op, error, "division by zero");
+    }
+    accumulator->real = is_mod ? fmod(accumulator->real, (gdouble)left->f32)
+                               : accumulator->real / (gdouble)left->f32;
+    return TRUE;
+  }
+  if (left->i32 == 0) {
+    return bosonoga_runtime_error(program, op, error, "division by zero");
+  }
+  accumulator->whole =
+      is_mod ? accumulator->whole % left->i32 : accumulator->whole / left->i32;
+  return TRUE;
+}
+
 static void bosonoga_print_value(GString *output, const BosonogaValue *value) {
   switch (value->kind) {
     case BOSONOGA_VALUE_I32:
@@ -139,6 +168,9 @@ static void bosonoga_print_value(GString *output, const BosonogaValue *value) {
       break;
     case BOSONOGA_VALUE_COLOR:
       g_string_append_printf(output, "%06" G_GINT32_MODIFIER "X", value->color);
+      break;
+    case BOSONOGA_VALUE_STR:
+      g_string_append_len(output, value->str.text, (gssize)value->str.length);
       break;
   }
 }
@@ -167,9 +199,6 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
       case BOSONOGA_OP_PRINT_VALUE:
         bosonoga_print_value(output, left);
         break;
-      case BOSONOGA_OP_PRINT_STRING:
-        g_string_append_len(output, op->text, (gssize)op->length);
-        break;
       case BOSONOGA_OP_PRINT_NEWLINE:
         g_string_append_c(output, '\n');
         break;
@@ -195,8 +224,8 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         slots[op->slot].kind = BOSONOGA_VALUE_I32;
         slots[op->slot].i32 = (gint32)left->f32;
         break;
-      // The result is computed before it is stored, because the slot can be
-      // that of left or right, as in set a to_sin a.
+      // The result is computed first, as the slot can be left, as
+      // in set a to_sin a.
       case BOSONOGA_OP_SIN: {
         const gfloat result = (gfloat)sin((gdouble)left->f32);
         slots[op->slot].kind = BOSONOGA_VALUE_F32;
@@ -241,7 +270,6 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
               bosonoga_format_real(exponent, (gdouble)right->f32));
           return BOSONOGA_EXECUTION_FAILED;
         }
-        // Infinity, from overflow or from 0 to a negative power, is outside.
         if (!(ABS(result) <= (gdouble)G_MAXFLOAT)) {
           gchar text[G_ASCII_DTOSTR_BUF_SIZE];
           bosonoga_runtime_error(program, op, error,
@@ -285,16 +313,10 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         }
         break;
       case BOSONOGA_OP_ACCUMULATOR_DIVIDE:
-        if (left->kind == BOSONOGA_VALUE_F32
-                ? !(left->f32 < 0.0f || left->f32 > 0.0f)
-                : left->i32 == 0) {
-          bosonoga_runtime_error(program, op, error, "division by zero");
+      case BOSONOGA_OP_ACCUMULATOR_MOD:
+        if (!bosonoga_accumulator_divide(program, op, accumulator, left,
+                                         error)) {
           return BOSONOGA_EXECUTION_FAILED;
-        }
-        if (left->kind == BOSONOGA_VALUE_F32) {
-          accumulator->real /= (gdouble)left->f32;
-        } else {
-          accumulator->whole /= left->i32;
         }
         break;
       case BOSONOGA_OP_ACCUMULATOR_STORE:
@@ -307,7 +329,8 @@ static BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         execution->next = op->target;
         break;
       case BOSONOGA_OP_JUMP_UNLESS:
-        if (!bosonoga_compare(op->compare, left, right)) {
+        if (bosonoga_compare(op->compare, left, right) ? op->negate
+                                                       : !op->negate) {
           execution->next = op->target;
         }
         break;

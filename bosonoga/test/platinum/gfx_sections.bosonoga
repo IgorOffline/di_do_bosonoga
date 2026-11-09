@@ -9,19 +9,19 @@ gfx_init
 di
   var local_count is 2_i32
   set local_count to_add local_count count
-  info "init " local_count
+  info "init "_str local_count
 do
 
 gfx_frame
 di
-  info "a test has no frames"
+  info "a test has no frames"_str
 do
 
 gfx_cleanup
 di
   var local_count is 500_i32
   set local_count to_add local_count count
-  info "cleanup " local_count
+  info "cleanup "_str local_count
 do
 
 gfx_main
@@ -29,6 +29,6 @@ di
   var local_count is 40_i32
   set local_count to_add local_count count
   sleep_ms 1_u32
-  info "main " local_count
+  info "main "_str local_count
   return exit_success
 do

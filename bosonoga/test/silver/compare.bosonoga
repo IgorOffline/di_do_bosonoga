@@ -1,0 +1,44 @@
+// compare.bosonoga
+
+main
+di
+  var passed_count is 0_i32
+
+  if 5_i32 ge 5_i32 and 6_i32 ge 5_i32 and 5_i32 le 5_i32 and 4_i32 le 5_i32
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+  if 4_i32 ge 5_i32 or 6_i32 le 5_i32
+  di
+    nihil
+  do
+  else
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+  if 1d5_f32 ge 1d5_f32 and 1d0_f32 le 1d5_f32 and not 2d0_f32 le 1d5_f32
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+
+  // not only negates the comparison right after it, and and binds tighter
+  // than or, so this is (not 1 eq 2 and 3 eq 3) or 1 eq 2.
+  if not 1_i32 eq 2_i32 and 3_i32 eq 3_i32 or 1_i32 eq 2_i32
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+  if not 1_i32 eq 1_i32
+  di
+    set passed_count to_subtract passed_count 100_i32
+  do
+  if not shift_3 shift_has shift_2
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+
+  if passed_count eq 5_i32
+  di
+    return exit_success
+  do
+  return exit_failure
+do

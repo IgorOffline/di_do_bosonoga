@@ -12,10 +12,9 @@
 #define BOSONOGA_SETTINGS_KEY_BACKGROUND "background"
 #define BOSONOGA_COLOR_HEX_LENGTH 6
 
-// The settings file that is being read.
 typedef struct {
   GKeyFile *key_file;
-  const gchar *path;  // UTF-8, as the error messages show it.
+  const gchar *path;
 } BosonogaSettingsFile;
 
 void bosonoga_settings_clear(BosonogaSettings *settings) {
@@ -49,8 +48,7 @@ gboolean bosonoga_settings_color(const BosonogaSettings *settings,
   return TRUE;
 }
 
-// Returns a new string with the value of the key. GKeyFile does not remove the
-// quotes around a value, so that is done here.
+// GKeyFile keeps the quotes around a value.
 static gchar *bosonoga_read_text_setting(const BosonogaSettingsFile *file,
                                          const gchar *group, const gchar *key,
                                          GError **error) {
@@ -86,7 +84,6 @@ static gboolean bosonoga_read_positive_setting(const BosonogaSettingsFile *file,
   return TRUE;
 }
 
-// Reads a color written as six uppercase hex digits, RRGGBB.
 static gboolean bosonoga_read_color_setting(const BosonogaSettingsFile *file,
                                             const gchar *key, guint32 *color,
                                             GError **error) {
@@ -109,8 +106,6 @@ static gboolean bosonoga_read_color_setting(const BosonogaSettingsFile *file,
   return TRUE;
 }
 
-// Reads whatever keys the [color] group has, so that a new color only needs a
-// new line in the file.
 static gboolean bosonoga_read_color_settings(const BosonogaSettingsFile *file,
                                              BosonogaSettings *settings,
                                              GError **error) {
@@ -142,8 +137,7 @@ static gboolean bosonoga_read_color_settings(const BosonogaSettingsFile *file,
   return TRUE;
 }
 
-// Reads a global written as one number of a program, like 100d0_f32, with the
-// tokenizer of programs, so that it has the same rules.
+// One number, like 100d0_f32, read by the tokenizer of programs.
 static gboolean bosonoga_read_global_setting(const BosonogaSettingsFile *file,
                                              const gchar *key,
                                              BosonogaValue *value,
@@ -177,7 +171,6 @@ static gboolean bosonoga_read_global_setting(const BosonogaSettingsFile *file,
   return FALSE;
 }
 
-// Reads whatever keys the [global] group has, if it is there.
 static gboolean bosonoga_read_global_settings(const BosonogaSettingsFile *file,
                                               BosonogaSettings *settings,
                                               GError **error) {

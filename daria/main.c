@@ -6,11 +6,8 @@
 #include <glib.h>
 #include <locale.h>
 
-// The program of daria, which is run unless the path of another is given.
 #define DARIA_MAIN_PATH "main.bosonoga"
 
-// Runs the program at the path as a program, not as a test, in a window if it
-// is a gfx program, so its exit status is returned as is.
 static gboolean daria_run_program(const gchar *path,
                                   const BosonogaSettings *settings,
                                   gint *exit_status, GError **error) {
@@ -45,7 +42,6 @@ int main(int argc, char **argv) {
     return BOSONOGA_EXIT_FAILURE;
   }
 
-  // Programs can name the colors and globals of the settings.
   g_auto(BosonogaSettings) settings = {0};
   if (!bosonoga_read_settings(BOSONOGA_SETTINGS_FILE, &settings, &error)) {
     g_printerr("%s\n", error->message);

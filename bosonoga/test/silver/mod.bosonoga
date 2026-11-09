@@ -1,0 +1,52 @@
+// mod.bosonoga
+
+main
+di
+  var passed_count is 0_i32
+  var remainder is 0_i32
+
+  set remainder to_mod 17_i32 5_i32
+  if remainder eq 2_i32
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+
+  // The remainder has the sign of the number that is divided.
+  set remainder to_mod -7_i32 3_i32
+  if remainder eq -1_i32
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+  set remainder to_mod 7_i32 -3_i32
+  if remainder eq 1_i32
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+
+  // More values divide in turn: 100 mod 30 is 10, and 10 mod 7 is 3.
+  set remainder to_mod 100_i32 30_i32 7_i32
+  if remainder eq 3_i32
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+
+  // The smallest i32 divided by -1 does not fit, but its remainder is 0.
+  set remainder to_mod -2147483648_i32 -1_i32
+  if remainder eq 0_i32
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+
+  var real_remainder is 0d0_f32
+  set real_remainder to_mod 7d5_f32 2d0_f32
+  if real_remainder eq_6 1d5_f32
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+
+  if passed_count eq 6_i32
+  di
+    return exit_success
+  do
+  return exit_failure
+do

@@ -30,8 +30,7 @@ gboolean bosonoga_parse_block(BosonogaParser *parser, GError **error) {
       return FALSE;
     }
   }
-  // The variables at the top of gfx_global stay visible in the sections after
-  // it, which share them.
+  // The variables at the top of gfx_global are shared by later sections.
   if (parser->section != BOSONOGA_SECTION_GFX_GLOBAL ||
       parser->block_depth != 1) {
     g_array_set_size(parser->variables, visible_count);
@@ -40,39 +39,25 @@ gboolean bosonoga_parse_block(BosonogaParser *parser, GError **error) {
   return bosonoga_expect_word(parser, "do", error);
 }
 
-// Parses the arguments of an info statement, whose keyword is already consumed.
 static gboolean bosonoga_parse_info(BosonogaParser *parser,
                                     const BosonogaToken *start,
                                     GError **error) {
-  const BosonogaToken *token = &parser->tokenizer.token;
-  if (token->kind != BOSONOGA_TOKEN_STRING && !bosonoga_at_value(parser)) {
-    return bosonoga_parse_error(parser, "a value or string", error);
+  if (!bosonoga_at_value(parser)) {
+    return bosonoga_parse_error(parser, "a value", error);
   }
-
-  while (token->kind == BOSONOGA_TOKEN_STRING || bosonoga_at_value(parser)) {
-    if (token->kind == BOSONOGA_TOKEN_STRING) {
-      BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_PRINT_STRING, token);
-      op->text = token->text + 1;
-      op->length = token->length - 2;
-      if (!bosonoga_advance(parser, error)) {
-        return FALSE;
-      }
-    } else {
-      const BosonogaToken value_token = *token;
-      BosonogaOperand value;
-      if (!bosonoga_parse_value(parser, &value, error)) {
-        return FALSE;
-      }
-      bosonoga_emit(parser, BOSONOGA_OP_PRINT_VALUE, &value_token)->left =
-          value;
+  while (bosonoga_at_value(parser)) {
+    const BosonogaToken value_token = parser->tokenizer.token;
+    BosonogaOperand value;
+    if (!bosonoga_parse_value(parser, &value, error)) {
+      return FALSE;
     }
+    bosonoga_emit(parser, BOSONOGA_OP_PRINT_VALUE, &value_token)->left = value;
   }
 
   bosonoga_emit(parser, BOSONOGA_OP_PRINT_NEWLINE, start);
   return TRUE;
 }
 
-// Parses a sleep_ms statement, whose keyword is already consumed.
 static gboolean bosonoga_parse_sleep(BosonogaParser *parser,
                                      const BosonogaToken *start,
                                      GError **error) {
@@ -85,7 +70,6 @@ static gboolean bosonoga_parse_sleep(BosonogaParser *parser,
   return bosonoga_advance(parser, error);
 }
 
-// Parses a return statement, whose keyword is already consumed.
 static gboolean bosonoga_parse_return(BosonogaParser *parser,
                                       const BosonogaToken *start,
                                       GError **error) {
@@ -103,8 +87,6 @@ static gboolean bosonoga_parse_return(BosonogaParser *parser,
   return bosonoga_advance(parser, error);
 }
 
-// Checks that the statement, located at the token, is in gfx_frame, the only
-// section that can have it.
 static gboolean bosonoga_check_in_frame(const BosonogaParser *parser,
                                         const BosonogaToken *start,
                                         GError **error) {
@@ -116,7 +98,6 @@ static gboolean bosonoga_check_in_frame(const BosonogaParser *parser,
                           "%s can only be in gfx_frame", shown);
 }
 
-// Parses a gfx_clear statement, whose keyword is already consumed.
 static gboolean bosonoga_parse_gfx_clear(BosonogaParser *parser,
                                          const BosonogaToken *start,
                                          GError **error) {
@@ -130,7 +111,6 @@ static gboolean bosonoga_parse_gfx_clear(BosonogaParser *parser,
   return TRUE;
 }
 
-// Parses a draw_rectangle statement, whose keyword is already consumed.
 static gboolean bosonoga_parse_draw_rectangle(BosonogaParser *parser,
                                               const BosonogaToken *start,
                                               GError **error) {
@@ -172,6 +152,9 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
       !bosonoga_token_is_word(&start, "var") &&
       !bosonoga_token_is_word(&start, "set") &&
       !bosonoga_token_is_word(&start, "if") &&
+      !bosonoga_token_is_word(&start, "while") &&
+      !bosonoga_token_is_word(&start, "break") &&
+      !bosonoga_token_is_word(&start, "continue") &&
       !bosonoga_token_is_word(&start, "nihil") &&
       !bosonoga_token_is_word(&start, "sleep_ms") &&
       !bosonoga_token_is_word(&start, "return") &&
@@ -194,6 +177,13 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   }
   if (bosonoga_token_is_word(&start, "if")) {
     return bosonoga_parse_if(parser, error);
+  }
+  if (bosonoga_token_is_word(&start, "while")) {
+    return bosonoga_parse_while(parser, &start, error);
+  }
+  if (bosonoga_token_is_word(&start, "break") ||
+      bosonoga_token_is_word(&start, "continue")) {
+    return bosonoga_parse_loop_jump(parser, &start, error);
   }
   if (bosonoga_token_is_word(&start, "sleep_ms")) {
     return bosonoga_parse_sleep(parser, &start, error);

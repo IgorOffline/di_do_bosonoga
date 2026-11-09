@@ -1,5 +1,7 @@
 #include "tokenizer.h"
 
+#include <string.h>
+
 #include "bosonoga/bosonoga.h"
 
 static gboolean bosonoga_lex_error(const BosonogaTokenizer *tokenizer,
@@ -58,7 +60,6 @@ static void bosonoga_skip_blanks_and_comments(BosonogaTokenizer *tokenizer) {
   }
 }
 
-// Reads a number, whose type is decided by its suffix, into token.
 static gboolean bosonoga_lex_number(BosonogaTokenizer *tokenizer,
                                     BosonogaToken *token, GError **error) {
   if (*tokenizer->cursor == '-') {
@@ -136,6 +137,45 @@ static gboolean bosonoga_lex_number(BosonogaTokenizer *tokenizer,
                             error);
 }
 
+static gboolean bosonoga_lex_string(BosonogaTokenizer *tokenizer,
+                                    BosonogaToken *token, GError **error) {
+  bosonoga_consume_char(tokenizer);
+  token->string = tokenizer->cursor;
+  while (tokenizer->cursor == tokenizer->end || *tokenizer->cursor != '"') {
+    if (tokenizer->cursor == tokenizer->end || *tokenizer->cursor == '\n') {
+      return bosonoga_lex_error(tokenizer, token->line, token->column,
+                                "unterminated string", error);
+    }
+    if (*tokenizer->cursor == '\\') {
+      return bosonoga_lex_error(tokenizer, tokenizer->line, tokenizer->column,
+                                "escape sequences are not supported", error);
+    }
+    if (*tokenizer->cursor == '\0') {
+      return bosonoga_lex_error(tokenizer, tokenizer->line, tokenizer->column,
+                                "NUL byte in string", error);
+    }
+    bosonoga_consume_char(tokenizer);
+  }
+  token->string_length = (gsize)(tokenizer->cursor - token->string);
+  bosonoga_consume_char(tokenizer);
+
+  const gchar *suffix = tokenizer->cursor;
+  while (bosonoga_at_word_char(tokenizer)) {
+    bosonoga_consume_char(tokenizer);
+  }
+  const gsize suffix_length = (gsize)(tokenizer->cursor - suffix);
+  if (suffix_length != strlen(BOSONOGA_STRING_SUFFIX) ||
+      memcmp(suffix, BOSONOGA_STRING_SUFFIX, suffix_length) != 0) {
+    return bosonoga_lex_error(
+        tokenizer, token->line, token->column,
+        "a string must have the suffix " BOSONOGA_STRING_SUFFIX
+        ", as in \"text\"" BOSONOGA_STRING_SUFFIX,
+        error);
+  }
+  token->kind = BOSONOGA_TOKEN_STRING;
+  return TRUE;
+}
+
 void bosonoga_tokenizer_init(BosonogaTokenizer *tokenizer, const gchar *path,
                              const gchar *source, gsize length) {
   const BosonogaTokenizer initial = {path, source, source + length, 1, 1, {0}};
@@ -153,30 +193,15 @@ gboolean bosonoga_tokenizer_advance(BosonogaTokenizer *tokenizer,
                          tokenizer->column,
                          0,
                          0,
-                         0.0f};
+                         0.0f,
+                         NULL,
+                         0};
   if (tokenizer->cursor < tokenizer->end) {
     const gchar first = *tokenizer->cursor;
     if (first == '"') {
-      token.kind = BOSONOGA_TOKEN_STRING;
-      bosonoga_consume_char(tokenizer);
-      while (tokenizer->cursor == tokenizer->end || *tokenizer->cursor != '"') {
-        if (tokenizer->cursor == tokenizer->end || *tokenizer->cursor == '\n') {
-          return bosonoga_lex_error(tokenizer, token.line, token.column,
-                                    "unterminated string", error);
-        }
-        if (*tokenizer->cursor == '\\') {
-          return bosonoga_lex_error(
-              tokenizer, tokenizer->line, tokenizer->column,
-              "escape sequences are not supported", error);
-        }
-        if (*tokenizer->cursor == '\0') {
-          return bosonoga_lex_error(tokenizer, tokenizer->line,
-                                    tokenizer->column, "NUL byte in string",
-                                    error);
-        }
-        bosonoga_consume_char(tokenizer);
+      if (!bosonoga_lex_string(tokenizer, &token, error)) {
+        return FALSE;
       }
-      bosonoga_consume_char(tokenizer);
     } else if (bosonoga_at_number(tokenizer)) {
       if (!bosonoga_lex_number(tokenizer, &token, error)) {
         return FALSE;

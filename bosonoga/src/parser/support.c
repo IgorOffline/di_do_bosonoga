@@ -29,6 +29,10 @@ static const gchar *const bosonoga_reserved_words[] = {
     "gfx_main",     "gfx_cleanup",
     "gfx_clear",    "draw_rectangle",
     "gfx_global",   BOSONOGA_DELTA_TIME_WORD,
+    "while",        "break",
+    "continue",     "to_mod",
+    "ge",           "le",
+    "not",
 };
 
 gboolean bosonoga_token_is_word(const BosonogaToken *token, const gchar *word) {
@@ -51,8 +55,7 @@ gboolean bosonoga_token_is_numbered(const BosonogaToken *token,
   return TRUE;
 }
 
-// Returns a new string with what follows the prefix of the word, or NULL if the
-// token is not a word that starts with the prefix.
+// NULL unless the token is a word that starts with the prefix.
 static gchar *bosonoga_token_key(const BosonogaToken *token,
                                  const gchar *prefix) {
   const gsize prefix_length = strlen(prefix);
@@ -101,6 +104,8 @@ const gchar *bosonoga_value_kind_name(BosonogaValueKind kind) {
       return "flags";
     case BOSONOGA_VALUE_COLOR:
       return "color";
+    case BOSONOGA_VALUE_STR:
+      return "str";
   }
   g_return_val_if_reached("unknown");
 }
@@ -162,11 +167,16 @@ BosonogaOp *bosonoga_emit(BosonogaParser *parser, BosonogaOpKind kind,
   return op;
 }
 
-void bosonoga_patch_jumps_to_here(BosonogaParser *parser, const GArray *jumps) {
+void bosonoga_patch_jumps(BosonogaParser *parser, const GArray *jumps,
+                          guint target) {
   for (guint i = 0; i < jumps->len; ++i) {
     const guint jump = g_array_index(jumps, guint, i);
-    g_array_index(parser->ops, BosonogaOp, jump).target = parser->ops->len;
+    g_array_index(parser->ops, BosonogaOp, jump).target = target;
   }
+}
+
+void bosonoga_patch_jumps_to_here(BosonogaParser *parser, const GArray *jumps) {
+  bosonoga_patch_jumps(parser, jumps, parser->ops->len);
 }
 
 gboolean bosonoga_numbered_value(const BosonogaToken *token,
