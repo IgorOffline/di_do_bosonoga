@@ -16,6 +16,8 @@
 #define BOSONOGA_GLOBAL_PREFIX "global_"
 #define BOSONOGA_DELTA_TIME_WORD "gfx_delta_time"
 #define BOSONOGA_RESULT_PREFIX "ret_"
+#define BOSONOGA_FUNCTION_SUFFIX "_fn"
+#define BOSONOGA_VOID_WORD "ret_void"
 
 typedef struct {
   const gchar *name;  // Slice of the source.
@@ -64,6 +66,10 @@ gboolean bosonoga_token_setting(const BosonogaParser *parser,
                                 BosonogaValue *value);
 
 gboolean bosonoga_token_is_result(const BosonogaToken *token);
+
+// A word that ends with _fn and has more before it, which only a function's
+// name is.
+gboolean bosonoga_token_is_function_name(const BosonogaToken *token);
 
 gboolean bosonoga_token_is_reserved(const BosonogaParser *parser,
                                     const BosonogaToken *token);
@@ -163,7 +169,7 @@ gboolean bosonoga_check_single_result(const BosonogaParser *parser,
                                       const BosonogaToken *token, guint index,
                                       GError **error);
 
-// The ret 0_TYPE that ends a call that var or set ... to takes.
+// The with ret 0_TYPE that ends a call that var or set ... to takes.
 gboolean bosonoga_parse_taken_result(BosonogaParser *parser, guint index,
                                      GError **error);
 

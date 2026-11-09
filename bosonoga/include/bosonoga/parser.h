@@ -12,14 +12,15 @@
 //                 | function | array
 //   section    := ("gfx_init" | "gfx_frame" | "gfx_cleanup" | "gfx_main")
 //                 block
-//   function   := "fn" NAME PARAMETER* ("ret" INDEXED+)? block
+//   function   := "def" FUNCTION PARAMETER* ("ret" INDEXED+ | "ret_void")
+//                 block
 //   array      := "array" NAME INDEXED+ "di" row+ "do"
 //   row        := "row" value+
 //   block      := "di" statement+ "do"
 //   statement  := "info" value+
-//               | "var" NAME "is" (initial | call "ret" INDEXED)
+//               | "var" NAME "is" (initial | call "with" "ret" INDEXED)
 //               | "set" NAME update
-//               | "set" NAME "to" call "ret" INDEXED
+//               | "set" NAME "to" call "with" "ret" INDEXED
 //               | "call" call ("with" "ret" block)?
 //               | "if" condition block ("else" "if" condition block)*
 //                 ("else" block)?
@@ -37,7 +38,7 @@
 //   conversion := ("to_f32" | "to_i32" | "to_sin" | "to_cos" | "to_sqrt")
 //               value
 //               | ("to_atan2" | "to_pow") value value
-//   call       := NAME value*
+//   call       := FUNCTION ("of" value+)? | NAME "at" value
 //   condition  := comparison (("and" | "or") comparison)*
 //   comparison := "not"? value compare value
 //   compare    := "gt" | "lt" | "ge" | "le" | "eq" | "not_eq" | "eq_3" | "eq_6"
@@ -45,6 +46,7 @@
 //   value      := INTEGER | REAL | STRING | SHIFT | COLOR | GLOBAL | RESULT
 //               | "gfx_delta_time" | NAME
 //   TYPE       := "i32" | "f32" | "flags" | "color" | "str"
+//   FUNCTION   := NAME "_fn", like divide_fn, which no other name is
 //   PARAMETER  := NAME, which ends with "_" TYPE, like count_i32
 //   INDEXED    := digit+ "_" TYPE, like 0_i32 and 1_str
 //   INTEGER    := "-"? digit+ "_i32"
@@ -76,14 +78,19 @@
 // - A function sees only its parameters and its own variables, and everything
 //   is passed and returned by value. The INDEXED types after ret, and those of
 //   an array, are numbered from 0 in order. A return gives one value per type,
-//   and the end of the block is a runtime error for a function with ret.
+//   and the end of the block is a runtime error for a function with ret. A
+//   function that returns nothing says ret_void, and its return has no
+//   values.
 // - A caller names each value that it takes with its index and type. var and
-//   set ... to take a call that returns one value, which ends with ret 0_TYPE.
+//   set ... to take a call that returns one value with "with ret 0_TYPE".
 //   Otherwise "call ... with ret" and a block take them as RESULT, those of the
 //   innermost call. Calls nest at most BOSONOGA_CALL_DEPTH_MAX deep, and a
 //   function cannot have the statements of gfx_frame.
-// - An array is a table of literal rows, read like a function of one i32 index
-//   from 0, which returns that row. An index without a row is a runtime error.
+// - The values of a call follow "of", and a call of a function without
+//   parameters has none.
+// - An array is a table of literal rows, read like a function, but with "at"
+//   and one i32 index from 0, which returns that row. An index without a row
+//   is a runtime error.
 // - bosonoga_global runs first and cannot return. The variables at the top of
 //   its block are shared by bosonoga_main and all sections.
 // - A gfx program has one gfx_main and at most one of each other section, in

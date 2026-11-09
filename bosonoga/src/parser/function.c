@@ -159,7 +159,9 @@ static gboolean bosonoga_parse_function_rest(BosonogaParser *parser,
                                              BosonogaFunction *function,
                                              const BosonogaToken *name,
                                              GError **error) {
-  while (!bosonoga_at_word(parser, "ret") && !bosonoga_at_word(parser, "di")) {
+  while (!bosonoga_at_word(parser, "ret") &&
+         !bosonoga_at_word(parser, BOSONOGA_VOID_WORD) &&
+         !bosonoga_at_word(parser, "di")) {
     BosonogaValueKind kind = BOSONOGA_VALUE_I32;
     if (!bosonoga_parameter_kind(&parser->tokenizer.token, &kind)) {
       return bosonoga_parse_error(
@@ -187,6 +189,17 @@ static gboolean bosonoga_parse_function_rest(BosonogaParser *parser,
                               &function->result_count, too_many, error)) {
       return FALSE;
     }
+  } else if (bosonoga_at_word(parser, BOSONOGA_VOID_WORD)) {
+    if (!bosonoga_advance(parser, error)) {
+      return FALSE;
+    }
+  } else {
+    g_autofree gchar *shown = bosonoga_token_shown(name);
+    return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                            BOSONOGA_ERROR_SYNTAX,
+                            "'%s' must say what it returns: ret and its types, "
+                            "or " BOSONOGA_VOID_WORD " for nothing",
+                            shown);
   }
 
   // It is defined before its block, so that the block can call it.
@@ -206,10 +219,28 @@ static gboolean bosonoga_parse_function_rest(BosonogaParser *parser,
 }
 
 gboolean bosonoga_parse_function(BosonogaParser *parser, GError **error) {
-  if (!bosonoga_expect_word(parser, "fn", error)) {
+  if (!bosonoga_expect_word(parser, "def", error)) {
     return FALSE;
   }
   const BosonogaToken name = parser->tokenizer.token;
+  if (name.kind == BOSONOGA_TOKEN_WORD &&
+      !bosonoga_token_is_reserved(parser, &name) &&
+      !bosonoga_token_is_function_name(&name)) {
+    if (bosonoga_token_is_word(&name, BOSONOGA_FUNCTION_SUFFIX)) {
+      return bosonoga_fail_at(
+          parser, &name, error, BOSONOGA_ERROR_NAME,
+          "the name of a function has more before " BOSONOGA_FUNCTION_SUFFIX
+          ", as in "
+          "double" BOSONOGA_FUNCTION_SUFFIX);
+    }
+    g_autofree gchar *shown = bosonoga_token_shown(&name);
+    return bosonoga_fail_at(
+        parser, &name, error, BOSONOGA_ERROR_NAME,
+        "the name of a function ends with " BOSONOGA_FUNCTION_SUFFIX
+        ", as in %s" BOSONOGA_FUNCTION_SUFFIX,
+        // The old fn_ prefix, without it in the suggestion.
+        g_str_has_prefix(shown, "fn_") && shown[3] != '\0' ? shown + 3 : shown);
+  }
   if (!bosonoga_check_new_function_name(parser, &name, "a function name",
                                         error) ||
       !bosonoga_advance(parser, error)) {
@@ -252,7 +283,9 @@ gboolean bosonoga_parse_call(BosonogaParser *parser, guint *function,
       return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_NAME,
                               "unknown function '%s'", shown);
     }
-    return bosonoga_parse_error(parser, "a function name", error);
+    return bosonoga_parse_error(
+        parser, "a function name, which ends with " BOSONOGA_FUNCTION_SUFFIX,
+        error);
   }
   const BosonogaFunction called =
       g_array_index(parser->functions, BosonogaFunction, (guint)found);
@@ -262,12 +295,15 @@ gboolean bosonoga_parse_call(BosonogaParser *parser, guint *function,
 
   g_autofree gchar *shown = bosonoga_token_shown(&name);
   if (called.is_array) {
-    if (!bosonoga_at_value(parser)) {
+    if (!bosonoga_at_word(parser, "at")) {
       return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
-                              BOSONOGA_ERROR_TYPE,
+                              BOSONOGA_ERROR_SYNTAX,
                               "'%s' is an array, which is read at one i32 "
-                              "index",
-                              shown);
+                              "index, as in %s at 0_i32",
+                              shown, shown);
+    }
+    if (!bosonoga_advance(parser, error)) {
+      return FALSE;
     }
     g_autofree gchar *context = g_strdup_printf("the index of '%s'", shown);
     BosonogaOperand index;
@@ -288,8 +324,32 @@ gboolean bosonoga_parse_call(BosonogaParser *parser, guint *function,
     *function = (guint)found;
     return TRUE;
   }
+  if (bosonoga_at_word(parser, "at")) {
+    return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                            BOSONOGA_ERROR_SYNTAX,
+                            "'%s' is a function, and only an array is read "
+                            "at an index",
+                            shown);
+  }
   g_autofree gchar *parameters =
       bosonoga_values_shown(called.parameters, called.parameter_count);
+  if (called.parameter_count == 0 && bosonoga_at_word(parser, "of")) {
+    return bosonoga_fail_at(
+        parser, &parser->tokenizer.token, error, BOSONOGA_ERROR_SYNTAX,
+        "'%s' takes no values, so its call has no of", shown);
+  }
+  if (called.parameter_count > 0) {
+    if (!bosonoga_at_word(parser, "of")) {
+      return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                              BOSONOGA_ERROR_SYNTAX,
+                              "'%s' takes %s, which follow of, as in %s of "
+                              "...",
+                              shown, parameters, shown);
+    }
+    if (!bosonoga_advance(parser, error)) {
+      return FALSE;
+    }
+  }
   for (guint i = 0; i < called.parameter_count; ++i) {
     const BosonogaToken value_token = parser->tokenizer.token;
     if (!bosonoga_at_value(parser)) {
@@ -398,14 +458,16 @@ gboolean bosonoga_parse_taken_result(BosonogaParser *parser, guint index,
       &g_array_index(parser->functions, BosonogaFunction, index);
   g_autofree gchar *name = g_strndup(called->name, called->name_length);
   const gchar *type = bosonoga_value_kind_name(called->results[0]);
-  if (!bosonoga_at_word(parser, "ret")) {
+  if (!bosonoga_at_word(parser, "with")) {
+    g_autofree gchar *shown = bosonoga_token_shown(&parser->tokenizer.token);
     return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
                             BOSONOGA_ERROR_SYNTAX,
-                            "the call of '%s' ends with ret 0_%s, the value "
-                            "that it takes",
-                            name, type);
+                            "expected with ret 0_%s, the value of '%s' that "
+                            "is taken, got '%s'",
+                            type, name, shown);
   }
-  if (!bosonoga_advance(parser, error)) {
+  if (!bosonoga_advance(parser, error) ||
+      !bosonoga_expect_word(parser, "ret", error)) {
     return FALSE;
   }
   const BosonogaToken *token = &parser->tokenizer.token;

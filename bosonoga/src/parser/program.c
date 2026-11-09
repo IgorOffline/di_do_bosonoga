@@ -64,7 +64,7 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
   gboolean has_main = FALSE;
   gboolean has_gfx_section = FALSE;
   do {
-    if (bosonoga_at_word(parser, "fn")) {
+    if (bosonoga_at_word(parser, "def")) {
       if (!bosonoga_parse_function(parser, error)) {
         return FALSE;
       }
@@ -92,15 +92,15 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
         return FALSE;
       }
     } else if (has_main) {
-      return bosonoga_parse_error(parser, "fn, array or end of file", error);
+      return bosonoga_parse_error(parser, "def, array or end of file", error);
     } else {
       const gchar *what =
           has_gfx_section
-              ? "fn, array, gfx_init, gfx_frame, gfx_cleanup or gfx_main"
+              ? "def, array, gfx_init, gfx_frame, gfx_cleanup or gfx_main"
           : parser->has_section[BOSONOGA_SECTION_GLOBAL]
-              ? "fn, array, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup "
+              ? "def, array, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup "
                 "or gfx_main"
-              : "fn, array, bosonoga_global, bosonoga_main, gfx_init, "
+              : "def, array, bosonoga_global, bosonoga_main, gfx_init, "
                 "gfx_frame, gfx_cleanup or gfx_main";
       if (!bosonoga_parse_gfx_section(parser, what, error)) {
         return FALSE;

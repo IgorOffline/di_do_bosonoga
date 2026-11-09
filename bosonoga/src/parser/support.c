@@ -59,13 +59,16 @@ static const gchar *const bosonoga_reserved_words[] = {
     "ge",
     "le",
     "not",
-    "fn",
+    "def",
     "ret",
     "call",
     "to",
     "array",
     "row",
     "expect",
+    "at",
+    "of",
+    BOSONOGA_VOID_WORD,
 };
 
 gboolean bosonoga_token_is_word(const BosonogaToken *token, const gchar *word) {
@@ -120,6 +123,13 @@ gboolean bosonoga_token_is_result(const BosonogaToken *token) {
   return token->kind == BOSONOGA_TOKEN_WORD && token->length > prefix_length &&
          memcmp(token->text, BOSONOGA_RESULT_PREFIX, prefix_length) == 0 &&
          g_ascii_isdigit(token->text[prefix_length]);
+}
+
+gboolean bosonoga_token_is_function_name(const BosonogaToken *token) {
+  const gsize suffix_length = strlen(BOSONOGA_FUNCTION_SUFFIX);
+  return token->kind == BOSONOGA_TOKEN_WORD && token->length > suffix_length &&
+         memcmp(token->text + token->length - suffix_length,
+                BOSONOGA_FUNCTION_SUFFIX, suffix_length) == 0;
 }
 
 gboolean bosonoga_token_is_reserved(const BosonogaParser *parser,
