@@ -53,6 +53,13 @@ gboolean bosonoga_parse_array(BosonogaParser *parser, GError **error) {
     return FALSE;
   }
   const BosonogaToken name = parser->tokenizer.token;
+  if (bosonoga_token_is_function_name(&name)) {
+    g_autofree gchar *shown = bosonoga_token_shown(&name);
+    return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_NAME,
+                            "'%s' ends with " BOSONOGA_FUNCTION_SUFFIX
+                            ", which only the name of a function does",
+                            shown);
+  }
   if (!bosonoga_check_new_function_name(parser, &name, "an array name",
                                         error) ||
       !bosonoga_advance(parser, error)) {

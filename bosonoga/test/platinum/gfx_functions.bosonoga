@@ -1,7 +1,7 @@
 // gfx_functions.bosonoga
 
 // A function before bosonoga_global, which only sees its own variables.
-fn next_count count_i32 ret 0_i32
+def next_count_fn count_i32 ret 0_i32
 di
   set count_i32 to_add count_i32 1_i32
   return count_i32
@@ -14,7 +14,7 @@ do
 
 // A function between sections can have a variable named like a global one in
 // another program, as it does not see the globals.
-fn twice value_i32 ret 0_i32
+def twice_fn value_i32 ret 0_i32
 di
   var doubled is 0_i32
   set doubled to_multiply value_i32 2_i32
@@ -30,14 +30,14 @@ do
 
 gfx_init
 di
-  set count to next_count count ret 0_i32
-  var step is steps 1_i32 ret 0_i32
+  set count to next_count_fn of count with ret 0_i32
+  var step is steps at 1_i32 with ret 0_i32
   info "init "_str count " step "_str step
 do
 
 gfx_main
 di
-  var doubled is twice count ret 0_i32
+  var doubled is twice_fn of count with ret 0_i32
   info "main "_str doubled " "_str count
   return exit_success
 do

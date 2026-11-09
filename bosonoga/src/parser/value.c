@@ -39,6 +39,10 @@ gboolean bosonoga_fail_unknown_variable(const BosonogaParser *parser,
                             function->is_array ? "an array" : "a function",
                             function->is_array ? "read" : "called");
   }
+  if (bosonoga_token_is_function_name(name)) {
+    return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
+                            "unknown function '%s'", shown);
+  }
   return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
                           "unknown variable '%s'", shown);
 }
@@ -54,6 +58,13 @@ gboolean bosonoga_parse_new_name(BosonogaParser *parser, BosonogaToken *name,
     g_autofree gchar *shown = bosonoga_token_shown(name);
     return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
                             "variable '%s' already exists", shown);
+  }
+  if (bosonoga_token_is_function_name(name)) {
+    g_autofree gchar *shown = bosonoga_token_shown(name);
+    return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
+                            "'%s' ends with " BOSONOGA_FUNCTION_SUFFIX
+                            ", which only the name of a function does",
+                            shown);
   }
   const gint found = bosonoga_find_function(parser, name);
   if (found >= 0) {
