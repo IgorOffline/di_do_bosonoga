@@ -4,7 +4,7 @@
 #include <glib.h>
 #include <locale.h>
 
-#define BOSONOGA_TEST_DIRECTORY "test"
+#define BOSONOGA_TEST_DIRECTORY "bosonoga/test"
 
 // Beginner, advanced and expert, each a directory of tests.
 static const gchar *const bosonoga_test_tiers[] = {
@@ -27,10 +27,8 @@ int main(int argc, char **argv) {
     return BOSONOGA_EXIT_FAILURE;
   }
 
-  g_autofree gchar *settings_path =
-      g_build_filename(BOSONOGA_TEST_DIRECTORY, BOSONOGA_SETTINGS_FILE, NULL);
   g_auto(BosonogaSettings) settings = {0};
-  if (!bosonoga_read_settings(settings_path, &settings, &error)) {
+  if (!bosonoga_read_settings(BOSONOGA_SETTINGS_FILE, &settings, &error)) {
     g_printerr("%s\n", error->message);
     return BOSONOGA_EXIT_FAILURE;
   }

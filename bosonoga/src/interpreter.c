@@ -538,21 +538,18 @@ BosonogaExecutionState bosonoga_execution_advance(BosonogaExecution *execution,
 
 gboolean bosonoga_run(const BosonogaProgram *program, GString *output,
                       gint *exit_status, GError **error) {
+  if (program->is_gfx) {
+    g_set_error_literal(error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
+                        "the console runner requires bosonoga_main");
+    return FALSE;
+  }
   g_autofree BosonogaValue *slots = bosonoga_slots_new(program);
   if (!bosonoga_run_section(program, BOSONOGA_SECTION_GLOBAL, slots, NULL,
-                            output, exit_status, error) ||
-      !bosonoga_run_section(program, BOSONOGA_SECTION_GFX_INIT, slots, NULL,
                             output, exit_status, error)) {
     return FALSE;
   }
-  const gboolean ran = bosonoga_run_section(
-      program, BOSONOGA_SECTION_MAIN, slots, NULL, output, exit_status, error);
-  // The error of the main section is the one that is reported.
-  g_autoptr(GError) ignored = NULL;
-  const gboolean cleaned_up =
-      bosonoga_run_section(program, BOSONOGA_SECTION_GFX_CLEANUP, slots, NULL,
-                           output, exit_status, ran ? error : &ignored);
-  return ran && cleaned_up;
+  return bosonoga_run_section(program, BOSONOGA_SECTION_MAIN, slots, NULL,
+                              output, exit_status, error);
 }
 
 gboolean bosonoga_run_section(const BosonogaProgram *program,
