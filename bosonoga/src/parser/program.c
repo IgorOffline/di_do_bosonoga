@@ -2,7 +2,6 @@
 
 #include "parser/internal.h"
 
-// Parses a program that does not start with main, so it must be a gfx program.
 static gboolean bosonoga_parse_gfx_sections(BosonogaParser *parser,
                                             GError **error) {
   static const struct {
@@ -110,6 +109,9 @@ BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
                                 GError **error) {
   g_autoptr(GArray) variables =
       g_array_new(FALSE, FALSE, sizeof(BosonogaVariable));
+  // A loop that a failed parse leaves open is freed with the array.
+  g_autoptr(GArray) loops = g_array_new(FALSE, FALSE, sizeof(BosonogaLoop));
+  g_array_set_clear_func(loops, bosonoga_loop_clear);
   g_autoptr(BosonogaProgram) program = g_new0(BosonogaProgram, 1);
   program->path = path;
   program->ops = g_array_new(FALSE, TRUE, sizeof(BosonogaOp));
@@ -119,6 +121,7 @@ BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
   bosonoga_tokenizer_init(&parser.tokenizer, path, source, length);
   parser.ops = program->ops;
   parser.variables = variables;
+  parser.loops = loops;
   parser.program = program;
   parser.settings = settings;
   if (!bosonoga_parse_program(&parser, error)) {

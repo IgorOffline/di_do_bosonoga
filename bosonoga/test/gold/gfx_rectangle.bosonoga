@@ -3,7 +3,7 @@
 gfx_init
 di
   var chosen_color is color_rectangle
-  info chosen_color " " color_background
+  info chosen_color " "_str color_background
 do
 
 gfx_frame

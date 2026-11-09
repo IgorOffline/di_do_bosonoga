@@ -16,7 +16,6 @@
 // does not stop the window from responding.
 #define BOSONOGA_GFX_OPS_PER_FRAME 100000U
 #define BOSONOGA_GFX_FRAME_MICROSECONDS (G_USEC_PER_SEC / 60)
-// A rectangle is drawn as two triangles.
 #define BOSONOGA_GFX_VERTICES_PER_RECTANGLE 6U
 #define BOSONOGA_GFX_COLOR_CHANNELS 4
 
@@ -38,7 +37,6 @@ static const gchar bosonoga_gfx_fragment_shader[] =
     "  frag_color = color;\n"
     "}\n";
 
-// A vertex as the GPU reads it, in the order of the attributes.
 typedef struct {
   gfloat position[2];
   gfloat color[BOSONOGA_GFX_COLOR_CHANNELS];
@@ -47,21 +45,20 @@ typedef struct {
 typedef struct {
   const BosonogaProgram *program;
   const BosonogaSettings *settings;
-  BosonogaValue *slots;  // The variables, shared by all sections.
+  BosonogaValue *slots;
   BosonogaExecution *main_execution;
   BosonogaGfxScene scene;
   sg_pipeline pipeline;
   sg_bindings bindings;
-  gsize vertex_buffer_size;  // In bytes, 0 until a frame draws something.
-  gint64 next_frame_time;    // In monotonic microseconds.
-  gint64 last_frame_start;   // In monotonic microseconds, 0 before a frame.
+  gsize vertex_buffer_size;
+  gint64 next_frame_time;
+  gint64 last_frame_start;
   gint *exit_status;
-  GError *error;         // The first error, which sets ended.
-  gboolean initialized;  // Whether gfx_init finished.
-  gboolean ended;        // Whether gfx_main returned or there was an error.
+  GError *error;  // The first error, which sets ended.
+  gboolean initialized;
+  gboolean ended;
 } BosonogaGfxRun;
 
-// Ends the run with an error that is already in run->error.
 static void bosonoga_gfx_fail(BosonogaGfxRun *run) {
   run->ended = TRUE;
   sapp_quit();
@@ -81,8 +78,6 @@ static gboolean bosonoga_gfx_run_callback(BosonogaGfxRun *run,
   return FALSE;
 }
 
-// Measures the time since the previous frame started, which the first frame
-// takes to be one frame at 60 frames per second.
 static void bosonoga_gfx_measure_delta_time(BosonogaGfxRun *run) {
   const gint64 now = g_get_monotonic_time();
   const gint64 elapsed = run->last_frame_start == 0
@@ -130,22 +125,18 @@ static void bosonoga_gfx_init(void *user_data) {
   }
 }
 
-// The window waits for the display after each frame, which keeps a 60 Hz
-// display at 60 frames per second, so this only holds back a faster display.
-// Each wait is measured from the previous frame time, so its inaccuracy does
-// not add up.
+// Only holds back a display faster than 60 Hz. Each wait is measured from the
+// previous frame time, so that errors do not add up.
 static void bosonoga_gfx_wait_for_frame_time(BosonogaGfxRun *run) {
   const gint64 now = g_get_monotonic_time();
   if (now < run->next_frame_time) {
     g_usleep((gulong)(run->next_frame_time - now));
     run->next_frame_time += BOSONOGA_GFX_FRAME_MICROSECONDS;
   } else {
-    // A late frame does not make the next ones hurry to catch up.
     run->next_frame_time = now + BOSONOGA_GFX_FRAME_MICROSECONDS;
   }
 }
 
-// Converts 0xRRGGBB to the opaque RGBA of the GPU.
 static void bosonoga_gfx_color_channels(
     guint32 color, gfloat channels[BOSONOGA_GFX_COLOR_CHANNELS]) {
   channels[0] = (gfloat)((color >> 16) & 0xffU) / 255.0f;
@@ -154,8 +145,7 @@ static void bosonoga_gfx_color_channels(
   channels[3] = 1.0f;
 }
 
-// Stores the corners of a rectangle in vertices, converted from pixels to the
-// coordinates of the GPU, which go from -1 to 1 with y growing up.
+// GPU coordinates go from -1 to 1, with y growing up.
 static void bosonoga_gfx_rectangle_vertices(
     const BosonogaGfxRectangle *rectangle,
     BosonogaGfxGpuVertex vertices[BOSONOGA_GFX_VERTICES_PER_RECTANGLE]) {
@@ -177,8 +167,6 @@ static void bosonoga_gfx_rectangle_vertices(
   }
 }
 
-// Writes the rectangles of the frame to the GPU, and makes the buffer larger if
-// they do not fit.
 static void bosonoga_gfx_upload_rectangles(BosonogaGfxRun *run) {
   const GArray *rectangles = run->scene.rectangles;
   if (rectangles->len == 0) {

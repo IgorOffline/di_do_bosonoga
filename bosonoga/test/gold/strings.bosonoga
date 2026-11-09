@@ -1,0 +1,37 @@
+// strings.bosonoga
+
+main
+di
+  var greeting is "Hello, World!"_str
+  var other is "Lorem! lorem_ipsum Ipsum!"_str
+  info greeting
+  info other
+  info "count: "_str 3_i32 ", half: "_str 1d5_f32
+  info "["_str ""_str "]"_str
+
+  // A comment marker in a string is text.
+  info "// is not a comment here"_str
+
+  var passed_count is 0_i32
+  if greeting eq "Hello, World!"_str and greeting not_eq other
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+  // Strings of different lengths differ, even when one starts the other.
+  if "Hello"_str not_eq "Hello, World!"_str and ""_str eq ""_str
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+  set greeting to_add other
+  if greeting eq other
+  di
+    set passed_count to_add passed_count 1_i32
+  do
+  info greeting
+
+  if passed_count eq 3_i32
+  di
+    return exit_success
+  do
+  return exit_failure
+do

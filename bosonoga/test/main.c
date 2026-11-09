@@ -4,24 +4,15 @@
 #include <glib.h>
 #include <locale.h>
 
-// The tests of the language itself, which are run from the directory of the
-// library, so that the tests are in test and their settings in test/regina.ini.
 #define BOSONOGA_TEST_DIRECTORY "test"
 
-// The tiers of the tests, each a directory in the test directory, from the
-// simplest programs to the most demanding ones. silver is for beginners, who
-// write one main with values and arithmetic, gold is advanced, with flags and
-// a first gfx program, and platinum is for experts, with every section of a
-// gfx program and the variables that its sections share.
+// Beginner, advanced and expert, each a directory of tests.
 static const gchar *const bosonoga_test_tiers[] = {
     "silver",
     "gold",
     "platinum",
 };
 
-// Runs the tests of every tier, or only the test at the path that is given,
-// and prints how many pass, of each tier and of all. A failing test is printed
-// to stderr, and G_MESSAGES_DEBUG=all shows why it failed.
 int main(int argc, char **argv) {
   setlocale(LC_ALL, "");
 

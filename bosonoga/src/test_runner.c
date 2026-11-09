@@ -9,8 +9,7 @@
 #define BOSONOGA_TEST_SUFFIX ".bosonoga"
 #define BOSONOGA_EXPECTED_SUFFIX ".expected"
 
-// Compares output with the file that has the name of the test and the expected
-// suffix. A test without that file can print anything.
+// A test without an expected file can print anything.
 static gboolean bosonoga_check_output(const gchar *path,
                                       const gchar *display_path,
                                       const GString *output, GError **error) {
@@ -37,7 +36,6 @@ static gboolean bosonoga_check_output(const gchar *path,
   return TRUE;
 }
 
-// A test passes if it returns exit_success and prints the expected output.
 static gboolean bosonoga_run_test(const gchar *path,
                                   const BosonogaSettings *settings,
                                   GError **error) {
@@ -75,8 +73,7 @@ gboolean bosonoga_test_passes(const gchar *path,
   return TRUE;
 }
 
-// Orders names by their bytes, which does not depend on the locale, the file
-// system or the operating system, unlike g_dir_read_name or g_utf8_collate.
+// Unlike g_dir_read_name and g_utf8_collate, the same on every system.
 static gint bosonoga_compare_names(gconstpointer left, gconstpointer right) {
   return strcmp(left, right);
 }

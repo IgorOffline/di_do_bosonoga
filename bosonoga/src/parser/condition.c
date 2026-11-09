@@ -9,6 +9,8 @@ static gboolean bosonoga_parse_compare_kind(const BosonogaParser *parser,
   } compares[] = {
       {"gt", BOSONOGA_COMPARE_GT},
       {"lt", BOSONOGA_COMPARE_LT},
+      {"ge", BOSONOGA_COMPARE_GE},
+      {"le", BOSONOGA_COMPARE_LE},
       {"eq", BOSONOGA_COMPARE_EQ},
       {"not_eq", BOSONOGA_COMPARE_NOT_EQ},
       {"eq_3", BOSONOGA_COMPARE_EQ_3},
@@ -26,7 +28,6 @@ static gboolean bosonoga_parse_compare_kind(const BosonogaParser *parser,
   return bosonoga_parse_error(parser, "a comparison", error);
 }
 
-// Checks that the comparison, located at the token, accepts the operand kinds.
 static gboolean bosonoga_check_compare(const BosonogaParser *parser,
                                        const BosonogaToken *token,
                                        BosonogaCompareKind compare,
@@ -56,10 +57,17 @@ static gboolean bosonoga_check_compare(const BosonogaParser *parser,
     return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
                             "colors cannot be compared");
   }
+  if (left == BOSONOGA_VALUE_STR && compare != BOSONOGA_COMPARE_EQ &&
+      compare != BOSONOGA_COMPARE_NOT_EQ) {
+    return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
+                            "str can only be compared with eq or not_eq");
+  }
 
   switch (compare) {
     case BOSONOGA_COMPARE_GT:
     case BOSONOGA_COMPARE_LT:
+    case BOSONOGA_COMPARE_GE:
+    case BOSONOGA_COMPARE_LE:
       return TRUE;
     case BOSONOGA_COMPARE_EQ:
     case BOSONOGA_COMPARE_NOT_EQ:
@@ -85,13 +93,15 @@ static gboolean bosonoga_check_compare(const BosonogaParser *parser,
   g_return_val_if_reached(FALSE);
 }
 
-// Parses a comparison into a jump that is taken if it is false, and appends the
-// index of the jump to false_jumps.
 static gboolean bosonoga_parse_comparison(BosonogaParser *parser,
                                           GArray *false_jumps, GError **error) {
   BosonogaOperand left;
   BosonogaOperand right;
   BosonogaCompareKind compare = BOSONOGA_COMPARE_EQ;
+  const gboolean negate = bosonoga_at_word(parser, "not");
+  if (negate && !bosonoga_advance(parser, error)) {
+    return FALSE;
+  }
   if (!bosonoga_parse_value(parser, &left, error) ||
       !bosonoga_parse_compare_kind(parser, &compare, error)) {
     return FALSE;
@@ -107,6 +117,7 @@ static gboolean bosonoga_parse_comparison(BosonogaParser *parser,
   const guint jump = parser->ops->len;
   BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_JUMP_UNLESS, &operation);
   op->compare = compare;
+  op->negate = negate;
   op->left = left;
   op->right = right;
   g_array_append_val(false_jumps, jump);

@@ -3,6 +3,8 @@
 
 #include <glib.h>
 
+#define BOSONOGA_STRING_SUFFIX "_str"
+
 typedef enum {
   BOSONOGA_TOKEN_END,
   BOSONOGA_TOKEN_WORD,
@@ -14,13 +16,15 @@ typedef enum {
 
 typedef struct {
   BosonogaTokenKind kind;
-  const gchar *text;  // Slice of the source, including the quotes of a string.
+  const gchar *text;  // Slice of the source, the whole token.
   gsize length;
   gsize line;
   gsize column;
   gint32 integer;
   guint32 unsigned_integer;
   gfloat real;
+  const gchar *string;  // Of a string, the slice between the quotes.
+  gsize string_length;
 } BosonogaToken;
 
 typedef struct {
@@ -32,12 +36,10 @@ typedef struct {
   BosonogaToken token;
 } BosonogaTokenizer;
 
-// The source must outlive the tokenizer and its tokens. Path is only used in
-// error messages, so it must be UTF-8.
+// The source must outlive the tokens. Path is UTF-8, for error messages.
 void bosonoga_tokenizer_init(BosonogaTokenizer *tokenizer, const gchar *path,
                              const gchar *source, gsize length);
 
-// Reads the next token into tokenizer->token.
 gboolean bosonoga_tokenizer_advance(BosonogaTokenizer *tokenizer,
                                     GError **error);
 

@@ -2,13 +2,12 @@
 
 #include "parser/internal.h"
 
-// The conversions, which compute one value from the values after their word.
 static const struct {
   const gchar *word;
   BosonogaOpKind op;
-  BosonogaValueKind source;  // The kind of each value.
+  BosonogaValueKind source;
   BosonogaValueKind result;
-  gboolean is_binary;  // Whether it takes two values, left and right.
+  gboolean is_binary;
 } bosonoga_conversions[] = {
     {"to_f32", BOSONOGA_OP_CONVERT_TO_F32, BOSONOGA_VALUE_I32,
      BOSONOGA_VALUE_F32, FALSE},
@@ -23,7 +22,6 @@ static const struct {
     {"to_pow", BOSONOGA_OP_POW, BOSONOGA_VALUE_F32, BOSONOGA_VALUE_F32, TRUE},
 };
 
-// Returns the index in bosonoga_conversions of the current token, or -1.
 static gint bosonoga_find_conversion(const BosonogaParser *parser) {
   for (gsize i = 0; i < G_N_ELEMENTS(bosonoga_conversions); ++i) {
     if (bosonoga_at_word(parser, bosonoga_conversions[i].word)) {
@@ -37,8 +35,6 @@ static gboolean bosonoga_at_conversion(const BosonogaParser *parser) {
   return bosonoga_find_conversion(parser) >= 0;
 }
 
-// Parses a conversion and stores its result in the slot. The keyword is the
-// current token, and the kind of the result is returned in kind.
 static gboolean bosonoga_parse_conversion(BosonogaParser *parser, guint slot,
                                           BosonogaValueKind *kind,
                                           GError **error) {
@@ -110,8 +106,6 @@ gboolean bosonoga_parse_var(BosonogaParser *parser, GError **error) {
   return TRUE;
 }
 
-// Parses the values of an update that applies step to them one after another,
-// whose keyword is already consumed and is the context.
 static gboolean bosonoga_parse_accumulation(BosonogaParser *parser,
                                             const BosonogaVariable *target,
                                             const BosonogaToken *start,
@@ -126,6 +120,9 @@ static gboolean bosonoga_parse_accumulation(BosonogaParser *parser,
   BosonogaOperand first;
   if (!bosonoga_parse_value_of_kind(parser, kind, context, &first, error)) {
     return FALSE;
+  }
+  if (step == BOSONOGA_OP_ACCUMULATOR_MOD && !bosonoga_at_value(parser)) {
+    return bosonoga_parse_error(parser, "a value to divide by", error);
   }
   if (has_inverse && !bosonoga_at_value(parser)) {
     BosonogaOperand identity;
@@ -152,6 +149,36 @@ static gboolean bosonoga_parse_accumulation(BosonogaParser *parser,
     bosonoga_emit(parser, step, start)->left = next;
   }
   bosonoga_emit(parser, BOSONOGA_OP_ACCUMULATOR_STORE, start)->slot = slot;
+  return TRUE;
+}
+
+// A str can only be set with to_add and a single str.
+static gboolean bosonoga_parse_set_str(BosonogaParser *parser,
+                                       const BosonogaVariable *target,
+                                       const BosonogaToken *operation,
+                                       const gchar *shown, GError **error) {
+  if (!bosonoga_at_word(parser, "to_add")) {
+    return bosonoga_fail_at(parser, operation, error, BOSONOGA_ERROR_TYPE,
+                            "'%s' is str, which cannot be used in arithmetic, "
+                            "but to_add with a single str sets it",
+                            shown);
+  }
+  BosonogaOperand value;
+  if (!bosonoga_advance(parser, error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_STR, "to_add",
+                                    &value, error)) {
+    return FALSE;
+  }
+  if (bosonoga_at_value(parser)) {
+    return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                            BOSONOGA_ERROR_TYPE,
+                            "strings cannot be joined, to_add sets '%s' to a "
+                            "single str",
+                            shown);
+  }
+  BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_ASSIGN, operation);
+  op->slot = target->slot;
+  op->left = value;
   return TRUE;
 }
 
@@ -195,6 +222,7 @@ gboolean bosonoga_parse_set(BosonogaParser *parser, GError **error) {
       {"to_subtract", BOSONOGA_OP_ACCUMULATOR_SUBTRACT},
       {"to_multiply", BOSONOGA_OP_ACCUMULATOR_MULTIPLY},
       {"to_divide", BOSONOGA_OP_ACCUMULATOR_DIVIDE},
+      {"to_mod", BOSONOGA_OP_ACCUMULATOR_MOD},
   };
   gsize i = 0;
   while (i < G_N_ELEMENTS(accumulations) &&
@@ -202,9 +230,13 @@ gboolean bosonoga_parse_set(BosonogaParser *parser, GError **error) {
     ++i;
   }
   if (i == G_N_ELEMENTS(accumulations)) {
-    return bosonoga_parse_error(
-        parser, "to_add, to_subtract, to_multiply, to_divide, to_f32 or to_i32",
-        error);
+    return bosonoga_parse_error(parser,
+                                "to_add, to_subtract, to_multiply, to_divide, "
+                                "to_mod or a conversion",
+                                error);
+  }
+  if (target.kind == BOSONOGA_VALUE_STR) {
+    return bosonoga_parse_set_str(parser, &target, &operation, shown, error);
   }
   if (target.kind == BOSONOGA_VALUE_FLAGS ||
       target.kind == BOSONOGA_VALUE_COLOR) {
