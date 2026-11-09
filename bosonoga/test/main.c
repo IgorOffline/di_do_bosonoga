@@ -6,7 +6,6 @@
 
 #define BOSONOGA_TEST_DIRECTORY "bosonoga/test"
 
-// Beginner, advanced and expert, each a directory of tests.
 static const gchar *const bosonoga_test_tiers[] = {
     "silver",
     "gold",
