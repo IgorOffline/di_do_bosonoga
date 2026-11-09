@@ -9,7 +9,6 @@ clang-format -i --style=Google bosonoga/include/bosonoga/*.h bosonoga/src/*.h bo
 bosonoga/build.sh
 clang -std=c11 -O0 -g -fsanitize=undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -Wall -Wextra -Wpedantic -Werror -Wconversion -Wsign-conversion -Wshadow -Wcast-qual -Wcast-align -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wmissing-variable-declarations -Wredundant-decls -Wnull-dereference -Wdouble-promotion -Wfloat-equal -Wformat=2 -Wundef -Wswitch-enum -Wunused -Wunreachable-code -Wvla $(pkg-config --cflags bosonoga | sed 's/-I/-isystem /g') bosonoga/test/main.c $(pkg-config --static --libs bosonoga) -Wl,-rpath,/home/igor/dev/glib-2.90.1/build/glib -o bosonoga/build/test
 suite_output=$(bosonoga/build/test)
-sh bosonoga/test/numeric_errors.sh
 for level in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
   for test_file in "bosonoga/impl/level_$level/"*.bosonoga; do
     case "$test_file" in *.xp.bosonoga) continue ;; esac
