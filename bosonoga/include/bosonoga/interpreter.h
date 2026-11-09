@@ -54,6 +54,7 @@ gboolean bosonoga_run_section(const BosonogaProgram *program,
                               BosonogaGfxScene *scene, GString *output,
                               gint *exit_status, GError **error);
 
+// Runs bosonoga_global and bosonoga_main. Rejects window programs.
 gboolean bosonoga_run(const BosonogaProgram *program, GString *output,
                       gint *exit_status, GError **error);
 

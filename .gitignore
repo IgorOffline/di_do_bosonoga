@@ -1,2 +1,5 @@
 .idea
-bosonoga/build/
+main
+build
+old_*.txt
+report_*.txt

@@ -16,9 +16,11 @@ GLIB_CFLAGS=$(pkg-config --cflags glib-2.0 | sed 's/-I/-isystem /g')
 rm -rf build
 mkdir -p build/obj
 for source in src/*.c src/parser/*.c; do
+  # The window backend is independent of the console library.
+  case "$source" in src/gfx.c) continue ;; esac
   object="build/obj/$(echo "${source#src/}" | tr / _).o"
   # shellcheck disable=SC2086
-  $CC $CFLAGS $GLIB_CFLAGS -Iinclude -Isrc -isystem sokol -pthread \
+  $CC $CFLAGS $GLIB_CFLAGS -Iinclude -Isrc \
     -c "$source" -o "$object"
 done
 ar rcs build/libbosonoga.a build/obj/*.o

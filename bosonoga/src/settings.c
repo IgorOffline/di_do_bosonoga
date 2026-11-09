@@ -109,6 +109,11 @@ static gboolean bosonoga_read_color_setting(const BosonogaSettingsFile *file,
 static gboolean bosonoga_read_color_settings(const BosonogaSettingsFile *file,
                                              BosonogaSettings *settings,
                                              GError **error) {
+  settings->colors =
+      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+  if (!g_key_file_has_group(file->key_file, BOSONOGA_SETTINGS_GROUP_COLOR)) {
+    return TRUE;
+  }
   GError *read_error = NULL;
   g_auto(GStrv) keys = g_key_file_get_keys(
       file->key_file, BOSONOGA_SETTINGS_GROUP_COLOR, NULL, &read_error);
@@ -116,8 +121,6 @@ static gboolean bosonoga_read_color_settings(const BosonogaSettingsFile *file,
     g_propagate_prefixed_error(error, read_error, "%s: ", file->path);
     return FALSE;
   }
-  settings->colors =
-      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
   for (gsize i = 0; keys[i] != NULL; ++i) {
     guint32 color = 0;
     if (!bosonoga_read_color_setting(file, keys[i], &color, error)) {
@@ -126,7 +129,8 @@ static gboolean bosonoga_read_color_settings(const BosonogaSettingsFile *file,
     g_hash_table_insert(settings->colors, g_strdup(keys[i]),
                         GUINT_TO_POINTER(color));
   }
-  if (!bosonoga_settings_color(settings, BOSONOGA_SETTINGS_KEY_BACKGROUND,
+  if (g_key_file_has_group(file->key_file, BOSONOGA_SETTINGS_GROUP_GFX) &&
+      !bosonoga_settings_color(settings, BOSONOGA_SETTINGS_KEY_BACKGROUND,
                                &settings->background_color)) {
     g_set_error(error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
                 "%s: the group %s needs the key %s", file->path,
@@ -213,10 +217,13 @@ gboolean bosonoga_read_settings(const gchar *path, BosonogaSettings *settings,
   if (settings->version == NULL) {
     return FALSE;
   }
-  return bosonoga_read_positive_setting(&file, "width", &settings->gfx_width,
-                                        error) &&
-         bosonoga_read_positive_setting(&file, "height", &settings->gfx_height,
-                                        error) &&
-         bosonoga_read_color_settings(&file, settings, error) &&
+  if (g_key_file_has_group(key_file, BOSONOGA_SETTINGS_GROUP_GFX) &&
+      !(bosonoga_read_positive_setting(&file, "width", &settings->gfx_width,
+                                       error) &&
+        bosonoga_read_positive_setting(&file, "height", &settings->gfx_height,
+                                       error))) {
+    return FALSE;
+  }
+  return bosonoga_read_color_settings(&file, settings, error) &&
          bosonoga_read_global_settings(&file, settings, error);
 }
