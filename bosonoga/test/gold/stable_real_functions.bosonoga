@@ -1,0 +1,111 @@
+// Stable real functions retain small changes and avoid spurious norm overflow.
+
+bosonoga_main
+di
+  var tiny_f32 is 0d00000001_f32
+  var logarithm_f32 is to_log1p tiny_f32
+  var exponential_f32 is to_expm1 tiny_f32
+  var ratio_f32 is logarithm_f32
+  set ratio_f32 to_divide ratio_f32 tiny_f32
+  if not ratio_f32 eq_6 1_f32
+  di
+    return exit_failure
+  do
+  set ratio_f32 to_divide exponential_f32 tiny_f32
+  if not ratio_f32 eq_6 1_f32
+  di
+    return exit_failure
+  do
+  var negative_f32 is 0_f32
+  set negative_f32 to_subtract tiny_f32
+  set negative_f32 to_log1p negative_f32
+  set negative_f32 to_expm1 negative_f32
+  set ratio_f32 to_divide negative_f32 tiny_f32
+  if not ratio_f32 eq_6 -1_f32
+  di
+    return exit_failure
+  do
+  var huge_f32 is to_pow 10_f32 30_f32
+  var norm_f32 is to_hypot huge_f32 huge_f32
+  set ratio_f32 to_divide norm_f32 huge_f32
+  if not ratio_f32 eq_6 1d4142135623730951_f32
+  di
+    return exit_failure
+  do
+  var extremely_small_f32 is 0_f32
+  set extremely_small_f32 to_divide huge_f32
+  var small_norm_f32 is to_hypot extremely_small_f32 extremely_small_f32
+  set ratio_f32 to_divide small_norm_f32 extremely_small_f32
+  if not ratio_f32 eq_6 1d4142135623730951_f32
+  di
+    return exit_failure
+  do
+  set norm_f32 to_hypot -3_f32 4_f32
+  set norm_f32 to_hypot norm_f32 12_f32
+  set norm_f32 to_hypot 0_f32 norm_f32
+  if not norm_f32 eq_6 13_f32
+  di
+    return exit_failure
+  do
+  var zero_f32 is to_log1p 0_f32
+  set zero_f32 to_expm1 zero_f32
+  set zero_f32 to_hypot zero_f32 0_f32
+  if not zero_f32 eq_6 0_f32
+  di
+    return exit_failure
+  do
+  var tiny_f64 is 0d00000000000000000001_f64
+  var logarithm_f64 is to_log1p tiny_f64
+  var exponential_f64 is to_expm1 tiny_f64
+  var ratio_f64 is logarithm_f64
+  set ratio_f64 to_divide ratio_f64 tiny_f64
+  if not ratio_f64 eq_6 1_f64
+  di
+    return exit_failure
+  do
+  set ratio_f64 to_divide exponential_f64 tiny_f64
+  if not ratio_f64 eq_6 1_f64
+  di
+    return exit_failure
+  do
+  var negative_f64 is 0_f64
+  set negative_f64 to_subtract tiny_f64
+  set negative_f64 to_log1p negative_f64
+  set negative_f64 to_expm1 negative_f64
+  set ratio_f64 to_divide negative_f64 tiny_f64
+  if not ratio_f64 eq_6 -1_f64
+  di
+    return exit_failure
+  do
+  var huge_f64 is to_pow 10_f64 200_f64
+  var norm_f64 is to_hypot huge_f64 huge_f64
+  set ratio_f64 to_divide norm_f64 huge_f64
+  if not ratio_f64 eq_6 1d4142135623730951_f64
+  di
+    return exit_failure
+  do
+  var extremely_small_f64 is 0_f64
+  set extremely_small_f64 to_divide huge_f64
+  var small_norm_f64 is to_hypot extremely_small_f64 extremely_small_f64
+  set ratio_f64 to_divide small_norm_f64 extremely_small_f64
+  if not ratio_f64 eq_6 1d4142135623730951_f64
+  di
+    return exit_failure
+  do
+  set norm_f64 to_hypot -3_f64 4_f64
+  set norm_f64 to_hypot norm_f64 12_f64
+  set norm_f64 to_hypot 0_f64 norm_f64
+  if not norm_f64 eq_6 13_f64
+  di
+    return exit_failure
+  do
+  var zero_f64 is to_log1p 0_f64
+  set zero_f64 to_expm1 zero_f64
+  set zero_f64 to_hypot zero_f64 0_f64
+  if not zero_f64 eq_6 0_f64
+  di
+    return exit_failure
+  do
+  info "stable real functions: passed"_str
+  return exit_success
+do

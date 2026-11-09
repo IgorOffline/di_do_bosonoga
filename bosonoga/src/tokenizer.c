@@ -1,5 +1,6 @@
 #include "tokenizer.h"
 
+#include <math.h>
 #include <string.h>
 
 #include "bosonoga/bosonoga.h"
@@ -122,14 +123,17 @@ static gboolean bosonoga_lex_number(BosonogaTokenizer *tokenizer,
     token->unsigned_integer = (guint32)value;
     return TRUE;
   }
-  if (g_str_equal(suffix, "_f32")) {
+  if (g_str_equal(suffix, "_f32") || g_str_equal(suffix, "_f64")) {
+    const gboolean wide = g_str_equal(suffix, "_f64");
     const gdouble value = g_ascii_strtod(g_strdelimit(number, "d", '.'), NULL);
-    if (ABS(value) > (gdouble)G_MAXFLOAT) {
+    if (!isfinite(value) || (!wide && ABS(value) > (gdouble)G_MAXFLOAT)) {
       return bosonoga_lex_error(tokenizer, token->line, token->column,
-                                "real number does not fit in 32 bits", error);
+                                wide ? "real number does not fit in 64 bits"
+                                     : "real number does not fit in 32 bits",
+                                error);
     }
-    token->kind = BOSONOGA_TOKEN_REAL;
-    token->real = (gfloat)value;
+    token->kind = wide ? BOSONOGA_TOKEN_REAL64 : BOSONOGA_TOKEN_REAL;
+    token->real = wide ? value : (gdouble)(gfloat)value;
     return TRUE;
   }
   if (!has_fraction && token->text[0] != '-' &&
@@ -138,9 +142,9 @@ static gboolean bosonoga_lex_number(BosonogaTokenizer *tokenizer,
     token->kind = BOSONOGA_TOKEN_INDEXED_TYPE;
     return TRUE;
   }
-  return bosonoga_lex_error(tokenizer, token->line, token->column,
-                            "number must have the suffix _i32, _u32 or _f32",
-                            error);
+  return bosonoga_lex_error(
+      tokenizer, token->line, token->column,
+      "number must have the suffix _i32, _u32, _f32 or _f64", error);
 }
 
 static gboolean bosonoga_lex_string(BosonogaTokenizer *tokenizer,
@@ -199,7 +203,7 @@ gboolean bosonoga_tokenizer_advance(BosonogaTokenizer *tokenizer,
                          tokenizer->column,
                          0,
                          0,
-                         0.0f,
+                         0.0,
                          NULL,
                          0};
   if (tokenizer->cursor < tokenizer->end) {

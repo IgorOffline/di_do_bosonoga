@@ -11,6 +11,7 @@ typedef enum {
   BOSONOGA_TOKEN_INTEGER,
   BOSONOGA_TOKEN_UNSIGNED,
   BOSONOGA_TOKEN_REAL,
+  BOSONOGA_TOKEN_REAL64,
   BOSONOGA_TOKEN_STRING,
   // Digits and _flags, _color or _str, like 1_str, which only numbers a value
   // in the types of a function or an array, as 0_i32 and 0_f32 do.
@@ -25,7 +26,7 @@ typedef struct {
   gsize column;
   gint32 integer;
   guint32 unsigned_integer;
-  gfloat real;
+  gdouble real;
   const gchar *string;  // Of a string, the slice between the quotes.
   gsize string_length;
 } BosonogaToken;

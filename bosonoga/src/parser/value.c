@@ -54,6 +54,10 @@ gboolean bosonoga_parse_new_name(BosonogaParser *parser, BosonogaToken *name,
       bosonoga_token_is_reserved(parser, name)) {
     return bosonoga_parse_error(parser, "a variable name", error);
   }
+  if (bosonoga_find_constant(parser, name) != NULL) {
+    return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
+                            "a constant with this name already exists");
+  }
   if (bosonoga_find_variable(parser, name) != NULL) {
     g_autofree gchar *shown = bosonoga_token_shown(name);
     return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
@@ -84,6 +88,7 @@ gboolean bosonoga_at_value(const BosonogaParser *parser) {
   switch (token->kind) {
     case BOSONOGA_TOKEN_INTEGER:
     case BOSONOGA_TOKEN_REAL:
+    case BOSONOGA_TOKEN_REAL64:
     case BOSONOGA_TOKEN_STRING:
       return TRUE;
     case BOSONOGA_TOKEN_WORD: {
@@ -115,7 +120,10 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
     operand->literal.i32 = token->integer;
   } else if (token->kind == BOSONOGA_TOKEN_REAL) {
     operand->literal.kind = BOSONOGA_VALUE_F32;
-    operand->literal.f32 = token->real;
+    operand->literal.f32 = (gfloat)token->real;
+  } else if (token->kind == BOSONOGA_TOKEN_REAL64) {
+    operand->literal.kind = BOSONOGA_VALUE_F64;
+    operand->literal.f64 = token->real;
   } else if (token->kind == BOSONOGA_TOKEN_STRING) {
     operand->literal.kind = BOSONOGA_VALUE_STR;
     operand->literal.str.text = token->string;
@@ -145,6 +153,8 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
     operand->literal.kind = BOSONOGA_VALUE_F32;
     operand->is_variable = TRUE;
     operand->slot = parser->delta_time_slot;
+  } else if (bosonoga_find_constant(parser, token) != NULL) {
+    operand->literal = bosonoga_find_constant(parser, token)->value;
   } else if (bosonoga_token_setting(parser, token, &operand->literal)) {
     // The value of a color or global is known now, so it is a literal.
   } else {

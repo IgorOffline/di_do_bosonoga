@@ -64,7 +64,11 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
   gboolean has_main = FALSE;
   gboolean has_gfx_section = FALSE;
   do {
-    if (bosonoga_at_word(parser, "def")) {
+    if (bosonoga_at_word(parser, "const")) {
+      if (!bosonoga_parse_constant(parser, error)) {
+        return FALSE;
+      }
+    } else if (bosonoga_at_word(parser, "def")) {
       if (!bosonoga_parse_function(parser, error)) {
         return FALSE;
       }
@@ -92,15 +96,17 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
         return FALSE;
       }
     } else if (has_main) {
-      return bosonoga_parse_error(parser, "def, array or end of file", error);
+      return bosonoga_parse_error(parser, "const, def, array or end of file",
+                                  error);
     } else {
       const gchar *what =
-          has_gfx_section
-              ? "def, array, gfx_init, gfx_frame, gfx_cleanup or gfx_main"
+          has_gfx_section ? "const, def, array, gfx_init, gfx_frame, "
+                            "gfx_cleanup or gfx_main"
           : parser->has_section[BOSONOGA_SECTION_GLOBAL]
-              ? "def, array, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup "
+              ? "const, def, array, bosonoga_main, gfx_init, gfx_frame, "
+                "gfx_cleanup "
                 "or gfx_main"
-              : "def, array, bosonoga_global, bosonoga_main, gfx_init, "
+              : "const, def, array, bosonoga_global, bosonoga_main, gfx_init, "
                 "gfx_frame, gfx_cleanup or gfx_main";
       if (!bosonoga_parse_gfx_section(parser, what, error)) {
         return FALSE;
@@ -137,6 +143,8 @@ BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
                                 GError **error) {
   g_autoptr(GArray) variables =
       g_array_new(FALSE, FALSE, sizeof(BosonogaVariable));
+  g_autoptr(GArray) constants =
+      g_array_new(FALSE, FALSE, sizeof(BosonogaConstant));
   // A loop that a failed parse leaves open is freed with the array.
   g_autoptr(GArray) loops = g_array_new(FALSE, FALSE, sizeof(BosonogaLoop));
   g_array_set_clear_func(loops, bosonoga_loop_clear);
@@ -153,6 +161,7 @@ BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
   bosonoga_tokenizer_init(&parser.tokenizer, path, source, length);
   parser.ops = program->ops;
   parser.variables = variables;
+  parser.constants = constants;
   parser.loops = loops;
   parser.functions = program->functions;
   parser.call_blocks = call_blocks;

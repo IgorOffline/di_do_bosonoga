@@ -42,6 +42,10 @@ gboolean bosonoga_check_new_function_name(const BosonogaParser *parser,
             &g_array_index(parser->functions, BosonogaFunction, (guint)found)),
         shown);
   }
+  if (bosonoga_find_constant(parser, name) != NULL) {
+    return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
+                            "'%s' is already a constant", shown);
+  }
   if (bosonoga_find_variable(parser, name) != NULL) {
     return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
                             "'%s' is already a variable", shown);
@@ -65,8 +69,8 @@ gchar *bosonoga_values_shown(const BosonogaValueKind *kinds, guint count) {
 static gboolean bosonoga_kind_named(const gchar *text, gsize length,
                                     BosonogaValueKind *kind) {
   static const BosonogaValueKind kinds[] = {
-      BOSONOGA_VALUE_I32,   BOSONOGA_VALUE_F32, BOSONOGA_VALUE_FLAGS,
-      BOSONOGA_VALUE_COLOR, BOSONOGA_VALUE_STR,
+      BOSONOGA_VALUE_I32,   BOSONOGA_VALUE_F32,   BOSONOGA_VALUE_F64,
+      BOSONOGA_VALUE_FLAGS, BOSONOGA_VALUE_COLOR, BOSONOGA_VALUE_STR,
   };
   for (gsize i = 0; i < G_N_ELEMENTS(kinds); ++i) {
     const gchar *name = bosonoga_value_kind_name(kinds[i]);
@@ -102,6 +106,7 @@ static gboolean bosonoga_token_indexed(const BosonogaToken *token,
                                        BosonogaValueKind *kind) {
   if (token->kind != BOSONOGA_TOKEN_INTEGER &&
       token->kind != BOSONOGA_TOKEN_REAL &&
+      token->kind != BOSONOGA_TOKEN_REAL64 &&
       token->kind != BOSONOGA_TOKEN_INDEXED_TYPE) {
     return FALSE;
   }
@@ -118,7 +123,7 @@ gboolean bosonoga_parse_types(BosonogaParser *parser, BosonogaValueKind *kinds,
     if (!bosonoga_token_indexed(token, &index, &kind)) {
       return bosonoga_parse_error(parser,
                                   "a type with its index, like 0_i32, of i32, "
-                                  "f32, flags, color or str",
+                                  "f32, f64, flags, color or str",
                                   error);
     }
     if (*count == BOSONOGA_FUNCTION_VALUES_MAX) {

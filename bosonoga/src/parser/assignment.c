@@ -5,21 +5,32 @@
 static const struct {
   const gchar *word;
   BosonogaOpKind op;
-  BosonogaValueKind source;
-  BosonogaValueKind result;
   gboolean is_binary;
+  gboolean accepts_integer;
 } bosonoga_conversions[] = {
-    {"to_f32", BOSONOGA_OP_CONVERT_TO_F32, BOSONOGA_VALUE_I32,
-     BOSONOGA_VALUE_F32, FALSE},
-    {"to_i32", BOSONOGA_OP_CONVERT_TO_I32, BOSONOGA_VALUE_F32,
-     BOSONOGA_VALUE_I32, FALSE},
-    {"to_sin", BOSONOGA_OP_SIN, BOSONOGA_VALUE_F32, BOSONOGA_VALUE_F32, FALSE},
-    {"to_cos", BOSONOGA_OP_COS, BOSONOGA_VALUE_F32, BOSONOGA_VALUE_F32, FALSE},
-    {"to_atan2", BOSONOGA_OP_ATAN2, BOSONOGA_VALUE_F32, BOSONOGA_VALUE_F32,
-     TRUE},
-    {"to_sqrt", BOSONOGA_OP_SQRT, BOSONOGA_VALUE_F32, BOSONOGA_VALUE_F32,
-     FALSE},
-    {"to_pow", BOSONOGA_OP_POW, BOSONOGA_VALUE_F32, BOSONOGA_VALUE_F32, TRUE},
+    {"to_f32", BOSONOGA_OP_CONVERT_TO_F32, FALSE, TRUE},
+    {"to_f64", BOSONOGA_OP_CONVERT_TO_F64, FALSE, TRUE},
+    {"to_i32", BOSONOGA_OP_CONVERT_TO_I32, FALSE, TRUE},
+    {"to_sin", BOSONOGA_OP_SIN, FALSE, FALSE},
+    {"to_cos", BOSONOGA_OP_COS, FALSE, FALSE},
+    {"to_atan2", BOSONOGA_OP_ATAN2, TRUE, FALSE},
+    {"to_sqrt", BOSONOGA_OP_SQRT, FALSE, FALSE},
+    {"to_pow", BOSONOGA_OP_POW, TRUE, FALSE},
+    {"to_abs", BOSONOGA_OP_ABS, FALSE, TRUE},
+    {"to_min", BOSONOGA_OP_MIN, TRUE, TRUE},
+    {"to_max", BOSONOGA_OP_MAX, TRUE, TRUE},
+    {"to_floor", BOSONOGA_OP_FLOOR, FALSE, FALSE},
+    {"to_ceil", BOSONOGA_OP_CEIL, FALSE, FALSE},
+    {"to_round", BOSONOGA_OP_ROUND, FALSE, FALSE},
+    {"to_log", BOSONOGA_OP_LOG, FALSE, FALSE},
+    {"to_log10", BOSONOGA_OP_LOG10, FALSE, FALSE},
+    {"to_exp", BOSONOGA_OP_EXP, FALSE, FALSE},
+    {"to_asin", BOSONOGA_OP_ASIN, FALSE, FALSE},
+    {"to_acos", BOSONOGA_OP_ACOS, FALSE, FALSE},
+    {"to_tan", BOSONOGA_OP_TAN, FALSE, FALSE},
+    {"to_log1p", BOSONOGA_OP_LOG1P, FALSE, FALSE},
+    {"to_expm1", BOSONOGA_OP_EXPM1, FALSE, FALSE},
+    {"to_hypot", BOSONOGA_OP_HYPOT, TRUE, FALSE},
 };
 
 static gint bosonoga_find_conversion(const BosonogaParser *parser) {
@@ -43,23 +54,38 @@ static gboolean bosonoga_parse_conversion(BosonogaParser *parser, guint slot,
   g_return_val_if_fail(found >= 0, FALSE);
   const gsize index = (gsize)found;
   const gchar *word = bosonoga_conversions[index].word;
-  const BosonogaValueKind source_kind = bosonoga_conversions[index].source;
-  BosonogaOperand left;
-  BosonogaOperand right;
-  memset(&right, 0, sizeof(right));
-  if (!bosonoga_advance(parser, error) ||
-      !bosonoga_parse_value_of_kind(parser, source_kind, word, &left, error) ||
-      (bosonoga_conversions[index].is_binary &&
-       !bosonoga_parse_value_of_kind(parser, source_kind, word, &right,
-                                     error))) {
+  if (!bosonoga_advance(parser, error)) {
     return FALSE;
   }
-  BosonogaOp *op =
-      bosonoga_emit(parser, bosonoga_conversions[index].op, &start);
+  const BosonogaToken value = parser->tokenizer.token;
+  BosonogaOperand left;
+  BosonogaOperand right = {0};
+  if (!bosonoga_parse_value(parser, &left, error)) {
+    return FALSE;
+  }
+  const BosonogaValueKind source = left.literal.kind;
+  if (source != BOSONOGA_VALUE_F32 && source != BOSONOGA_VALUE_F64 &&
+      !(source == BOSONOGA_VALUE_I32 &&
+        bosonoga_conversions[index].accepts_integer)) {
+    return bosonoga_fail_at(
+        parser, &value, error, BOSONOGA_ERROR_TYPE, "%s needs %s, got %s", word,
+        bosonoga_conversions[index].accepts_integer ? "i32 or f32 or f64"
+                                                    : "f32 or f64",
+        bosonoga_value_kind_name(source));
+  }
+  if (bosonoga_conversions[index].is_binary &&
+      !bosonoga_parse_value_of_kind(parser, source, word, &right, error)) {
+    return FALSE;
+  }
+  const BosonogaOpKind operation = bosonoga_conversions[index].op;
+  *kind = operation == BOSONOGA_OP_CONVERT_TO_I32   ? BOSONOGA_VALUE_I32
+          : operation == BOSONOGA_OP_CONVERT_TO_F32 ? BOSONOGA_VALUE_F32
+          : operation == BOSONOGA_OP_CONVERT_TO_F64 ? BOSONOGA_VALUE_F64
+                                                    : source;
+  BosonogaOp *op = bosonoga_emit(parser, operation, &start);
   op->slot = slot;
   op->left = left;
   op->right = right;
-  *kind = bosonoga_conversions[index].result;
   return TRUE;
 }
 
@@ -161,7 +187,9 @@ static gboolean bosonoga_parse_accumulation(BosonogaParser *parser,
     memset(&identity, 0, sizeof(identity));
     identity.literal.kind = kind;
     if (step == BOSONOGA_OP_ACCUMULATOR_DIVIDE) {
-      if (kind == BOSONOGA_VALUE_F32) {
+      if (kind == BOSONOGA_VALUE_F64) {
+        identity.literal.f64 = 1.0;
+      } else if (kind == BOSONOGA_VALUE_F32) {
         identity.literal.f32 = 1.0f;
       } else {
         identity.literal.i32 = 1;
@@ -249,6 +277,10 @@ gboolean bosonoga_parse_set(BosonogaParser *parser, GError **error) {
     return bosonoga_parse_error(parser, "a variable name", error);
   }
   g_autofree gchar *shown = bosonoga_token_shown(&name);
+  if (bosonoga_find_constant(parser, &name) != NULL) {
+    return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_TYPE,
+                            "'%s' is a constant and cannot be set", shown);
+  }
   const BosonogaVariable *found = bosonoga_find_variable(parser, &name);
   if (found == NULL) {
     return bosonoga_fail_unknown_variable(parser, &name, error);

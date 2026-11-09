@@ -34,6 +34,17 @@ static const gchar *const bosonoga_reserved_words[] = {
     "to_subtract",
     "to_multiply",
     "to_divide",
+    "const",
+    "to_f64",
+    "to_log",
+    "to_log10",
+    "to_log1p",
+    "to_expm1",
+    "to_hypot",
+    "to_exp",
+    "to_asin",
+    "to_acos",
+    "to_tan",
     "to_f32",
     "to_i32",
     "to_sin",
@@ -41,6 +52,12 @@ static const gchar *const bosonoga_reserved_words[] = {
     "to_atan2",
     "to_sqrt",
     "to_pow",
+    "to_abs",
+    "to_min",
+    "to_max",
+    "to_floor",
+    "to_ceil",
+    "to_round",
     "shift_or",
     "shift_has",
     "sleep_ms",
@@ -152,6 +169,8 @@ const gchar *bosonoga_value_kind_name(BosonogaValueKind kind) {
       return "i32";
     case BOSONOGA_VALUE_F32:
       return "f32";
+    case BOSONOGA_VALUE_F64:
+      return "f64";
     case BOSONOGA_VALUE_FLAGS:
       return "flags";
     case BOSONOGA_VALUE_COLOR:

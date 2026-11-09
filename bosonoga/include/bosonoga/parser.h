@@ -9,7 +9,7 @@
 //
 //   program    := item+
 //   item       := ("bosonoga_global" | "bosonoga_main") block | section
-//                 | function | array
+//                 | function | array | "const" NAME "is" value
 //   section    := ("gfx_init" | "gfx_frame" | "gfx_cleanup" | "gfx_main")
 //                 block
 //   function   := "def" FUNCTION PARAMETER* ("ret" INDEXED+ | "ret_void")
@@ -35,9 +35,16 @@
 //   update     := conversion
 //               | ("to_add" | "to_subtract" | "to_multiply" | "to_divide"
 //                 | "to_mod") value+
-//   conversion := ("to_f32" | "to_i32" | "to_sin" | "to_cos" | "to_sqrt")
-//               value
+//   conversion := ("to_f32" | "to_f64" | "to_i32") value
+//               | ("to_sin" | "to_cos" | "to_sqrt") value
 //               | ("to_atan2" | "to_pow") value value
+//               | "to_hypot" value value
+//               | "to_abs" value
+//               | ("to_min" | "to_max") value value
+//               | ("to_floor" | "to_ceil" | "to_round") value
+//               | ("to_log" | "to_log10" | "to_exp" | "to_asin" | "to_acos"
+//                 | "to_tan") value
+//               | ("to_log1p" | "to_expm1") value
 //   call       := FUNCTION ("of" value+)? | NAME "at" value
 //   condition  := comparison (("and" | "or") comparison)*
 //   comparison := "not"? value compare value
@@ -45,13 +52,13 @@
 //               | "not_eq_3" | "not_eq_6" | "shift_has"
 //   value      := INTEGER | REAL | STRING | SHIFT | COLOR | GLOBAL | RESULT
 //               | "gfx_delta_time" | NAME
-//   TYPE       := "i32" | "f32" | "flags" | "color" | "str"
+//   TYPE       := "i32" | "f32" | "f64" | "flags" | "color" | "str"
 //   FUNCTION   := NAME "_fn", like divide_fn, which no other name is
 //   PARAMETER  := NAME, which ends with "_" TYPE, like count_i32
 //   INDEXED    := digit+ "_" TYPE, like 0_i32 and 1_str
 //   INTEGER    := "-"? digit+ "_i32"
 //   UNSIGNED   := digit+ "_u32"
-//   REAL       := "-"? digit+ ("d" digit+)? "_f32"
+//   REAL       := "-"? digit+ ("d" digit+)? ("_f32" | "_f64")
 //   STRING     := '"' character* '"' "_str"
 //   SHIFT      := "shift_" digit+
 //   COLOR      := "color_" KEY
@@ -65,8 +72,40 @@
 //   value is negated or inverted. to_mod keeps the remainder, with the sign of
 //   the dividend as % and fmod in C, and needs at least two values. An i32
 //   division truncates toward zero. Dividing by zero, to_sqrt of a negative
-//   number, a negative number to_pow a fraction and an f32 result out of range
-//   are runtime errors. Angles are f32 radians, and to_atan2 takes y, then x.
+//   number, a negative number to_pow a fraction and a numeric result out of
+//   range are runtime errors. Angles are real radians, and to_atan2 takes y,
+//   then x.
+// - to_abs preserves the type of one i32, f32 or f64. The absolute value of
+//   -2147483648_i32 is outside i32 and is a runtime error. to_min and to_max
+//   take exactly two numbers of the same type and preserve that type.
+// - to_floor, to_ceil and to_round preserve f32 or f64. Floor rounds toward
+//   negative infinity, ceil toward positive infinity, and round to the nearest
+//   whole number, with halves away from zero: -2d5_f32 becomes -3_f32.
+//   Use to_i32 separately when an integer result is needed. These operations
+//   round stored binary values; they do not provide decimal arithmetic.
+// - to_f32, to_f64 and to_i32 accept any numeric type, including the target
+//   type. Conversions are explicit; arithmetic, comparisons and binary math
+//   functions require matching types. to_i32 truncates toward zero and checks
+//   its input range; narrowing to f32 checks range before rounding. f64 uses
+//   double precision; printing uses 17 significant digits (f32 keeps 6).
+// - Real math operations preserve f32 or f64. to_log is natural logarithm,
+//   to_log10 is base ten, and to_exp is the natural exponential. Logarithms
+//   require positive inputs; to_asin and to_acos require inputs in [-1, 1].
+//   All angles, including inverse-trig results, are radians. to_tan uses the
+//   stored approximate angle; a near-pole angle may give a large finite result.
+//   Nonfinite inputs and results are rejected; underflow may round to zero.
+//   eq_3 and eq_6 use absolute-or-relative tolerances 1e-3 and 1e-6 for both
+//   real types. Real numbers do not use exact eq or not_eq.
+// - to_log1p computes log(1+x) without first rounding 1+x, and requires x > -1.
+//   to_expm1 computes exp(x)-1 without subtracting nearly equal numbers.
+//   to_hypot takes two same-type reals and computes their Euclidean norm
+//   without unnecessarily squaring huge or tiny operands. These helpers
+//   preserve f32 or f64 and reject results outside that type's finite range.
+// - A top-level const NAME is value binds an immutable scalar literal, an
+//   earlier constant, or a config value, visible to all later code, including
+//   functions and array rows. Its name cannot be redeclared or shadowed. A
+//   constant cannot depend on a runtime variable or a computed expression.
+//   For example: const pi is 3d141592653589793_f64.
 // - break and continue apply to the innermost LOOP or while.
 // - A STRING has no escapes, and cannot hold a quote, a backslash, a newline or
 //   NUL. A str can be stored, printed, compared with eq and not_eq, and set
@@ -75,7 +114,7 @@
 //   before either of which it can have one bosonoga_global, and any number of
 //   functions and arrays. Each can only be used after its definition, so a
 //   function can call itself but two cannot call each other.
-// - A function sees only its parameters and its own variables, and everything
+// - A function sees constants, its parameters and its own variables. Everything
 //   is passed and returned by value. The INDEXED types after ret, and those of
 //   an array, are numbered from 0 in order. A return gives one value per type,
 //   and the end of the block is a runtime error for a function with ret. A
@@ -88,9 +127,8 @@
 //   function cannot have the statements of gfx_frame.
 // - The values of a call follow "of", and a call of a function without
 //   parameters has none.
-// - An array is a table of literal rows, read like a function, but with "at"
-//   and one i32 index from 0, which returns that row. An index without a row
-//   is a runtime error.
+// - An array holds literal or constant rows. Read it with "at" and one i32
+//   index from 0 to return that row. An index without a row is a runtime error.
 // - bosonoga_global runs first and cannot return. The variables at the top of
 //   its block are shared by bosonoga_main and all sections.
 // - A gfx program has one gfx_main and at most one of each other section, in
@@ -140,12 +178,28 @@ typedef enum {
   BOSONOGA_OP_ASSIGN,
   BOSONOGA_OP_FLAGS_OR,
   BOSONOGA_OP_CONVERT_TO_F32,
+  BOSONOGA_OP_CONVERT_TO_F64,
   BOSONOGA_OP_CONVERT_TO_I32,
   BOSONOGA_OP_SIN,
   BOSONOGA_OP_COS,
   BOSONOGA_OP_ATAN2,
   BOSONOGA_OP_SQRT,
   BOSONOGA_OP_POW,
+  BOSONOGA_OP_ABS,
+  BOSONOGA_OP_MIN,
+  BOSONOGA_OP_MAX,
+  BOSONOGA_OP_FLOOR,
+  BOSONOGA_OP_CEIL,
+  BOSONOGA_OP_ROUND,
+  BOSONOGA_OP_LOG,
+  BOSONOGA_OP_LOG10,
+  BOSONOGA_OP_EXP,
+  BOSONOGA_OP_ASIN,
+  BOSONOGA_OP_ACOS,
+  BOSONOGA_OP_TAN,
+  BOSONOGA_OP_LOG1P,
+  BOSONOGA_OP_EXPM1,
+  BOSONOGA_OP_HYPOT,
   BOSONOGA_OP_ACCUMULATOR_LOAD,
   BOSONOGA_OP_ACCUMULATOR_ADD,
   BOSONOGA_OP_ACCUMULATOR_SUBTRACT,

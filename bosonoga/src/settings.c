@@ -156,21 +156,25 @@ static gboolean bosonoga_read_global_setting(const BosonogaSettingsFile *file,
   if (bosonoga_tokenizer_advance(&tokenizer, NULL)) {
     const BosonogaToken number = tokenizer.token;
     if ((number.kind == BOSONOGA_TOKEN_INTEGER ||
-         number.kind == BOSONOGA_TOKEN_REAL) &&
+         number.kind == BOSONOGA_TOKEN_REAL ||
+         number.kind == BOSONOGA_TOKEN_REAL64) &&
         bosonoga_tokenizer_advance(&tokenizer, NULL) &&
         tokenizer.token.kind == BOSONOGA_TOKEN_END) {
       if (number.kind == BOSONOGA_TOKEN_INTEGER) {
         value->kind = BOSONOGA_VALUE_I32;
         value->i32 = number.integer;
+      } else if (number.kind == BOSONOGA_TOKEN_REAL64) {
+        value->kind = BOSONOGA_VALUE_F64;
+        value->f64 = number.real;
       } else {
         value->kind = BOSONOGA_VALUE_F32;
-        value->f32 = number.real;
+        value->f32 = (gfloat)number.real;
       }
       return TRUE;
     }
   }
   g_set_error(error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
-              "%s: %s must be one _i32 or _f32 number, like 100d0_f32",
+              "%s: %s must be one _i32, _f32 or _f64 number, like 100d0_f32",
               file->path, key);
   return FALSE;
 }
