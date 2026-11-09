@@ -114,6 +114,14 @@ gboolean bosonoga_token_setting(const BosonogaParser *parser,
          bosonoga_settings_global(parser->settings, global_key, value);
 }
 
+// Like ret_0_i32, and also ret_0 and ret_0_x, which are then wrong values.
+gboolean bosonoga_token_is_result(const BosonogaToken *token) {
+  const gsize prefix_length = strlen(BOSONOGA_RESULT_PREFIX);
+  return token->kind == BOSONOGA_TOKEN_WORD && token->length > prefix_length &&
+         memcmp(token->text, BOSONOGA_RESULT_PREFIX, prefix_length) == 0 &&
+         g_ascii_isdigit(token->text[prefix_length]);
+}
+
 gboolean bosonoga_token_is_reserved(const BosonogaParser *parser,
                                     const BosonogaToken *token) {
   for (gsize i = 0; i < G_N_ELEMENTS(bosonoga_reserved_words); ++i) {
@@ -124,7 +132,7 @@ gboolean bosonoga_token_is_reserved(const BosonogaParser *parser,
   BosonogaValue value;
   return bosonoga_token_is_numbered(token, BOSONOGA_SHIFT_PREFIX) ||
          bosonoga_token_is_numbered(token, BOSONOGA_LOOP_PREFIX) ||
-         bosonoga_token_is_numbered(token, BOSONOGA_RESULT_PREFIX) ||
+         bosonoga_token_is_result(token) ||
          bosonoga_token_setting(parser, token, &value);
 }
 

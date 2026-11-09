@@ -79,12 +79,13 @@ gboolean bosonoga_at_value(const BosonogaParser *parser) {
       BosonogaValue value;
       return !bosonoga_token_is_reserved(parser, token) ||
              bosonoga_token_is_numbered(token, BOSONOGA_SHIFT_PREFIX) ||
-             bosonoga_token_is_numbered(token, BOSONOGA_RESULT_PREFIX) ||
+             bosonoga_token_is_result(token) ||
              bosonoga_token_is_word(token, BOSONOGA_DELTA_TIME_WORD) ||
              bosonoga_token_setting(parser, token, &value);
     }
     case BOSONOGA_TOKEN_END:
     case BOSONOGA_TOKEN_UNSIGNED:
+    case BOSONOGA_TOKEN_INDEXED_TYPE:
       return FALSE;
   }
   g_return_val_if_reached(FALSE);
@@ -120,7 +121,7 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
     }
     operand->literal.kind = BOSONOGA_VALUE_FLAGS;
     operand->literal.flags = 1U << bit;
-  } else if (bosonoga_token_is_numbered(token, BOSONOGA_RESULT_PREFIX)) {
+  } else if (bosonoga_token_is_result(token)) {
     if (!bosonoga_result_operand(parser, token, operand, error)) {
       return FALSE;
     }

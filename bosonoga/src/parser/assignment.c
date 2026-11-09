@@ -88,7 +88,8 @@ gboolean bosonoga_parse_var(BosonogaParser *parser, GError **error) {
   if (bosonoga_find_function(parser, &parser->tokenizer.token) >= 0) {
     guint index = 0;
     if (!bosonoga_parse_call(parser, &index, error) ||
-        !bosonoga_check_single_result(parser, &name, index, error)) {
+        !bosonoga_check_single_result(parser, &name, index, error) ||
+        !bosonoga_parse_taken_result(parser, index, error)) {
       return FALSE;
     }
     const BosonogaFunction *called =
@@ -220,7 +221,8 @@ static gboolean bosonoga_parse_set_to(BosonogaParser *parser,
   guint index = 0;
   if (!bosonoga_expect_word(parser, "to", error) ||
       !bosonoga_parse_call(parser, &index, error) ||
-      !bosonoga_check_single_result(parser, name, index, error)) {
+      !bosonoga_check_single_result(parser, name, index, error) ||
+      !bosonoga_parse_taken_result(parser, index, error)) {
     return FALSE;
   }
   const BosonogaFunction *called =

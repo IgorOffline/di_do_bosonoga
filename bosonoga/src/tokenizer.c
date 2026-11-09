@@ -132,6 +132,12 @@ static gboolean bosonoga_lex_number(BosonogaTokenizer *tokenizer,
     token->real = (gfloat)value;
     return TRUE;
   }
+  if (!has_fraction && token->text[0] != '-' &&
+      (g_str_equal(suffix, "_flags") || g_str_equal(suffix, "_color") ||
+       g_str_equal(suffix, "_str"))) {
+    token->kind = BOSONOGA_TOKEN_INDEXED_TYPE;
+    return TRUE;
+  }
   return bosonoga_lex_error(tokenizer, token->line, token->column,
                             "number must have the suffix _i32, _u32 or _f32",
                             error);

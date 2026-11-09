@@ -12,14 +12,14 @@
 //                 | function | array
 //   section    := ("gfx_init" | "gfx_frame" | "gfx_cleanup" | "gfx_main")
 //                 block
-//   function   := "fn" NAME PARAMETER* ("ret" TYPE+)? block
-//   array      := "array" NAME TYPE+ "di" row+ "do"
+//   function   := "fn" NAME PARAMETER* ("ret" INDEXED+)? block
+//   array      := "array" NAME INDEXED+ "di" row+ "do"
 //   row        := "row" value+
 //   block      := "di" statement+ "do"
 //   statement  := "info" value+
-//               | "var" NAME "is" (initial | call)
+//               | "var" NAME "is" (initial | call "ret" INDEXED)
 //               | "set" NAME update
-//               | "set" NAME "to" call
+//               | "set" NAME "to" call "ret" INDEXED
 //               | "call" call ("with" "ret" block)?
 //               | "if" condition block ("else" "if" condition block)*
 //                 ("else" block)?
@@ -46,6 +46,7 @@
 //               | "gfx_delta_time" | NAME
 //   TYPE       := "i32" | "f32" | "flags" | "color" | "str"
 //   PARAMETER  := NAME, which ends with "_" TYPE, like count_i32
+//   INDEXED    := digit+ "_" TYPE, like 0_i32 and 1_str
 //   INTEGER    := "-"? digit+ "_i32"
 //   UNSIGNED   := digit+ "_u32"
 //   REAL       := "-"? digit+ ("d" digit+)? "_f32"
@@ -54,7 +55,7 @@
 //   COLOR      := "color_" KEY
 //   GLOBAL     := "global_" KEY
 //   LOOP       := "to_" digit+
-//   RESULT     := "ret_" digit+
+//   RESULT     := "ret_" digit+ "_" TYPE, like ret_0_i32
 //
 // - "and" binds tighter than "or", and "not" negates only the comparison after
 //   it. A variable is visible to the end of its block and cannot hide another.
@@ -73,10 +74,12 @@
 //   functions and arrays. Each can only be used after its definition, so a
 //   function can call itself but two cannot call each other.
 // - A function sees only its parameters and its own variables, and everything
-//   is passed and returned by value. A return gives one value per TYPE after
-//   ret, and the end of the block is a runtime error for a function with ret.
-//   var and set ... to take a call that returns one value. Otherwise "call ...
-//   with ret" and a block take them as ret_0, ret_1 and so on, those of the
+//   is passed and returned by value. The INDEXED types after ret, and those of
+//   an array, are numbered from 0 in order. A return gives one value per type,
+//   and the end of the block is a runtime error for a function with ret.
+// - A caller names each value that it takes with its index and type. var and
+//   set ... to take a call that returns one value, which ends with ret 0_TYPE.
+//   Otherwise "call ... with ret" and a block take them as RESULT, those of the
 //   innermost call. Calls nest at most BOSONOGA_CALL_DEPTH_MAX deep, and a
 //   function cannot have the statements of gfx_frame.
 // - An array is a table of literal rows, read like a function of one i32 index

@@ -78,20 +78,59 @@ static gboolean bosonoga_kind_named(const gchar *text, gsize length,
   return FALSE;
 }
 
+static gboolean bosonoga_split_indexed(const gchar *text, gsize length,
+                                       guint64 *index,
+                                       BosonogaValueKind *kind) {
+  gsize digits = 0;
+  while (digits < length && g_ascii_isdigit(text[digits])) {
+    ++digits;
+  }
+  if (digits == 0 || digits > 9 || digits == length || text[digits] != '_' ||
+      (digits > 1 && text[0] == '0')) {
+    return FALSE;
+  }
+  *index = 0;
+  for (gsize i = 0; i < digits; ++i) {
+    *index = *index * 10 + (guint64)(text[i] - '0');
+  }
+  return bosonoga_kind_named(text + digits + 1, length - digits - 1, kind);
+}
+
+// Like 1_str, an index from 0 without leading zeros and a type.
+static gboolean bosonoga_token_indexed(const BosonogaToken *token,
+                                       guint64 *index,
+                                       BosonogaValueKind *kind) {
+  if (token->kind != BOSONOGA_TOKEN_INTEGER &&
+      token->kind != BOSONOGA_TOKEN_REAL &&
+      token->kind != BOSONOGA_TOKEN_INDEXED_TYPE) {
+    return FALSE;
+  }
+  return bosonoga_split_indexed(token->text, token->length, index, kind);
+}
+
 gboolean bosonoga_parse_types(BosonogaParser *parser, BosonogaValueKind *kinds,
                               guint *count, const gchar *too_many,
                               GError **error) {
   do {
     const BosonogaToken *token = &parser->tokenizer.token;
+    guint64 index = 0;
     BosonogaValueKind kind = BOSONOGA_VALUE_I32;
-    if (token->kind != BOSONOGA_TOKEN_WORD ||
-        !bosonoga_kind_named(token->text, token->length, &kind)) {
-      return bosonoga_parse_error(
-          parser, "a type, which is i32, f32, flags, color or str", error);
+    if (!bosonoga_token_indexed(token, &index, &kind)) {
+      return bosonoga_parse_error(parser,
+                                  "a type with its index, like 0_i32, of i32, "
+                                  "f32, flags, color or str",
+                                  error);
     }
     if (*count == BOSONOGA_FUNCTION_VALUES_MAX) {
       return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_SYNTAX, "%s",
                               too_many);
+    }
+    if (index != *count) {
+      g_autofree gchar *shown = bosonoga_token_shown(token);
+      return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_SYNTAX,
+                              "the values are numbered from 0 in order, so "
+                              "'%s' is %u_%s",
+                              shown, *count, bosonoga_value_kind_name(kind));
     }
     kinds[(*count)++] = kind;
     if (!bosonoga_advance(parser, error)) {
@@ -277,12 +316,15 @@ gboolean bosonoga_parse_call(BosonogaParser *parser, guint *function,
   return TRUE;
 }
 
-static gchar *bosonoga_results_named(guint count) {
-  if (count == 1) {
-    return g_strdup(BOSONOGA_RESULT_PREFIX "0");
+// As in "ret_0_i32, ret_1_str".
+static gchar *bosonoga_results_named(const BosonogaFunction *called) {
+  GString *named = g_string_new(NULL);
+  for (guint i = 0; i < called->result_count; ++i) {
+    g_string_append_printf(named, "%s" BOSONOGA_RESULT_PREFIX "%u_%s",
+                           i == 0 ? "" : ", ", i,
+                           bosonoga_value_kind_name(called->results[i]));
   }
-  return g_strdup_printf(
-      BOSONOGA_RESULT_PREFIX "0 to " BOSONOGA_RESULT_PREFIX "%u", count - 1);
+  return g_string_free(named, FALSE);
 }
 
 static gboolean bosonoga_fail_needs_block(const BosonogaParser *parser,
@@ -292,7 +334,7 @@ static gboolean bosonoga_fail_needs_block(const BosonogaParser *parser,
   g_autofree gchar *name = g_strndup(called->name, called->name_length);
   g_autofree gchar *results =
       bosonoga_values_shown(called->results, called->result_count);
-  g_autofree gchar *named = bosonoga_results_named(called->result_count);
+  g_autofree gchar *named = bosonoga_results_named(called);
   return bosonoga_fail_at(
       parser, token, error, BOSONOGA_ERROR_TYPE,
       "'%s' %s %s, which %scall ... with ret takes in its block as %s", name,
@@ -331,20 +373,54 @@ gboolean bosonoga_result_operand(const BosonogaParser *parser,
       parser->call_blocks, BosonogaCallBlock, parser->call_blocks->len - 1);
   const BosonogaFunction *called =
       &g_array_index(parser->functions, BosonogaFunction, block->function);
+  const gsize prefix_length = strlen(BOSONOGA_RESULT_PREFIX);
   guint64 position = 0;
-  if (!bosonoga_numbered_value(token, BOSONOGA_RESULT_PREFIX, G_MAXUINT32,
-                               &position) ||
-      position >= called->result_count) {
+  BosonogaValueKind kind = BOSONOGA_VALUE_I32;
+  if (!bosonoga_split_indexed(token->text + prefix_length,
+                              token->length - prefix_length, &position,
+                              &kind) ||
+      position >= called->result_count || kind != called->results[position]) {
     g_autofree gchar *name = g_strndup(called->name, called->name_length);
-    g_autofree gchar *named = bosonoga_results_named(called->result_count);
+    g_autofree gchar *named = bosonoga_results_named(called);
     return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_NAME,
                             "the call of '%s' has %s, not %s", name, named,
                             shown);
   }
-  operand->literal.kind = called->results[position];
+  operand->literal.kind = kind;
   operand->is_variable = TRUE;
   operand->slot = block->slot + (guint)position;
   return TRUE;
+}
+
+gboolean bosonoga_parse_taken_result(BosonogaParser *parser, guint index,
+                                     GError **error) {
+  const BosonogaFunction *called =
+      &g_array_index(parser->functions, BosonogaFunction, index);
+  g_autofree gchar *name = g_strndup(called->name, called->name_length);
+  const gchar *type = bosonoga_value_kind_name(called->results[0]);
+  if (!bosonoga_at_word(parser, "ret")) {
+    return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                            BOSONOGA_ERROR_SYNTAX,
+                            "the call of '%s' ends with ret 0_%s, the value "
+                            "that it takes",
+                            name, type);
+  }
+  if (!bosonoga_advance(parser, error)) {
+    return FALSE;
+  }
+  const BosonogaToken *token = &parser->tokenizer.token;
+  guint64 position = 0;
+  BosonogaValueKind kind = BOSONOGA_VALUE_I32;
+  if (!bosonoga_token_indexed(token, &position, &kind) || position != 0 ||
+      kind != called->results[0]) {
+    g_autofree gchar *shown = bosonoga_token_shown(token);
+    return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
+                            "'%s' %s %s, so its call ends with ret 0_%s, not "
+                            "'%s'",
+                            name, bosonoga_function_gives(called), type, type,
+                            shown);
+  }
+  return bosonoga_advance(parser, error);
 }
 
 gboolean bosonoga_parse_call_statement(BosonogaParser *parser,
