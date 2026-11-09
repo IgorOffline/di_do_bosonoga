@@ -15,6 +15,7 @@
 #define BOSONOGA_COLOR_PREFIX "color_"
 #define BOSONOGA_GLOBAL_PREFIX "global_"
 #define BOSONOGA_DELTA_TIME_WORD "gfx_delta_time"
+#define BOSONOGA_RESULT_PREFIX "ret_"
 
 typedef struct {
   const gchar *name;  // Slice of the source.
@@ -29,6 +30,13 @@ typedef struct {
   GArray *continue_jumps;
 } BosonogaLoop;
 
+// ret_0 and on are copied to slots from slot on, so that calls in the block
+// keep them.
+typedef struct {
+  guint function;
+  guint slot;
+} BosonogaCallBlock;
+
 typedef struct {
   BosonogaTokenizer tokenizer;
   GArray *ops;
@@ -37,6 +45,9 @@ typedef struct {
   guint block_depth;
   GArray *loops;  // Of BosonogaLoop, innermost last.
   BosonogaSection section;
+  GArray *functions;
+  GArray *call_blocks;   // Of BosonogaCallBlock, innermost last.
+  gboolean in_function;  // Then the function is the last of functions.
   guint delta_time_slot;
   gboolean has_section[BOSONOGA_SECTION_COUNT];
   BosonogaProgram *program;
@@ -97,6 +108,10 @@ void bosonoga_declare_variable(BosonogaParser *parser,
 
 // The caller declares the variable after its initial value, which so cannot
 // refer to it.
+gboolean bosonoga_fail_unknown_variable(const BosonogaParser *parser,
+                                        const BosonogaToken *name,
+                                        GError **error);
+
 gboolean bosonoga_parse_new_name(BosonogaParser *parser, BosonogaToken *name,
                                  GError **error);
 
@@ -118,6 +133,49 @@ gboolean bosonoga_parse_set(BosonogaParser *parser, GError **error);
 // false_jumps to where to go if it is false.
 gboolean bosonoga_parse_condition(BosonogaParser *parser, GArray *false_jumps,
                                   GError **error);
+
+// An index in functions, or -1. Functions and arrays share one list.
+gint bosonoga_find_function(const BosonogaParser *parser,
+                            const BosonogaToken *token);
+
+const gchar *bosonoga_function_noun(const BosonogaFunction *function);
+
+const gchar *bosonoga_function_gives(const BosonogaFunction *function);
+
+gboolean bosonoga_check_new_function_name(const BosonogaParser *parser,
+                                          const BosonogaToken *name,
+                                          const gchar *what, GError **error);
+
+gboolean bosonoga_parse_types(BosonogaParser *parser, BosonogaValueKind *kinds,
+                              guint *count, const gchar *too_many,
+                              GError **error);
+
+gboolean bosonoga_parse_function(BosonogaParser *parser, GError **error);
+
+// Emits the call or array read, whose results are then taken with
+// BOSONOGA_OP_TAKE_RESULT.
+gboolean bosonoga_parse_call(BosonogaParser *parser, guint *function,
+                             GError **error);
+
+gboolean bosonoga_check_single_result(const BosonogaParser *parser,
+                                      const BosonogaToken *token, guint index,
+                                      GError **error);
+
+gboolean bosonoga_result_operand(const BosonogaParser *parser,
+                                 const BosonogaToken *token,
+                                 BosonogaOperand *operand, GError **error);
+
+gboolean bosonoga_parse_call_statement(BosonogaParser *parser,
+                                       const BosonogaToken *start,
+                                       GError **error);
+
+gboolean bosonoga_parse_function_return(BosonogaParser *parser,
+                                        const BosonogaToken *start,
+                                        GError **error);
+
+gchar *bosonoga_values_shown(const BosonogaValueKind *kinds, guint count);
+
+gboolean bosonoga_parse_array(BosonogaParser *parser, GError **error);
 
 gboolean bosonoga_parse_block(BosonogaParser *parser, GError **error);
 

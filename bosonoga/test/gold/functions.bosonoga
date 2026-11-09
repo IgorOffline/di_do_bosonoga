@@ -1,0 +1,216 @@
+// functions.bosonoga
+
+fn sum_lorem_ipsum lorem_i32 ipsum_i32 ret i32 str
+di
+  var sum is 0_i32
+  set sum to_add lorem_i32 ipsum_i32
+  return sum "second return value"_str
+do
+
+// Returns both the quotient and the remainder.
+fn divide dividend_i32 divisor_i32 ret i32 i32
+di
+  var quotient is 0_i32
+  set quotient to_divide dividend_i32 divisor_i32
+  var remainder is 0_i32
+  set remainder to_mod dividend_i32 divisor_i32
+  return quotient remainder
+do
+
+// Changes its copy of the value, which the caller does not see.
+fn double_copy value_i32 ret i32
+di
+  set value_i32 to_multiply value_i32 2_i32
+  return value_i32
+do
+
+// Calls itself, and each call has its own n and below.
+fn factorial n_i32 ret i32
+di
+  if n_i32 le 1_i32
+  di
+    return 1_i32
+  do
+  var below is 0_i32
+  set below to_subtract n_i32 1_i32
+  set below to factorial below
+  set below to_multiply below n_i32
+  return below
+do
+
+fn fibonacci n_i32 ret i32
+di
+  if n_i32 lt 2_i32
+  di
+    return n_i32
+  do
+  var a is 0_i32
+  set a to_subtract n_i32 1_i32
+  set a to fibonacci a
+  var b is 0_i32
+  set b to_subtract n_i32 2_i32
+  set b to fibonacci b
+  set a to_add a b
+  return a
+do
+
+// Returns from inside a loop.
+fn first_multiple_above limit_i32 step_i32 ret i32
+di
+  var value is 0_i32
+  while value le limit_i32
+  di
+    set value to_add value step_i32
+    if value gt limit_i32
+    di
+      return value
+    do
+  do
+  return value
+do
+
+// Returns nothing, and can return early.
+fn show_sign label_str value_i32
+di
+  if value_i32 eq 0_i32
+  di
+    info label_str " is zero"_str
+    return
+  do
+  if value_i32 gt 0_i32
+  di
+    info label_str " is positive"_str
+  do
+  else
+  di
+    info label_str " is negative"_str
+  do
+do
+
+fn no_values ret str
+di
+  return "no values in"_str
+do
+
+fn halve_f32 value_f32 ret f32
+di
+  set value_f32 to_divide value_f32 2d0_f32
+  return value_f32
+do
+
+fn keep_flags value_flags ret flags
+di
+  return value_flags
+do
+
+// Calls a function that was defined before it.
+fn sum_of_quotient_and_remainder dividend_i32 divisor_i32 ret i32
+di
+  var quotient is 0_i32
+  var remainder is 0_i32
+  call divide dividend_i32 divisor_i32 with ret
+  di
+    set quotient to_add ret_0
+    set remainder to_add ret_1
+  do
+  set quotient to_add quotient remainder
+  return quotient
+do
+
+main
+di
+  var sum is 0_i32
+  var message is ""_str
+  call sum_lorem_ipsum 3_i32 4_i32 with ret
+  di
+    set sum to_add ret_0
+    set message to_add ret_1
+  do
+  info sum " "_str message
+
+  var quotient is 0_i32
+  var remainder is 0_i32
+  call divide 17_i32 5_i32 with ret
+  di
+    set quotient to_add ret_0
+    set remainder to_add ret_1
+  do
+  info "17 : 5 = "_str quotient " remainder "_str remainder
+  call divide 100_i32 7_i32 with ret
+  di
+    set quotient to_add ret_0
+    set remainder to_add ret_1
+  do
+  info "100 : 7 = "_str quotient " remainder "_str remainder
+  // The values of a call are copied before it, so a variable can be both.
+  call divide quotient 3_i32 with ret
+  di
+    set quotient to_add ret_0
+    set remainder to_add ret_1
+  do
+  info "14 : 3 = "_str quotient " remainder "_str remainder
+
+  var value is 21_i32
+  var doubled is double_copy value
+  info value " doubled is "_str doubled
+
+  var result is factorial 10_i32
+  info "10! = "_str result
+  set result to fibonacci 20_i32
+  info "fibonacci 20 = "_str result
+  set result to first_multiple_above 100_i32 7_i32
+  info "first multiple of 7 above 100 = "_str result
+  set result to sum_of_quotient_and_remainder 17_i32 5_i32
+  info "3 + 2 = "_str result
+
+  call show_sign "-3"_str -3_i32
+  call show_sign "0"_str 0_i32
+  call show_sign "8"_str 8_i32
+
+  var text is no_values
+  info text
+
+  var half is halve_f32 5d0_f32
+  info half
+  var flags is keep_flags shift_1
+  if flags shift_has shift_1
+  di
+    info "flags kept"_str
+  do
+
+  // A variable of the loop is passed by value too.
+  var total is 0_i32
+  to_5 with i
+  di
+    var tripled is double_copy i
+    set total to_add total tripled
+  do
+  info "total "_str total
+
+  // A call in the block of a call has its own values, and calls in the block
+  // leave the values of the outer call as they were.
+  var outer is 0_i32
+  var inner is 0_i32
+  call divide 47_i32 10_i32 with ret
+  di
+    call divide 9_i32 2_i32 with ret
+    di
+      set inner to_add ret_1
+    do
+    var doubled_remainder is double_copy ret_1
+    set outer to_add ret_0 doubled_remainder
+  do
+  info "outer "_str outer " inner "_str inner
+
+  // A function that returns one value can be called with a block too.
+  call factorial 5_i32 with ret
+  di
+    info "5! = "_str ret_0
+  do
+
+  if sum eq 7_i32 and result eq 5_i32 and total eq 20_i32 and outer eq 18_i32
+  di
+    return exit_success
+  do
+  return exit_failure
+do

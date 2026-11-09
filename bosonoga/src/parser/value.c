@@ -24,6 +24,25 @@ void bosonoga_declare_variable(BosonogaParser *parser,
   g_array_append_val(parser->variables, variable);
 }
 
+gboolean bosonoga_fail_unknown_variable(const BosonogaParser *parser,
+                                        const BosonogaToken *name,
+                                        GError **error) {
+  g_autofree gchar *shown = bosonoga_token_shown(name);
+  const gint found = bosonoga_find_function(parser, name);
+  if (found >= 0) {
+    const BosonogaFunction *function =
+        &g_array_index(parser->functions, BosonogaFunction, (guint)found);
+    return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
+                            "'%s' is %s, which is %s with var, set ... to or "
+                            "call",
+                            shown,
+                            function->is_array ? "an array" : "a function",
+                            function->is_array ? "read" : "called");
+  }
+  return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
+                          "unknown variable '%s'", shown);
+}
+
 gboolean bosonoga_parse_new_name(BosonogaParser *parser, BosonogaToken *name,
                                  GError **error) {
   *name = parser->tokenizer.token;
@@ -35,6 +54,16 @@ gboolean bosonoga_parse_new_name(BosonogaParser *parser, BosonogaToken *name,
     g_autofree gchar *shown = bosonoga_token_shown(name);
     return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
                             "variable '%s' already exists", shown);
+  }
+  const gint found = bosonoga_find_function(parser, name);
+  if (found >= 0) {
+    g_autofree gchar *shown = bosonoga_token_shown(name);
+    return bosonoga_fail_at(
+        parser, name, error, BOSONOGA_ERROR_NAME, "'%s' is already %s", shown,
+        g_array_index(parser->functions, BosonogaFunction, (guint)found)
+                .is_array
+            ? "an array"
+            : "a function");
   }
   return bosonoga_advance(parser, error);
 }
@@ -50,6 +79,7 @@ gboolean bosonoga_at_value(const BosonogaParser *parser) {
       BosonogaValue value;
       return !bosonoga_token_is_reserved(parser, token) ||
              bosonoga_token_is_numbered(token, BOSONOGA_SHIFT_PREFIX) ||
+             bosonoga_token_is_numbered(token, BOSONOGA_RESULT_PREFIX) ||
              bosonoga_token_is_word(token, BOSONOGA_DELTA_TIME_WORD) ||
              bosonoga_token_setting(parser, token, &value);
     }
@@ -90,6 +120,10 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
     }
     operand->literal.kind = BOSONOGA_VALUE_FLAGS;
     operand->literal.flags = 1U << bit;
+  } else if (bosonoga_token_is_numbered(token, BOSONOGA_RESULT_PREFIX)) {
+    if (!bosonoga_result_operand(parser, token, operand, error)) {
+      return FALSE;
+    }
   } else if (bosonoga_token_is_word(token, BOSONOGA_DELTA_TIME_WORD)) {
     if (parser->section != BOSONOGA_SECTION_GFX_FRAME) {
       return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_SYNTAX,
@@ -104,9 +138,7 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
   } else {
     const BosonogaVariable *variable = bosonoga_find_variable(parser, token);
     if (variable == NULL) {
-      g_autofree gchar *shown = bosonoga_token_shown(token);
-      return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_NAME,
-                              "unknown variable '%s'", shown);
+      return bosonoga_fail_unknown_variable(parser, token, error);
     }
     operand->literal.kind = variable->kind;
     operand->is_variable = TRUE;

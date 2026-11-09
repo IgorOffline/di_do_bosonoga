@@ -32,7 +32,10 @@ static const gchar *const bosonoga_reserved_words[] = {
     "while",        "break",
     "continue",     "to_mod",
     "ge",           "le",
-    "not",
+    "not",          "fn",
+    "ret",          "call",
+    "to",           "array",
+    "row",
 };
 
 gboolean bosonoga_token_is_word(const BosonogaToken *token, const gchar *word) {
@@ -91,6 +94,7 @@ gboolean bosonoga_token_is_reserved(const BosonogaParser *parser,
   BosonogaValue value;
   return bosonoga_token_is_numbered(token, BOSONOGA_SHIFT_PREFIX) ||
          bosonoga_token_is_numbered(token, BOSONOGA_LOOP_PREFIX) ||
+         bosonoga_token_is_numbered(token, BOSONOGA_RESULT_PREFIX) ||
          bosonoga_token_setting(parser, token, &value);
 }
 

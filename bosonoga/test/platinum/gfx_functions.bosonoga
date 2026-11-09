@@ -1,0 +1,43 @@
+// gfx_functions.bosonoga
+
+// A function before gfx_global, which only sees its own variables.
+fn next_count count_i32 ret i32
+di
+  set count_i32 to_add count_i32 1_i32
+  return count_i32
+do
+
+gfx_global
+di
+  var count is 1_i32
+do
+
+// A function between sections can have a variable named like a global one in
+// another program, as it does not see the globals.
+fn twice value_i32 ret i32
+di
+  var doubled is 0_i32
+  set doubled to_multiply value_i32 2_i32
+  return doubled
+do
+
+// An array between sections, which the later sections read.
+array steps i32
+di
+  row 3_i32
+  row 5_i32
+do
+
+gfx_init
+di
+  set count to next_count count
+  var step is steps 1_i32
+  info "init "_str count " step "_str step
+do
+
+gfx_main
+di
+  var doubled is twice count
+  info "main "_str doubled " "_str count
+  return exit_success
+do

@@ -151,6 +151,7 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   if (!bosonoga_token_is_word(&start, "info") &&
       !bosonoga_token_is_word(&start, "var") &&
       !bosonoga_token_is_word(&start, "set") &&
+      !bosonoga_token_is_word(&start, "call") &&
       !bosonoga_token_is_word(&start, "if") &&
       !bosonoga_token_is_word(&start, "while") &&
       !bosonoga_token_is_word(&start, "break") &&
@@ -175,6 +176,9 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   if (bosonoga_token_is_word(&start, "set")) {
     return bosonoga_parse_set(parser, error);
   }
+  if (bosonoga_token_is_word(&start, "call")) {
+    return bosonoga_parse_call_statement(parser, &start, error);
+  }
   if (bosonoga_token_is_word(&start, "if")) {
     return bosonoga_parse_if(parser, error);
   }
@@ -189,7 +193,9 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
     return bosonoga_parse_sleep(parser, &start, error);
   }
   if (bosonoga_token_is_word(&start, "return")) {
-    return bosonoga_parse_return(parser, &start, error);
+    return parser->in_function
+               ? bosonoga_parse_function_return(parser, &start, error)
+               : bosonoga_parse_return(parser, &start, error);
   }
   if (bosonoga_token_is_word(&start, "gfx_clear")) {
     return bosonoga_parse_gfx_clear(parser, &start, error);

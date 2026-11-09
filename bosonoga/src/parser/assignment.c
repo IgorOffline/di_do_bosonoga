@@ -63,11 +63,42 @@ static gboolean bosonoga_parse_conversion(BosonogaParser *parser, guint slot,
   return TRUE;
 }
 
+static gboolean bosonoga_at_name(const BosonogaParser *parser) {
+  const BosonogaToken *token = &parser->tokenizer.token;
+  return token->kind == BOSONOGA_TOKEN_WORD &&
+         !bosonoga_token_is_reserved(parser, token);
+}
+
 gboolean bosonoga_parse_var(BosonogaParser *parser, GError **error) {
   BosonogaToken name;
-  if (!bosonoga_parse_new_name(parser, &name, error) ||
-      !bosonoga_expect_word(parser, "is", error)) {
+  if (!bosonoga_parse_new_name(parser, &name, error)) {
     return FALSE;
+  }
+  if (bosonoga_at_name(parser)) {
+    return bosonoga_fail_at(
+        parser, &parser->tokenizer.token, error, BOSONOGA_ERROR_SYNTAX,
+        "a var declares one variable, and the values of a "
+        "call are taken with call ... with ret, one per line");
+  }
+  if (!bosonoga_expect_word(parser, "is", error)) {
+    return FALSE;
+  }
+
+  // Declared after the call, so that its arguments cannot refer to it.
+  if (bosonoga_find_function(parser, &parser->tokenizer.token) >= 0) {
+    guint index = 0;
+    if (!bosonoga_parse_call(parser, &index, error) ||
+        !bosonoga_check_single_result(parser, &name, index, error)) {
+      return FALSE;
+    }
+    const BosonogaFunction *called =
+        &g_array_index(parser->functions, BosonogaFunction, index);
+    const guint slot = parser->slot_count++;
+    bosonoga_declare_variable(parser, &name, called->results[0], slot);
+    BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_TAKE_RESULT, &name);
+    op->slot = slot;
+    op->index = 0;
+    return TRUE;
   }
 
   const guint slot = parser->slot_count++;
@@ -182,6 +213,33 @@ static gboolean bosonoga_parse_set_str(BosonogaParser *parser,
   return TRUE;
 }
 
+static gboolean bosonoga_parse_set_to(BosonogaParser *parser,
+                                      const BosonogaToken *name,
+                                      const BosonogaVariable *target,
+                                      GError **error) {
+  guint index = 0;
+  if (!bosonoga_expect_word(parser, "to", error) ||
+      !bosonoga_parse_call(parser, &index, error) ||
+      !bosonoga_check_single_result(parser, name, index, error)) {
+    return FALSE;
+  }
+  const BosonogaFunction *called =
+      &g_array_index(parser->functions, BosonogaFunction, index);
+  if (target->kind != called->results[0]) {
+    g_autofree gchar *shown = bosonoga_token_shown(name);
+    g_autofree gchar *function = g_strndup(called->name, called->name_length);
+    return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_TYPE,
+                            "'%s' is %s, but '%s' %s %s", shown,
+                            bosonoga_value_kind_name(target->kind), function,
+                            bosonoga_function_gives(called),
+                            bosonoga_value_kind_name(called->results[0]));
+  }
+  BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_TAKE_RESULT, name);
+  op->slot = target->slot;
+  op->index = 0;
+  return TRUE;
+}
+
 gboolean bosonoga_parse_set(BosonogaParser *parser, GError **error) {
   const BosonogaToken name = parser->tokenizer.token;
   if (name.kind != BOSONOGA_TOKEN_WORD ||
@@ -191,12 +249,20 @@ gboolean bosonoga_parse_set(BosonogaParser *parser, GError **error) {
   g_autofree gchar *shown = bosonoga_token_shown(&name);
   const BosonogaVariable *found = bosonoga_find_variable(parser, &name);
   if (found == NULL) {
-    return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_NAME,
-                            "unknown variable '%s'", shown);
+    return bosonoga_fail_unknown_variable(parser, &name, error);
   }
   const BosonogaVariable target = *found;
   if (!bosonoga_advance(parser, error)) {
     return FALSE;
+  }
+  if (bosonoga_at_name(parser)) {
+    return bosonoga_fail_at(
+        parser, &parser->tokenizer.token, error, BOSONOGA_ERROR_SYNTAX,
+        "a set sets one variable, and the values of a "
+        "call are taken with call ... with ret, one per line");
+  }
+  if (bosonoga_at_word(parser, "to")) {
+    return bosonoga_parse_set_to(parser, &name, &target, error);
   }
 
   const BosonogaToken operation = parser->tokenizer.token;
