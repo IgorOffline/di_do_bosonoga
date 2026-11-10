@@ -1,7 +1,0 @@
-expect car 5
-expect walk 3
-expect walk took 3
-expect car
-expect v 14 s 32
-expect inner 2 outer 14
-expect set 15

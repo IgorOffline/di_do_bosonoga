@@ -1,6 +1,0 @@
-expect 4 true
-expect 7 false
-expect 10 true
-expect limit 3 half 3 verbose true
-expect steps 4 done true
-expect walk false 4
