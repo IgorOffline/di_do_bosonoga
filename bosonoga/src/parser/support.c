@@ -11,6 +11,7 @@ static const gchar *const bosonoga_reserved_words[] = {
     "do",
     "info",
     "var",
+    "val",
     "set",
     "is",
     "if",

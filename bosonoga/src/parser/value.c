@@ -20,7 +20,8 @@ const BosonogaVariable *bosonoga_find_variable(const BosonogaParser *parser,
 void bosonoga_declare_variable(BosonogaParser *parser,
                                const BosonogaToken *name,
                                BosonogaValueKind kind, guint slot) {
-  const BosonogaVariable variable = {name->text, name->length, kind, slot};
+  const BosonogaVariable variable = {name->text, name->length, kind, slot,
+                                     FALSE};
   g_array_append_val(parser->variables, variable);
 }
 

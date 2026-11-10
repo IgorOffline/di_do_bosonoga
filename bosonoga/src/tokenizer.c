@@ -185,6 +185,21 @@ static gboolean bosonoga_lex_string(BosonogaTokenizer *tokenizer,
   return TRUE;
 }
 
+static gboolean bosonoga_text_is(const gchar *text, gsize length,
+                                 const gchar *word) {
+  return length == strlen(word) && memcmp(text, word, length) == 0;
+}
+
+static void bosonoga_lex_bool(BosonogaToken *token, gsize length) {
+  const gboolean is_true =
+      bosonoga_text_is(token->text, length, BOSONOGA_TRUE_WORD);
+  if (is_true || bosonoga_text_is(token->text, length, BOSONOGA_FALSE_WORD)) {
+    token->kind = BOSONOGA_TOKEN_LITERAL;
+    token->value.kind = BOSONOGA_VALUE_BOOL;
+    token->value.boolean = is_true;
+  }
+}
+
 void bosonoga_tokenizer_init(BosonogaTokenizer *tokenizer, const gchar *path,
                              const gchar *source, gsize length) {
   const BosonogaTokenizer initial = {path, source, source + length, 1, 1, {0}};
@@ -216,6 +231,7 @@ gboolean bosonoga_tokenizer_advance(BosonogaTokenizer *tokenizer,
       while (bosonoga_at_word_char(tokenizer)) {
         bosonoga_consume_char(tokenizer);
       }
+      bosonoga_lex_bool(&token, (gsize)(tokenizer->cursor - token.text));
     } else {
       return bosonoga_lex_error(tokenizer, token.line, token.column,
                                 "unexpected character", error);

@@ -6,14 +6,16 @@
 #include "bosonoga/bosonoga.h"
 
 #define BOSONOGA_STRING_SUFFIX "_str"
+#define BOSONOGA_TRUE_WORD "true_bool"
+#define BOSONOGA_FALSE_WORD "false_bool"
 
 typedef enum {
   BOSONOGA_TOKEN_END,
   BOSONOGA_TOKEN_WORD,
-  BOSONOGA_TOKEN_LITERAL,  // A number or a string.
-  // Digits and _flags, _color or _str, like 1_str, which only numbers a value
-  // in the types of a function or an array, as the
-  // literals 0_i32 and 0_f32 do.
+  BOSONOGA_TOKEN_LITERAL,  // A number, a string, true_bool or false_bool.
+  // Digits and _flags, _color, _str or _bool, like 1_str, which only numbers a
+  // value in the types of a function or an array, as the literals 0_i32 and
+  // 0_f32 do.
   BOSONOGA_TOKEN_INDEXED_TYPE,
 } BosonogaTokenKind;
 

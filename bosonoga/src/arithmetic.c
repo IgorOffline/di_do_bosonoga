@@ -39,6 +39,9 @@ void bosonoga_print_value(GString *output, const BosonogaValue *value) {
     case BOSONOGA_VALUE_STR:
       g_string_append_len(output, value->str.text, (gssize)value->str.length);
       break;
+    case BOSONOGA_VALUE_BOOL:
+      g_string_append(output, value->boolean ? "true" : "false");
+      break;
   }
 }
 
@@ -71,6 +74,9 @@ static gboolean bosonoga_equal(const BosonogaValue *left,
   if (left->kind == BOSONOGA_VALUE_STR) {
     return left->str.length == right->str.length &&
            memcmp(left->str.text, right->str.text, left->str.length) == 0;
+  }
+  if (left->kind == BOSONOGA_VALUE_BOOL) {
+    return left->boolean == right->boolean;
   }
   return bosonoga_order(left, right) == 0;
 }
