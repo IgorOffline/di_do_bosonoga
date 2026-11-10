@@ -4,6 +4,7 @@
 
 #include "bosonoga/bosonoga.h"
 #include "tokenizer.h"
+#include "value.h"
 
 #define BOSONOGA_SETTINGS_GROUP_META "meta"
 #define BOSONOGA_SETTINGS_GROUP_GFX "gfx"
@@ -155,26 +156,16 @@ static gboolean bosonoga_read_global_setting(const BosonogaSettingsFile *file,
   bosonoga_tokenizer_init(&tokenizer, file->path, text, strlen(text));
   if (bosonoga_tokenizer_advance(&tokenizer, NULL)) {
     const BosonogaToken number = tokenizer.token;
-    if ((number.kind == BOSONOGA_TOKEN_INTEGER ||
-         number.kind == BOSONOGA_TOKEN_REAL ||
-         number.kind == BOSONOGA_TOKEN_REAL64) &&
+    if (number.kind == BOSONOGA_TOKEN_LITERAL &&
+        bosonoga_kind_is_number(number.value.kind) &&
         bosonoga_tokenizer_advance(&tokenizer, NULL) &&
         tokenizer.token.kind == BOSONOGA_TOKEN_END) {
-      if (number.kind == BOSONOGA_TOKEN_INTEGER) {
-        value->kind = BOSONOGA_VALUE_I32;
-        value->i32 = number.integer;
-      } else if (number.kind == BOSONOGA_TOKEN_REAL64) {
-        value->kind = BOSONOGA_VALUE_F64;
-        value->f64 = number.real;
-      } else {
-        value->kind = BOSONOGA_VALUE_F32;
-        value->f32 = (gfloat)number.real;
-      }
+      *value = number.value;
       return TRUE;
     }
   }
   g_set_error(error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
-              "%s: %s must be one _i32, _f32 or _f64 number, like 100d0_f32",
+              "%s: %s must be one number, like 100_i32 or 100d0_f32",
               file->path, key);
   return FALSE;
 }

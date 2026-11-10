@@ -86,10 +86,7 @@ gboolean bosonoga_parse_new_name(BosonogaParser *parser, BosonogaToken *name,
 gboolean bosonoga_at_value(const BosonogaParser *parser) {
   const BosonogaToken *token = &parser->tokenizer.token;
   switch (token->kind) {
-    case BOSONOGA_TOKEN_INTEGER:
-    case BOSONOGA_TOKEN_REAL:
-    case BOSONOGA_TOKEN_REAL64:
-    case BOSONOGA_TOKEN_STRING:
+    case BOSONOGA_TOKEN_LITERAL:
       return TRUE;
     case BOSONOGA_TOKEN_WORD: {
       BosonogaValue value;
@@ -100,7 +97,6 @@ gboolean bosonoga_at_value(const BosonogaParser *parser) {
              bosonoga_token_setting(parser, token, &value);
     }
     case BOSONOGA_TOKEN_END:
-    case BOSONOGA_TOKEN_UNSIGNED:
     case BOSONOGA_TOKEN_INDEXED_TYPE:
       return FALSE;
   }
@@ -115,19 +111,8 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
   }
 
   memset(operand, 0, sizeof(*operand));
-  if (token->kind == BOSONOGA_TOKEN_INTEGER) {
-    operand->literal.kind = BOSONOGA_VALUE_I32;
-    operand->literal.i32 = token->integer;
-  } else if (token->kind == BOSONOGA_TOKEN_REAL) {
-    operand->literal.kind = BOSONOGA_VALUE_F32;
-    operand->literal.f32 = (gfloat)token->real;
-  } else if (token->kind == BOSONOGA_TOKEN_REAL64) {
-    operand->literal.kind = BOSONOGA_VALUE_F64;
-    operand->literal.f64 = token->real;
-  } else if (token->kind == BOSONOGA_TOKEN_STRING) {
-    operand->literal.kind = BOSONOGA_VALUE_STR;
-    operand->literal.str.text = token->string;
-    operand->literal.str.length = token->string_length;
+  if (token->kind == BOSONOGA_TOKEN_LITERAL) {
+    operand->literal = token->value;
   } else if (bosonoga_token_is_numbered(token, BOSONOGA_SHIFT_PREFIX)) {
     guint64 bit = 0;
     if (!bosonoga_numbered_value(token, BOSONOGA_SHIFT_PREFIX,

@@ -47,6 +47,9 @@ static const gchar *const bosonoga_reserved_words[] = {
     "to_tan",
     "to_f32",
     "to_i32",
+    "to_i64",
+    "to_u32",
+    "to_u64",
     "to_sin",
     "to_cos",
     "to_atan2",
@@ -161,24 +164,6 @@ gboolean bosonoga_token_is_reserved(const BosonogaParser *parser,
          bosonoga_token_is_numbered(token, BOSONOGA_LOOP_PREFIX) ||
          bosonoga_token_is_result(token) ||
          bosonoga_token_setting(parser, token, &value);
-}
-
-const gchar *bosonoga_value_kind_name(BosonogaValueKind kind) {
-  switch (kind) {
-    case BOSONOGA_VALUE_I32:
-      return "i32";
-    case BOSONOGA_VALUE_F32:
-      return "f32";
-    case BOSONOGA_VALUE_F64:
-      return "f64";
-    case BOSONOGA_VALUE_FLAGS:
-      return "flags";
-    case BOSONOGA_VALUE_COLOR:
-      return "color";
-    case BOSONOGA_VALUE_STR:
-      return "str";
-  }
-  g_return_val_if_reached("unknown");
 }
 
 gchar *bosonoga_token_shown(const BosonogaToken *token) {

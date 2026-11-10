@@ -18,6 +18,9 @@ typedef enum {
 
 typedef enum {
   BOSONOGA_VALUE_I32,
+  BOSONOGA_VALUE_I64,
+  BOSONOGA_VALUE_U32,
+  BOSONOGA_VALUE_U64,
   BOSONOGA_VALUE_F32,
   BOSONOGA_VALUE_F64,
   BOSONOGA_VALUE_FLAGS,
@@ -29,6 +32,9 @@ typedef struct {
   BosonogaValueKind kind;
   union {
     gint32 i32;
+    gint64 i64;
+    guint32 u32;
+    guint64 u64;
     gfloat f32;
     gdouble f64;
     guint32 flags;

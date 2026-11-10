@@ -71,7 +71,7 @@ static gboolean bosonoga_check_compare(const BosonogaParser *parser,
       return TRUE;
     case BOSONOGA_COMPARE_EQ:
     case BOSONOGA_COMPARE_NOT_EQ:
-      if (left == BOSONOGA_VALUE_F32 || left == BOSONOGA_VALUE_F64) {
+      if (bosonoga_kind_is_real(left)) {
         return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
                                 "%s has no exact %s, use %s_3 or %s_6",
                                 bosonoga_value_kind_name(left), shown, shown,
@@ -82,10 +82,11 @@ static gboolean bosonoga_check_compare(const BosonogaParser *parser,
     case BOSONOGA_COMPARE_EQ_6:
     case BOSONOGA_COMPARE_NOT_EQ_3:
     case BOSONOGA_COMPARE_NOT_EQ_6:
-      if (left == BOSONOGA_VALUE_I32) {
-        return bosonoga_fail_at(
-            parser, token, error, BOSONOGA_ERROR_TYPE,
-            "%s only works on f32 or f64, i32 uses eq or not_eq", shown);
+      if (bosonoga_kind_is_integer(left)) {
+        return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
+                                "%s only works on f32 or f64, %s uses eq or "
+                                "not_eq",
+                                shown, bosonoga_value_kind_name(left));
       }
       return TRUE;
     case BOSONOGA_COMPARE_SHIFT_HAS:

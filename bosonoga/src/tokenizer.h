@@ -3,18 +3,17 @@
 
 #include <glib.h>
 
+#include "bosonoga/bosonoga.h"
+
 #define BOSONOGA_STRING_SUFFIX "_str"
 
 typedef enum {
   BOSONOGA_TOKEN_END,
   BOSONOGA_TOKEN_WORD,
-  BOSONOGA_TOKEN_INTEGER,
-  BOSONOGA_TOKEN_UNSIGNED,
-  BOSONOGA_TOKEN_REAL,
-  BOSONOGA_TOKEN_REAL64,
-  BOSONOGA_TOKEN_STRING,
+  BOSONOGA_TOKEN_LITERAL,  // A number or a string.
   // Digits and _flags, _color or _str, like 1_str, which only numbers a value
-  // in the types of a function or an array, as 0_i32 and 0_f32 do.
+  // in the types of a function or an array, as the
+  // literals 0_i32 and 0_f32 do.
   BOSONOGA_TOKEN_INDEXED_TYPE,
 } BosonogaTokenKind;
 
@@ -24,11 +23,7 @@ typedef struct {
   gsize length;
   gsize line;
   gsize column;
-  gint32 integer;
-  guint32 unsigned_integer;
-  gdouble real;
-  const gchar *string;  // Of a string, the slice between the quotes.
-  gsize string_length;
+  BosonogaValue value;  // Of a literal. A str points between the quotes.
 } BosonogaToken;
 
 typedef struct {

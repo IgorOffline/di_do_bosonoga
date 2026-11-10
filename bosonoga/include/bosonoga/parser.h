@@ -27,7 +27,7 @@
 //               | LOOP ("with" NAME)? block
 //               | "while" condition block
 //               | "break" | "continue" | "nihil"
-//               | "sleep_ms" UNSIGNED
+//               | "sleep_ms" value
 //               | "return" ("exit_success" | "exit_failure" | value*)
 //               | "gfx_clear" value
 //               | "draw_rectangle" value value value value value
@@ -35,7 +35,8 @@
 //   update     := conversion
 //               | ("to_add" | "to_subtract" | "to_multiply" | "to_divide"
 //                 | "to_mod") value+
-//   conversion := ("to_f32" | "to_f64" | "to_i32") value
+//   conversion := ("to_i32" | "to_i64" | "to_u32" | "to_u64" | "to_f32"
+//                 | "to_f64") value
 //               | ("to_sin" | "to_cos" | "to_sqrt") value
 //               | ("to_atan2" | "to_pow") value value
 //               | "to_hypot" value value
@@ -52,12 +53,12 @@
 //               | "not_eq_3" | "not_eq_6" | "shift_has"
 //   value      := INTEGER | REAL | STRING | SHIFT | COLOR | GLOBAL | RESULT
 //               | "gfx_delta_time" | NAME
-//   TYPE       := "i32" | "f32" | "f64" | "flags" | "color" | "str"
+//   TYPE       := "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "flags"
+//               | "color" | "str"
 //   FUNCTION   := NAME "_fn", like divide_fn, which no other name is
 //   PARAMETER  := NAME, which ends with "_" TYPE, like count_i32
 //   INDEXED    := digit+ "_" TYPE, like 0_i32 and 1_str
-//   INTEGER    := "-"? digit+ "_i32"
-//   UNSIGNED   := digit+ "_u32"
+//   INTEGER    := "-"? digit+ ("_i32" | "_i64" | "_u32" | "_u64")
 //   REAL       := "-"? digit+ ("d" digit+)? ("_f32" | "_f64")
 //   STRING     := '"' character* '"' "_str"
 //   SHIFT      := "shift_" digit+
@@ -70,24 +71,32 @@
 //   it. A variable is visible to the end of its block and cannot hide another.
 // - to_subtract and to_divide apply the other values to the first, and a single
 //   value is negated or inverted. to_mod keeps the remainder, with the sign of
-//   the dividend as % and fmod in C, and needs at least two values. An i32
-//   division truncates toward zero. Dividing by zero, to_sqrt of a negative
-//   number, a negative number to_pow a fraction and a numeric result out of
-//   range are runtime errors. Angles are real radians, and to_atan2 takes y,
-//   then x.
-// - to_abs preserves the type of one i32, f32 or f64. The absolute value of
-//   -2147483648_i32 is outside i32 and is a runtime error. to_min and to_max
-//   take exactly two numbers of the same type and preserve that type.
+//   the dividend as % and fmod in C, and needs at least two values. Integer
+//   division truncates toward zero. The values in between are exact while
+//   they fit in a signed 128-bit integer, and only the stored result has to fit
+//   in its type: to_add 9223372036854775807_i64 1_i64 -1_i64 gives the largest
+//   i64, and to_subtract 2_u32 3_u32 is a runtime error. Dividing by zero,
+//   to_sqrt of a negative number, a negative number to_pow a fraction and a
+//   numeric result out of range are runtime errors. Angles are real radians,
+//   and to_atan2 takes y, then x.
+// - to_abs preserves the type of one number, and gives a u32 or u64 as it is.
+//   The absolute value of the smallest i32 or i64, like -2147483648_i32, is
+//   outside its type and is a runtime error. to_min and to_max take exactly
+//   two numbers of the same type and preserve that type.
 // - to_floor, to_ceil and to_round preserve f32 or f64. Floor rounds toward
 //   negative infinity, ceil toward positive infinity, and round to the nearest
 //   whole number, with halves away from zero: -2d5_f32 becomes -3_f32.
 //   Use to_i32 separately when an integer result is needed. These operations
 //   round stored binary values; they do not provide decimal arithmetic.
-// - to_f32, to_f64 and to_i32 accept any numeric type, including the target
-//   type. Conversions are explicit; arithmetic, comparisons and binary math
-//   functions require matching types. to_i32 truncates toward zero and checks
-//   its input range; narrowing to f32 checks range before rounding. f64 uses
-//   double precision; printing uses 17 significant digits (f32 keeps 6).
+// - to_i32, to_i64, to_u32, to_u64, to_f32 and to_f64 accept any numeric type,
+//   including the target type. Conversions are explicit; arithmetic,
+//   comparisons and binary math functions require matching types. A
+//   conversion to an integer first truncates toward zero, and then checks that
+//   the whole number fits, so to_i32 of -2147483648d9_f64 is -2147483648_i32
+//   and to_u32 of -0d9_f32 is 0_u32, but to_u32 of -1_i32 is a runtime error.
+//   Narrowing to f32 checks range before rounding, and an i64 or u64 past 2^53
+//   rounds to the nearest f64. f64 uses double precision; printing uses 17
+//   significant digits (f32 keeps 6).
 // - Real math operations preserve f32 or f64. to_log is natural logarithm,
 //   to_log10 is base ten, and to_exp is the natural exponential. Logarithms
 //   require positive inputs; to_asin and to_acos require inputs in [-1, 1].
@@ -106,7 +115,10 @@
 //   functions and array rows. Its name cannot be redeclared or shadowed. A
 //   constant cannot depend on a runtime variable or a computed expression.
 //   For example: const pi is 3d141592653589793_f64.
-// - break and continue apply to the innermost LOOP or while.
+// - An INTEGER must fit in its type, with its minus sign, so -0_u32 is 0_u32,
+//   but -1_u32 is a syntax error.
+// - break and continue apply to the innermost LOOP or while. A LOOP counts
+//   with an i32, and sleep_ms waits a u32 number of milliseconds.
 // - A STRING has no escapes, and cannot hold a quote, a backslash, a newline or
 //   NUL. A str can be stored, printed, compared with eq and not_eq, and set
 //   with to_add and a single str, but not computed with.
@@ -180,6 +192,9 @@ typedef enum {
   BOSONOGA_OP_CONVERT_TO_F32,
   BOSONOGA_OP_CONVERT_TO_F64,
   BOSONOGA_OP_CONVERT_TO_I32,
+  BOSONOGA_OP_CONVERT_TO_I64,
+  BOSONOGA_OP_CONVERT_TO_U32,
+  BOSONOGA_OP_CONVERT_TO_U64,
   BOSONOGA_OP_SIN,
   BOSONOGA_OP_COS,
   BOSONOGA_OP_ATAN2,
@@ -237,7 +252,6 @@ typedef struct {
   guint function;
   guint index;
   gint32 integer;
-  guint32 milliseconds;
   BosonogaOperand left;
   BosonogaOperand right;
   BosonogaOperand third;  // The last three are only of draw_rectangle.
