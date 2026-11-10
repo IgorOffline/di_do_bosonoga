@@ -148,8 +148,6 @@ BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
   // A loop that a failed parse leaves open is freed with the array.
   g_autoptr(GArray) loops = g_array_new(FALSE, FALSE, sizeof(BosonogaLoop));
   g_array_set_clear_func(loops, bosonoga_loop_clear);
-  g_autoptr(GArray) call_blocks =
-      g_array_new(FALSE, FALSE, sizeof(BosonogaCallBlock));
   g_autoptr(BosonogaProgram) program = g_new0(BosonogaProgram, 1);
   program->path = path;
   program->ops = g_array_new(FALSE, TRUE, sizeof(BosonogaOp));
@@ -164,7 +162,6 @@ BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
   parser.constants = constants;
   parser.loops = loops;
   parser.functions = program->functions;
-  parser.call_blocks = call_blocks;
   parser.program = program;
   parser.settings = settings;
   if (!bosonoga_parse_program(&parser, error)) {

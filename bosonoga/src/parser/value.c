@@ -126,9 +126,11 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
     operand->literal.kind = BOSONOGA_VALUE_FLAGS;
     operand->literal.flags = 1U << bit;
   } else if (bosonoga_token_is_result(token)) {
-    if (!bosonoga_result_operand(parser, token, operand, error)) {
-      return FALSE;
-    }
+    g_autofree gchar *shown = bosonoga_token_shown(token);
+    return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_NAME,
+                            "%s is not a value, a call names the values that "
+                            "it takes, as in call ... with ret 0_i32 as count",
+                            shown);
   } else if (bosonoga_token_is_word(token, BOSONOGA_DELTA_TIME_WORD)) {
     if (parser->section != BOSONOGA_SECTION_GFX_FRAME) {
       return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_SYNTAX,
