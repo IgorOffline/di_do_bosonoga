@@ -104,8 +104,8 @@ gboolean bosonoga_parse_types(BosonogaParser *parser, BosonogaValueKind *kinds,
     if (!bosonoga_token_indexed(token, &index, &kind)) {
       return bosonoga_parse_error(parser,
                                   "a type with its index, like 0_i32, of i32, "
-                                  "i64, u32, u64, f32, f64, flags, color or "
-                                  "str",
+                                  "i64, u32, u64, f32, f64, flags, color, str "
+                                  "or bool",
                                   error);
     }
     if (*count == BOSONOGA_FUNCTION_VALUES_MAX) {

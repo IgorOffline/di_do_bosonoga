@@ -26,6 +26,7 @@ typedef enum {
   BOSONOGA_VALUE_FLAGS,
   BOSONOGA_VALUE_COLOR,
   BOSONOGA_VALUE_STR,
+  BOSONOGA_VALUE_BOOL,
 } BosonogaValueKind;
 
 typedef struct {
@@ -39,6 +40,7 @@ typedef struct {
     gdouble f64;
     guint32 flags;
     guint32 color;  // 0xRRGGBB
+    gboolean boolean;
     struct {
       const gchar *text;  // Not owned, and not NUL-terminated.
       gsize length;

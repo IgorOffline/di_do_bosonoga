@@ -149,6 +149,7 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   }
   if (!bosonoga_token_is_word(&start, "info") &&
       !bosonoga_token_is_word(&start, "var") &&
+      !bosonoga_token_is_word(&start, "val") &&
       !bosonoga_token_is_word(&start, "set") &&
       !bosonoga_token_is_word(&start, "call") &&
       !bosonoga_token_is_word(&start, "if") &&
@@ -169,8 +170,10 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   if (bosonoga_token_is_word(&start, "info")) {
     return bosonoga_parse_info(parser, &start, error);
   }
-  if (bosonoga_token_is_word(&start, "var")) {
-    return bosonoga_parse_var(parser, error);
+  if (bosonoga_token_is_word(&start, "var") ||
+      bosonoga_token_is_word(&start, "val")) {
+    return bosonoga_parse_var(parser, bosonoga_token_is_word(&start, "val"),
+                              error);
   }
   if (bosonoga_token_is_word(&start, "set")) {
     return bosonoga_parse_set(parser, error);

@@ -18,9 +18,10 @@
 //   row        := "row" value+
 //   block      := "di" statement+ "do"
 //   statement  := "info" value+
-//               | "var" NAME "is" (initial | call "with" "ret" INDEXED)
+//               | ("var" | "val") NAME "is"
+//                 (initial | call "with" "ret" INDEXED)
 //               | "set" NAME update
-//               | "set" NAME "to" call "with" "ret" INDEXED
+//               | "set" NAME "to" (value | call "with" "ret" INDEXED)
 //               | "call" call ("with" "ret" taken+ block)?
 //               | "if" condition block ("else" "if" condition block)*
 //                 ("else" block)?
@@ -49,26 +50,32 @@
 //   taken      := INDEXED "as" NAME
 //   call       := FUNCTION ("of" value+)? | NAME "at" value
 //   condition  := comparison (("and" | "or") comparison)*
-//   comparison := "not"? value compare value
+//   comparison := "not"? value (compare value)?
 //   compare    := "gt" | "lt" | "ge" | "le" | "eq" | "not_eq" | "eq_3" | "eq_6"
 //               | "not_eq_3" | "not_eq_6" | "shift_has"
-//   value      := INTEGER | REAL | STRING | SHIFT | COLOR | GLOBAL
+//   value      := INTEGER | REAL | STRING | BOOL | SHIFT | COLOR | GLOBAL
 //               | "gfx_delta_time" | NAME
 //   TYPE       := "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "flags"
-//               | "color" | "str"
+//               | "color" | "str" | "bool"
 //   FUNCTION   := NAME "_fn", like divide_fn, which no other name is
 //   PARAMETER  := NAME, which ends with "_" TYPE, like count_i32
 //   INDEXED    := digit+ "_" TYPE, like 0_i32 and 1_str
 //   INTEGER    := "-"? digit+ ("_i32" | "_i64" | "_u32" | "_u64")
 //   REAL       := "-"? digit+ ("d" digit+)? ("_f32" | "_f64")
 //   STRING     := '"' character* '"' "_str"
+//   BOOL       := "true_bool" | "false_bool"
 //   SHIFT      := "shift_" digit+
 //   COLOR      := "color_" KEY
 //   GLOBAL     := "global_" KEY
 //   LOOP       := "to_" digit+
 //
 // - "and" binds tighter than "or", and "not" negates only the comparison after
-//   it. A variable is visible to the end of its block and cannot hide another.
+//   it. A comparison without compare is of a bool, and is true if the bool
+//   is, so "if done" is "if done eq true_bool". A variable is visible to the
+//   end of its block and cannot hide another.
+// - A val is a variable that is never set after its declaration. Unlike a
+//   const, it can hold a runtime value, as in val half is to_f64 count.
+// - set ... to gives a variable a single value of its type, or a call's.
 // - to_subtract and to_divide apply the other values to the first, and a single
 //   value is negated or inverted. to_mod keeps the remainder, with the sign of
 //   the dividend as % and fmod in C, and needs at least two values. Integer
@@ -121,7 +128,8 @@
 //   with an i32, and sleep_ms waits a u32 number of milliseconds.
 // - A STRING has no escapes, and cannot hold a quote, a backslash, a newline or
 //   NUL. A str can be stored, printed, compared with eq and not_eq, and set
-//   with to_add and a single str, but not computed with.
+//   with set ... to, but not computed with, as to_add and the other updates
+//   are only of numbers. A bool is the same, and is printed as true or false.
 // - A program has either one bosonoga_main or the sections of a gfx program,
 //   before either of which it can have one bosonoga_global, and any number of
 //   functions and arrays. Each can only be used after its definition, so a

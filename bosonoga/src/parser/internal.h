@@ -31,6 +31,7 @@ typedef struct {
   gsize length;
   BosonogaValueKind kind;
   guint slot;
+  gboolean is_val;
 } BosonogaVariable;
 
 // Indices in ops of jumps, patched at the end of the loop.
@@ -137,7 +138,9 @@ const BosonogaConstant *bosonoga_find_constant(const BosonogaParser *parser,
                                                const BosonogaToken *token);
 gboolean bosonoga_parse_constant(BosonogaParser *parser, GError **error);
 
-gboolean bosonoga_parse_var(BosonogaParser *parser, GError **error);
+// Of var, or of val, which cannot be set.
+gboolean bosonoga_parse_var(BosonogaParser *parser, gboolean is_val,
+                            GError **error);
 
 gboolean bosonoga_parse_set(BosonogaParser *parser, GError **error);
 

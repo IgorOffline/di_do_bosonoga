@@ -1,31 +1,33 @@
+#include <string.h>
+
 #include "parser/internal.h"
 
-static gboolean bosonoga_parse_compare_kind(const BosonogaParser *parser,
-                                            BosonogaCompareKind *compare,
-                                            GError **error) {
-  static const struct {
-    const gchar *word;
-    BosonogaCompareKind kind;
-  } compares[] = {
-      {"gt", BOSONOGA_COMPARE_GT},
-      {"lt", BOSONOGA_COMPARE_LT},
-      {"ge", BOSONOGA_COMPARE_GE},
-      {"le", BOSONOGA_COMPARE_LE},
-      {"eq", BOSONOGA_COMPARE_EQ},
-      {"not_eq", BOSONOGA_COMPARE_NOT_EQ},
-      {"eq_3", BOSONOGA_COMPARE_EQ_3},
-      {"eq_6", BOSONOGA_COMPARE_EQ_6},
-      {"not_eq_3", BOSONOGA_COMPARE_NOT_EQ_3},
-      {"not_eq_6", BOSONOGA_COMPARE_NOT_EQ_6},
-      {"shift_has", BOSONOGA_COMPARE_SHIFT_HAS},
-  };
-  for (gsize i = 0; i < G_N_ELEMENTS(compares); ++i) {
-    if (bosonoga_at_word(parser, compares[i].word)) {
-      *compare = compares[i].kind;
+static const struct {
+  const gchar *word;
+  BosonogaCompareKind kind;
+} bosonoga_compares[] = {
+    {"gt", BOSONOGA_COMPARE_GT},
+    {"lt", BOSONOGA_COMPARE_LT},
+    {"ge", BOSONOGA_COMPARE_GE},
+    {"le", BOSONOGA_COMPARE_LE},
+    {"eq", BOSONOGA_COMPARE_EQ},
+    {"not_eq", BOSONOGA_COMPARE_NOT_EQ},
+    {"eq_3", BOSONOGA_COMPARE_EQ_3},
+    {"eq_6", BOSONOGA_COMPARE_EQ_6},
+    {"not_eq_3", BOSONOGA_COMPARE_NOT_EQ_3},
+    {"not_eq_6", BOSONOGA_COMPARE_NOT_EQ_6},
+    {"shift_has", BOSONOGA_COMPARE_SHIFT_HAS},
+};
+
+static gboolean bosonoga_at_compare(const BosonogaParser *parser,
+                                    BosonogaCompareKind *compare) {
+  for (gsize i = 0; i < G_N_ELEMENTS(bosonoga_compares); ++i) {
+    if (bosonoga_at_word(parser, bosonoga_compares[i].word)) {
+      *compare = bosonoga_compares[i].kind;
       return TRUE;
     }
   }
-  return bosonoga_parse_error(parser, "a comparison", error);
+  return FALSE;
 }
 
 static gboolean bosonoga_check_compare(const BosonogaParser *parser,
@@ -57,10 +59,11 @@ static gboolean bosonoga_check_compare(const BosonogaParser *parser,
     return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
                             "colors cannot be compared");
   }
-  if (left == BOSONOGA_VALUE_STR && compare != BOSONOGA_COMPARE_EQ &&
-      compare != BOSONOGA_COMPARE_NOT_EQ) {
+  if ((left == BOSONOGA_VALUE_STR || left == BOSONOGA_VALUE_BOOL) &&
+      compare != BOSONOGA_COMPARE_EQ && compare != BOSONOGA_COMPARE_NOT_EQ) {
     return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
-                            "str can only be compared with eq or not_eq");
+                            "%s can only be compared with eq or not_eq",
+                            bosonoga_value_kind_name(left));
   }
 
   switch (compare) {
@@ -104,16 +107,25 @@ static gboolean bosonoga_parse_comparison(BosonogaParser *parser,
   if (negate && !bosonoga_advance(parser, error)) {
     return FALSE;
   }
-  if (!bosonoga_parse_value(parser, &left, error) ||
-      !bosonoga_parse_compare_kind(parser, &compare, error)) {
+  const BosonogaToken left_token = parser->tokenizer.token;
+  if (!bosonoga_parse_value(parser, &left, error)) {
     return FALSE;
   }
-  const BosonogaToken operation = parser->tokenizer.token;
-  if (!bosonoga_advance(parser, error) ||
-      !bosonoga_parse_value(parser, &right, error) ||
-      !bosonoga_check_compare(parser, &operation, compare, left.literal.kind,
-                              right.literal.kind, error)) {
-    return FALSE;
+  BosonogaToken operation = parser->tokenizer.token;
+  if (bosonoga_at_compare(parser, &compare)) {
+    if (!bosonoga_advance(parser, error) ||
+        !bosonoga_parse_value(parser, &right, error) ||
+        !bosonoga_check_compare(parser, &operation, compare, left.literal.kind,
+                                right.literal.kind, error)) {
+      return FALSE;
+    }
+  } else if (left.literal.kind == BOSONOGA_VALUE_BOOL) {
+    operation = left_token;
+    memset(&right, 0, sizeof(right));
+    right.literal.kind = BOSONOGA_VALUE_BOOL;
+    right.literal.boolean = TRUE;
+  } else {
+    return bosonoga_parse_error(parser, "a comparison", error);
   }
 
   const guint jump = parser->ops->len;
