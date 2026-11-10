@@ -60,13 +60,13 @@ static gboolean bosonoga_parse_info(BosonogaParser *parser,
 static gboolean bosonoga_parse_sleep(BosonogaParser *parser,
                                      const BosonogaToken *start,
                                      GError **error) {
-  const BosonogaToken *token = &parser->tokenizer.token;
-  if (token->kind != BOSONOGA_TOKEN_UNSIGNED) {
-    return bosonoga_parse_error(parser, "a _u32 number of milliseconds", error);
+  BosonogaOperand milliseconds;
+  if (!bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_U32, "sleep_ms",
+                                    &milliseconds, error)) {
+    return FALSE;
   }
-  bosonoga_emit(parser, BOSONOGA_OP_SLEEP, start)->milliseconds =
-      token->unsigned_integer;
-  return bosonoga_advance(parser, error);
+  bosonoga_emit(parser, BOSONOGA_OP_SLEEP, start)->left = milliseconds;
+  return TRUE;
 }
 
 static gboolean bosonoga_parse_return(BosonogaParser *parser,

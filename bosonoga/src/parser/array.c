@@ -93,3 +93,36 @@ gboolean bosonoga_parse_array(BosonogaParser *parser, GError **error) {
   g_array_append_val(parser->functions, array);
   return TRUE;
 }
+
+gboolean bosonoga_parse_array_read(BosonogaParser *parser,
+                                   const BosonogaToken *name, guint found,
+                                   GError **error) {
+  g_autofree gchar *shown = bosonoga_token_shown(name);
+  if (!bosonoga_at_word(parser, "at")) {
+    return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                            BOSONOGA_ERROR_SYNTAX,
+                            "'%s' is an array, which is read at one i32 "
+                            "index, as in %s at 0_i32",
+                            shown, shown);
+  }
+  if (!bosonoga_advance(parser, error)) {
+    return FALSE;
+  }
+  g_autofree gchar *context = g_strdup_printf("the index of '%s'", shown);
+  BosonogaOperand index;
+  if (!bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_I32, context, &index,
+                                    error)) {
+    return FALSE;
+  }
+  if (bosonoga_at_value(parser)) {
+    return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                            BOSONOGA_ERROR_TYPE,
+                            "'%s' is an array, which is read at one i32 "
+                            "index, but is given more",
+                            shown);
+  }
+  BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_ARRAY_READ, name);
+  op->function = found;
+  op->left = index;
+  return TRUE;
+}

@@ -6,6 +6,7 @@
 #include "bosonoga/bosonoga.h"
 #include "bosonoga/parser.h"
 #include "tokenizer.h"
+#include "value.h"
 
 // Shared by the files of the parser. Statement parsers are called after their
 // keyword is consumed, except for those that read it from the current token.
@@ -85,8 +86,6 @@ gboolean bosonoga_numbered_value(const BosonogaToken *token,
                                  const gchar *prefix, guint64 max,
                                  guint64 *value);
 
-const gchar *bosonoga_value_kind_name(BosonogaValueKind kind);
-
 // The source is arbitrary bytes, but GError messages must be UTF-8.
 gchar *bosonoga_token_shown(const BosonogaToken *token);
 
@@ -165,6 +164,13 @@ gboolean bosonoga_check_new_function_name(const BosonogaParser *parser,
                                           const BosonogaToken *name,
                                           const gchar *what, GError **error);
 
+// Like 1_str, an index from 0 without leading zeros, then _ and a type.
+gboolean bosonoga_split_indexed(const gchar *text, gsize length, guint64 *index,
+                                BosonogaValueKind *kind);
+
+gboolean bosonoga_token_indexed(const BosonogaToken *token, guint64 *index,
+                                BosonogaValueKind *kind);
+
 gboolean bosonoga_parse_types(BosonogaParser *parser, BosonogaValueKind *kinds,
                               guint *count, const gchar *too_many,
                               GError **error);
@@ -199,6 +205,16 @@ gboolean bosonoga_parse_function_return(BosonogaParser *parser,
 gchar *bosonoga_values_shown(const BosonogaValueKind *kinds, guint count);
 
 gboolean bosonoga_parse_array(BosonogaParser *parser, GError **error);
+
+// Called after the name of the array, found in functions.
+gboolean bosonoga_parse_array_read(BosonogaParser *parser,
+                                   const BosonogaToken *name, guint found,
+                                   GError **error);
+
+gboolean bosonoga_at_conversion(const BosonogaParser *parser);
+
+gboolean bosonoga_parse_conversion(BosonogaParser *parser, guint slot,
+                                   BosonogaValueKind *kind, GError **error);
 
 gboolean bosonoga_parse_block(BosonogaParser *parser, GError **error);
 

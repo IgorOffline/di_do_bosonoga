@@ -1,9 +1,9 @@
 #include "tokenizer.h"
 
-#include <math.h>
 #include <string.h>
 
 #include "bosonoga/bosonoga.h"
+#include "value.h"
 
 static gboolean bosonoga_lex_error(const BosonogaTokenizer *tokenizer,
                                    gsize line, gsize column,
@@ -61,6 +61,22 @@ static void bosonoga_skip_blanks_and_comments(BosonogaTokenizer *tokenizer) {
   }
 }
 
+// Each integer type fits in the range of gint64 and guint64 together.
+static gboolean bosonoga_parse_whole(const gchar *digits,
+                                     BosonogaValueKind kind,
+                                     BosonogaValue *value) {
+  gint64 negative = 0;
+  guint64 positive = 0;
+  if (digits[0] == '-') {
+    return g_ascii_string_to_signed(digits, 10, G_MININT64, 0, &negative,
+                                    NULL) &&
+           bosonoga_set_whole(value, kind, negative);
+  }
+  return g_ascii_string_to_unsigned(digits, 10, 0, G_MAXUINT64, &positive,
+                                    NULL) &&
+         bosonoga_set_whole(value, kind, positive);
+}
+
 static gboolean bosonoga_lex_number(BosonogaTokenizer *tokenizer,
                                     BosonogaToken *token, GError **error) {
   if (*tokenizer->cursor == '-') {
@@ -94,63 +110,46 @@ static gboolean bosonoga_lex_number(BosonogaTokenizer *tokenizer,
   g_autofree gchar *suffix =
       g_strndup(suffix_start, (gsize)(tokenizer->cursor - suffix_start));
 
-  if (g_str_equal(suffix, "_i32")) {
-    if (has_fraction) {
-      return bosonoga_lex_error(tokenizer, token->line, token->column,
-                                "an integer cannot have a fraction", error);
-    }
-    gint64 value = 0;
-    if (!g_ascii_string_to_signed(number, 10, G_MININT32, G_MAXINT32, &value,
-                                  NULL)) {
-      return bosonoga_lex_error(tokenizer, token->line, token->column,
-                                "integer does not fit in 32 bits", error);
-    }
-    token->kind = BOSONOGA_TOKEN_INTEGER;
-    token->integer = (gint32)value;
-    return TRUE;
+  BosonogaValueKind kind = BOSONOGA_VALUE_I32;
+  if (suffix[0] != '_' ||
+      !bosonoga_value_kind_named(suffix + 1, strlen(suffix + 1), &kind)) {
+    return bosonoga_lex_error(tokenizer, token->line, token->column,
+                              "number must have the suffix _i32, _i64, _u32, "
+                              "_u64, _f32 or _f64",
+                              error);
   }
-  if (g_str_equal(suffix, "_u32")) {
-    if (has_fraction) {
+  if (!bosonoga_kind_is_number(kind)) {
+    if (has_fraction || token->text[0] == '-') {
       return bosonoga_lex_error(tokenizer, token->line, token->column,
-                                "an integer cannot have a fraction", error);
-    }
-    guint64 value = 0;
-    if (!g_ascii_string_to_unsigned(number, 10, 0, G_MAXUINT32, &value, NULL)) {
-      return bosonoga_lex_error(tokenizer, token->line, token->column,
-                                "_u32 number is outside the u32 range", error);
-    }
-    token->kind = BOSONOGA_TOKEN_UNSIGNED;
-    token->unsigned_integer = (guint32)value;
-    return TRUE;
-  }
-  if (g_str_equal(suffix, "_f32") || g_str_equal(suffix, "_f64")) {
-    const gboolean wide = g_str_equal(suffix, "_f64");
-    const gdouble value = g_ascii_strtod(g_strdelimit(number, "d", '.'), NULL);
-    if (!isfinite(value) || (!wide && ABS(value) > (gdouble)G_MAXFLOAT)) {
-      return bosonoga_lex_error(tokenizer, token->line, token->column,
-                                wide ? "real number does not fit in 64 bits"
-                                     : "real number does not fit in 32 bits",
+                                "an index is digits and a type, like 1_str",
                                 error);
     }
-    token->kind = wide ? BOSONOGA_TOKEN_REAL64 : BOSONOGA_TOKEN_REAL;
-    token->real = wide ? value : (gdouble)(gfloat)value;
-    return TRUE;
-  }
-  if (!has_fraction && token->text[0] != '-' &&
-      (g_str_equal(suffix, "_flags") || g_str_equal(suffix, "_color") ||
-       g_str_equal(suffix, "_str"))) {
     token->kind = BOSONOGA_TOKEN_INDEXED_TYPE;
     return TRUE;
   }
-  return bosonoga_lex_error(
-      tokenizer, token->line, token->column,
-      "number must have the suffix _i32, _u32, _f32 or _f64", error);
+  const gboolean is_integer = bosonoga_kind_is_integer(kind);
+  if (is_integer && has_fraction) {
+    return bosonoga_lex_error(tokenizer, token->line, token->column,
+                              "an integer cannot have a fraction", error);
+  }
+  if (is_integer ? !bosonoga_parse_whole(number, kind, &token->value)
+                 : !bosonoga_set_real(
+                       &token->value, kind,
+                       g_ascii_strtod(g_strdelimit(number, "d", '.'), NULL))) {
+    g_autofree gchar *message = g_strdup_printf(
+        "the number is outside the %s range", bosonoga_value_kind_name(kind));
+    return bosonoga_lex_error(tokenizer, token->line, token->column, message,
+                              error);
+  }
+  token->kind = BOSONOGA_TOKEN_LITERAL;
+  return TRUE;
 }
 
 static gboolean bosonoga_lex_string(BosonogaTokenizer *tokenizer,
                                     BosonogaToken *token, GError **error) {
   bosonoga_consume_char(tokenizer);
-  token->string = tokenizer->cursor;
+  token->value.kind = BOSONOGA_VALUE_STR;
+  token->value.str.text = tokenizer->cursor;
   while (tokenizer->cursor == tokenizer->end || *tokenizer->cursor != '"') {
     if (tokenizer->cursor == tokenizer->end || *tokenizer->cursor == '\n') {
       return bosonoga_lex_error(tokenizer, token->line, token->column,
@@ -166,7 +165,7 @@ static gboolean bosonoga_lex_string(BosonogaTokenizer *tokenizer,
     }
     bosonoga_consume_char(tokenizer);
   }
-  token->string_length = (gsize)(tokenizer->cursor - token->string);
+  token->value.str.length = (gsize)(tokenizer->cursor - token->value.str.text);
   bosonoga_consume_char(tokenizer);
 
   const gchar *suffix = tokenizer->cursor;
@@ -182,7 +181,7 @@ static gboolean bosonoga_lex_string(BosonogaTokenizer *tokenizer,
         ", as in \"text\"" BOSONOGA_STRING_SUFFIX,
         error);
   }
-  token->kind = BOSONOGA_TOKEN_STRING;
+  token->kind = BOSONOGA_TOKEN_LITERAL;
   return TRUE;
 }
 
@@ -196,16 +195,12 @@ gboolean bosonoga_tokenizer_advance(BosonogaTokenizer *tokenizer,
                                     GError **error) {
   bosonoga_skip_blanks_and_comments(tokenizer);
 
-  BosonogaToken token = {BOSONOGA_TOKEN_END,
-                         tokenizer->cursor,
-                         0,
-                         tokenizer->line,
-                         tokenizer->column,
-                         0,
-                         0,
-                         0.0,
-                         NULL,
-                         0};
+  BosonogaToken token = {
+      .kind = BOSONOGA_TOKEN_END,
+      .text = tokenizer->cursor,
+      .line = tokenizer->line,
+      .column = tokenizer->column,
+  };
   if (tokenizer->cursor < tokenizer->end) {
     const gchar first = *tokenizer->cursor;
     if (first == '"') {
