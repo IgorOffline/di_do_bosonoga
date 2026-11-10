@@ -80,12 +80,11 @@ gboolean bosonoga_parse_call(BosonogaParser *parser, guint *function,
   return TRUE;
 }
 
-// As in "ret_0_i32, ret_1_str".
+// As in "0_i32, 1_str".
 static gchar *bosonoga_results_named(const BosonogaFunction *called) {
   GString *named = g_string_new(NULL);
   for (guint i = 0; i < called->result_count; ++i) {
-    g_string_append_printf(named, "%s" BOSONOGA_RESULT_PREFIX "%u_%s",
-                           i == 0 ? "" : ", ", i,
+    g_string_append_printf(named, "%s%u_%s", i == 0 ? "" : ", ", i,
                            bosonoga_value_kind_name(called->results[i]));
   }
   return g_string_free(named, FALSE);
@@ -96,14 +95,14 @@ static gboolean bosonoga_fail_needs_block(const BosonogaParser *parser,
                                           const BosonogaFunction *called,
                                           GError **error) {
   g_autofree gchar *name = g_strndup(called->name, called->name_length);
-  g_autofree gchar *results =
-      bosonoga_values_shown(called->results, called->result_count);
   g_autofree gchar *named = bosonoga_results_named(called);
   return bosonoga_fail_at(
       parser, token, error, BOSONOGA_ERROR_TYPE,
-      "'%s' %s %s, which %scall ... with ret takes in its block as %s", name,
-      bosonoga_function_gives(called), results,
-      called->result_count == 1 ? "var, set ... to or " : "", named);
+      "'%s' %s %s, which %scall ... with ret takes for its block, each "
+      "named, as in with ret 0_%s as value",
+      name, bosonoga_function_gives(called), named,
+      called->result_count == 1 ? "var, set ... to or " : "",
+      bosonoga_value_kind_name(called->results[0]));
 }
 
 gboolean bosonoga_check_single_result(const BosonogaParser *parser,
@@ -121,39 +120,6 @@ gboolean bosonoga_check_single_result(const BosonogaParser *parser,
   return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
                           "'%s' returns no values, so it is called with call",
                           name);
-}
-
-gboolean bosonoga_result_operand(const BosonogaParser *parser,
-                                 const BosonogaToken *token,
-                                 BosonogaOperand *operand, GError **error) {
-  g_autofree gchar *shown = bosonoga_token_shown(token);
-  if (parser->call_blocks->len == 0) {
-    return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_SYNTAX,
-                            "%s is a value of a call, so it can only be in "
-                            "the block of a call",
-                            shown);
-  }
-  const BosonogaCallBlock *block = &g_array_index(
-      parser->call_blocks, BosonogaCallBlock, parser->call_blocks->len - 1);
-  const BosonogaFunction *called =
-      &g_array_index(parser->functions, BosonogaFunction, block->function);
-  const gsize prefix_length = strlen(BOSONOGA_RESULT_PREFIX);
-  guint64 position = 0;
-  BosonogaValueKind kind = BOSONOGA_VALUE_I32;
-  if (!bosonoga_split_indexed(token->text + prefix_length,
-                              token->length - prefix_length, &position,
-                              &kind) ||
-      position >= called->result_count || kind != called->results[position]) {
-    g_autofree gchar *name = g_strndup(called->name, called->name_length);
-    g_autofree gchar *named = bosonoga_results_named(called);
-    return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_NAME,
-                            "the call of '%s' has %s, not %s", name, named,
-                            shown);
-  }
-  operand->literal.kind = kind;
-  operand->is_variable = TRUE;
-  operand->slot = block->slot + (guint)position;
-  return TRUE;
 }
 
 gboolean bosonoga_parse_taken_result(BosonogaParser *parser, guint index,
@@ -189,6 +155,74 @@ gboolean bosonoga_parse_taken_result(BosonogaParser *parser, guint index,
   return bosonoga_advance(parser, error);
 }
 
+// The values that a block takes, each as in 0_i32 as count, by increasing
+// index, up to the di of the block. Each is copied to a variable of the block,
+// and the values that are not named are not copied.
+static gboolean bosonoga_parse_bindings(BosonogaParser *parser,
+                                        const BosonogaToken *call_name,
+                                        guint index, GError **error) {
+  const BosonogaFunction called =
+      g_array_index(parser->functions, BosonogaFunction, index);
+  g_autofree gchar *name = g_strndup(called.name, called.name_length);
+  gboolean has_previous = FALSE;
+  guint64 previous = 0;
+  BosonogaValueKind previous_kind = BOSONOGA_VALUE_I32;
+  do {
+    const BosonogaToken position_token = parser->tokenizer.token;
+    guint64 position = 0;
+    BosonogaValueKind kind = BOSONOGA_VALUE_I32;
+    if (!bosonoga_token_indexed(&position_token, &position, &kind)) {
+      if (has_previous) {
+        return bosonoga_parse_error(
+            parser, "another value to take, like 1_i32 as count, or di", error);
+      }
+      return bosonoga_fail_needs_block(parser, &position_token, &called, error);
+    }
+    g_autofree gchar *shown = bosonoga_token_shown(&position_token);
+    if (position >= called.result_count || kind != called.results[position]) {
+      g_autofree gchar *named = bosonoga_results_named(&called);
+      return bosonoga_fail_at(parser, &position_token, error,
+                              BOSONOGA_ERROR_TYPE,
+                              "'%s' %s %s, so it has no %s", name,
+                              bosonoga_function_gives(&called), named, shown);
+    }
+    if (has_previous && position <= previous) {
+      return bosonoga_fail_at(
+          parser, &position_token, error, BOSONOGA_ERROR_SYNTAX,
+          "the values are taken once each, by increasing "
+          "index, so %s cannot follow %" G_GUINT64_FORMAT "_%s",
+          shown, previous, bosonoga_value_kind_name(previous_kind));
+    }
+    if (!bosonoga_advance(parser, error)) {
+      return FALSE;
+    }
+    if (!bosonoga_at_word(parser, "as")) {
+      g_autofree gchar *got = bosonoga_token_shown(&parser->tokenizer.token);
+      return bosonoga_fail_at(
+          parser, &parser->tokenizer.token, error, BOSONOGA_ERROR_SYNTAX,
+          "expected as and a name after %s, as in %s as "
+          "value, got '%s'",
+          shown, shown,
+          parser->tokenizer.token.kind == BOSONOGA_TOKEN_END ? "end of file"
+                                                             : got);
+    }
+    BosonogaToken binding;
+    if (!bosonoga_advance(parser, error) ||
+        !bosonoga_parse_new_name(parser, &binding, error)) {
+      return FALSE;
+    }
+    const guint slot = parser->slot_count++;
+    BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_TAKE_RESULT, call_name);
+    op->slot = slot;
+    op->index = (guint)position;
+    bosonoga_declare_variable(parser, &binding, kind, slot);
+    has_previous = TRUE;
+    previous = position;
+    previous_kind = kind;
+  } while (!bosonoga_at_word(parser, "di"));
+  return TRUE;
+}
+
 gboolean bosonoga_parse_call_statement(BosonogaParser *parser,
                                        const BosonogaToken *start,
                                        GError **error) {
@@ -220,18 +254,12 @@ gboolean bosonoga_parse_call_statement(BosonogaParser *parser,
   }
 
   // Copied out first, as calls in the block replace the results.
-  const BosonogaCallBlock block = {index, parser->slot_count};
-  parser->slot_count += count;
-  for (guint i = 0; i < count; ++i) {
-    BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_TAKE_RESULT, &name);
-    op->slot = block.slot + i;
-    op->index = i;
-  }
-  g_array_append_val(parser->call_blocks, block);
-  if (!bosonoga_parse_block(parser, error)) {
+  const guint visible_count = parser->variables->len;
+  if (!bosonoga_parse_bindings(parser, &name, index, error) ||
+      !bosonoga_parse_block(parser, error)) {
     return FALSE;
   }
-  g_array_set_size(parser->call_blocks, parser->call_blocks->len - 1);
+  g_array_set_size(parser->variables, visible_count);
   return TRUE;
 }
 

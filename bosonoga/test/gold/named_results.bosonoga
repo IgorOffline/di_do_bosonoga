@@ -1,0 +1,82 @@
+// named_results.bosonoga
+
+array task 0_f64 1_f64 2_f64 3_str
+di
+  row 100_f64 20_f64 5_f64 "car"_str
+  row 9_f64 3_f64 3_f64 "walk"_str
+do
+
+def motion_fn initial_f64 acceleration_f64 time_f64 ret 0_f64 1_f64
+di
+  var velocity is initial_f64
+  var change is 0_f64
+  set change to_multiply acceleration_f64 time_f64
+  set velocity to_add velocity change
+  var displacement is 0_f64
+  set displacement to_add initial_f64 velocity
+  set displacement to_multiply displacement time_f64 0d5_f64
+  return velocity displacement
+do
+
+def speed_fn distance_f64 elapsed_f64 ret 0_f64
+di
+  var speed is 0_f64
+  set speed to_divide distance_f64 elapsed_f64
+  return speed
+do
+
+bosonoga_main
+di
+  var right is 0_i32
+  to_2 with index
+  di
+    // A row of an array, every value named.
+    call task at index with ret
+      0_f64 as distance
+      1_f64 as elapsed
+      2_f64 as expected
+      3_str as label
+    di
+      var actual is speed_fn of distance elapsed with ret 0_f64
+      info label " "_str actual
+      if actual eq_6 expected
+      di
+        set right to_add right 1_i32
+      do
+    do
+  do
+
+  // Only some values, and the names end with their block.
+  call task at 1_i32 with ret
+    1_f64 as elapsed
+    3_str as label
+  di
+    info label " took "_str elapsed
+  do
+  call task at 0_i32 with ret
+    3_str as label
+  di
+    info label
+  do
+
+  // A function, whose named values are variables of the block.
+  call motion_fn of 2_f64 3_f64 4_f64 with ret
+    0_f64 as velocity
+    1_f64 as displacement
+  di
+    info "v "_str velocity " s "_str displacement
+    call motion_fn of 0_f64 1_f64 2_f64 with ret
+      1_f64 as inner
+    di
+      info "inner "_str inner " outer "_str velocity
+    do
+    set velocity to_add velocity 1_f64
+    info "set "_str velocity
+  do
+
+  if right eq 2_i32
+  di
+    return exit_success
+  do
+  return exit_failure
+do

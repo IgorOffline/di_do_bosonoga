@@ -39,13 +39,6 @@ typedef struct {
   GArray *continue_jumps;
 } BosonogaLoop;
 
-// ret_0 and on are copied to slots from slot on, so that calls in the block
-// keep them.
-typedef struct {
-  guint function;
-  guint slot;
-} BosonogaCallBlock;
-
 typedef struct {
   BosonogaTokenizer tokenizer;
   GArray *ops;
@@ -56,7 +49,6 @@ typedef struct {
   GArray *loops;  // Of BosonogaLoop, innermost last.
   BosonogaSection section;
   GArray *functions;
-  GArray *call_blocks;   // Of BosonogaCallBlock, innermost last.
   gboolean in_function;  // Then the function is the last of functions.
   guint delta_time_slot;
   gboolean has_section[BOSONOGA_SECTION_COUNT];
@@ -73,6 +65,8 @@ gboolean bosonoga_token_setting(const BosonogaParser *parser,
                                 const BosonogaToken *token,
                                 BosonogaValue *value);
 
+// Like ret_0_i32, which is reserved but not a value, so that a call names
+// the values that it takes.
 gboolean bosonoga_token_is_result(const BosonogaToken *token);
 
 // A word that ends with _fn and has more before it, which only a function's
@@ -189,10 +183,6 @@ gboolean bosonoga_check_single_result(const BosonogaParser *parser,
 // The with ret 0_TYPE that ends a call that var or set ... to takes.
 gboolean bosonoga_parse_taken_result(BosonogaParser *parser, guint index,
                                      GError **error);
-
-gboolean bosonoga_result_operand(const BosonogaParser *parser,
-                                 const BosonogaToken *token,
-                                 BosonogaOperand *operand, GError **error);
 
 gboolean bosonoga_parse_call_statement(BosonogaParser *parser,
                                        const BosonogaToken *start,

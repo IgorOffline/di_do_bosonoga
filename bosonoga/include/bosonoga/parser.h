@@ -21,7 +21,7 @@
 //               | "var" NAME "is" (initial | call "with" "ret" INDEXED)
 //               | "set" NAME update
 //               | "set" NAME "to" call "with" "ret" INDEXED
-//               | "call" call ("with" "ret" block)?
+//               | "call" call ("with" "ret" taken+ block)?
 //               | "if" condition block ("else" "if" condition block)*
 //                 ("else" block)?
 //               | LOOP ("with" NAME)? block
@@ -46,12 +46,13 @@
 //               | ("to_log" | "to_log10" | "to_exp" | "to_asin" | "to_acos"
 //                 | "to_tan") value
 //               | ("to_log1p" | "to_expm1") value
+//   taken      := INDEXED "as" NAME
 //   call       := FUNCTION ("of" value+)? | NAME "at" value
 //   condition  := comparison (("and" | "or") comparison)*
 //   comparison := "not"? value compare value
 //   compare    := "gt" | "lt" | "ge" | "le" | "eq" | "not_eq" | "eq_3" | "eq_6"
 //               | "not_eq_3" | "not_eq_6" | "shift_has"
-//   value      := INTEGER | REAL | STRING | SHIFT | COLOR | GLOBAL | RESULT
+//   value      := INTEGER | REAL | STRING | SHIFT | COLOR | GLOBAL
 //               | "gfx_delta_time" | NAME
 //   TYPE       := "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "flags"
 //               | "color" | "str"
@@ -65,7 +66,6 @@
 //   COLOR      := "color_" KEY
 //   GLOBAL     := "global_" KEY
 //   LOOP       := "to_" digit+
-//   RESULT     := "ret_" digit+ "_" TYPE, like ret_0_i32
 //
 // - "and" binds tighter than "or", and "not" negates only the comparison after
 //   it. A variable is visible to the end of its block and cannot hide another.
@@ -134,9 +134,21 @@
 //   values.
 // - A caller names each value that it takes with its index and type. var and
 //   set ... to take a call that returns one value with "with ret 0_TYPE".
-//   Otherwise "call ... with ret" and a block take them as RESULT, those of the
-//   innermost call. Calls nest at most BOSONOGA_CALL_DEPTH_MAX deep, and a
-//   function cannot have the statements of gfx_frame.
+//   Otherwise "call ... with ret" and a block take them, in the same way for a
+//   function and an array. Each taken value names one of them for the block,
+//   as in 0_f64 as distance, so that it is a variable of the block, which can
+//   take any of them, once each, by increasing index. Words like ret_0_i32
+//   are reserved, and are not values:
+//
+//     call task at index with ret
+//       0_f64 as distance
+//       2_f64 as expected
+//     di
+//       ...
+//     do
+//
+//   Calls nest at most BOSONOGA_CALL_DEPTH_MAX deep, and a function cannot have
+//   the statements of gfx_frame.
 // - The values of a call follow "of", and a call of a function without
 //   parameters has none.
 // - An array holds literal or constant rows. Read it with "at" and one i32

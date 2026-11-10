@@ -88,6 +88,7 @@ static const gchar *const bosonoga_reserved_words[] = {
     "expect",
     "at",
     "of",
+    "as",
     BOSONOGA_VOID_WORD,
 };
 
