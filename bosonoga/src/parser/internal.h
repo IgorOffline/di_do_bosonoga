@@ -16,6 +16,7 @@
 #define BOSONOGA_COLOR_PREFIX "color_"
 #define BOSONOGA_GLOBAL_PREFIX "global_"
 #define BOSONOGA_KEY_PREFIX "key_"
+#define BOSONOGA_FONT_PREFIX "font_"
 #define BOSONOGA_DELTA_TIME_WORD "gfx_delta_time"
 #define BOSONOGA_KEY_WORD "gfx_key"
 #define BOSONOGA_RESULT_PREFIX "ret_"
@@ -74,6 +75,9 @@ gboolean bosonoga_token_is_numbered(const BosonogaToken *token,
 gboolean bosonoga_token_setting(const BosonogaParser *parser,
                                 const BosonogaToken *token,
                                 BosonogaValue *value);
+
+void bosonoga_name_font(BosonogaParser *parser, const BosonogaToken *token,
+                        BosonogaValue *value);
 
 // Like ret_0_i32, which is reserved but not a value, so that a call names
 // the values that it takes.

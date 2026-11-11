@@ -47,6 +47,9 @@ void bosonoga_print_value(GString *output, const BosonogaValue *value) {
     case BOSONOGA_VALUE_INPUT_KEY:
       g_string_append(output, bosonoga_key_name(value->input_key));
       break;
+    case BOSONOGA_VALUE_FONT:
+      g_string_append(output, value->font.text);
+      break;
   }
 }
 
@@ -85,6 +88,9 @@ static gboolean bosonoga_equal(const BosonogaValue *left,
   }
   if (left->kind == BOSONOGA_VALUE_INPUT_KEY) {
     return left->input_key == right->input_key;
+  }
+  if (left->kind == BOSONOGA_VALUE_FONT) {
+    return left->font.index == right->font.index;
   }
   return bosonoga_order(left, right) == 0;
 }

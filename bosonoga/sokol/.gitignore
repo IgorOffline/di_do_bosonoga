@@ -2,3 +2,5 @@ sokol_app.h
 sokol_gfx.h
 sokol_glue.h
 sokol_log.h
+sokol_gl.h
+sokol_fontstash.h

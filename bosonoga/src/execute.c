@@ -265,6 +265,35 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         }
         break;
       }
+      case BOSONOGA_OP_DRAW_TEXT_PART:
+        bosonoga_print_value(execution->join, left);
+        if (execution->join->len > BOSONOGA_DRAW_TEXT_LENGTH_MAX) {
+          bosonoga_runtime_error(program, op, error,
+                                 "gfx_draw_text is longer than %d bytes",
+                                 BOSONOGA_DRAW_TEXT_LENGTH_MAX);
+          return BOSONOGA_EXECUTION_FAILED;
+        }
+        break;
+      case BOSONOGA_OP_DRAW_TEXT: {
+        GString *join = execution->join;
+        const BosonogaGfxShape text = {
+            .kind = BOSONOGA_GFX_TEXT,
+            .x = left->f32,
+            .y = right->f32,
+            .font = bosonoga_operand_value(&op->third, frame)->font.index,
+            .size = bosonoga_operand_value(&op->fourth, frame)->f32,
+            .color = bosonoga_operand_value(&op->fifth, frame)->color,
+            .align = (guint32)op->integer,
+            .text = scene->text->len,
+            .text_length = join->len,
+        };
+        if (text.size > 0.0f) {
+          g_string_append_len(scene->text, join->str, (gssize)join->len);
+          g_array_append_val(scene->shapes, text);
+        }
+        g_string_truncate(join, 0);
+        break;
+      }
       case BOSONOGA_OP_ARGUMENT:
         execution->arguments[op->index] = *left;
         break;

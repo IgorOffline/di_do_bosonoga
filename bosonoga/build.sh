@@ -21,7 +21,7 @@ rm -rf build
 mkdir -p build/obj
 for source in src/*.c src/parser/*.c; do
   # The window backend is independent of the console library.
-  case "$source" in src/gfx.c) continue ;; esac
+  case "$source" in src/gfx.c | src/gfx_vendor.c) continue ;; esac
   object="build/obj/$(echo "${source#src/}" | tr / _).o"
   # shellcheck disable=SC2086
   $CC $CFLAGS $GLIB_CFLAGS -Iinclude -Isrc \
@@ -30,7 +30,10 @@ done
 ar rcs build/libbosonoga.a build/obj/*.o
 
 mkdir -p build/gfx_obj
-# shellcheck disable=SC2086
-$CC $CFLAGS $GLIB_CFLAGS -Iinclude -Isrc -isystem sokol -pthread \
-  -c src/gfx.c -o build/gfx_obj/gfx.o
-ar rcs build/libbosonoga_gfx.a build/gfx_obj/gfx.o
+for source in src/gfx.c src/gfx_vendor.c; do
+  object="build/gfx_obj/$(basename "$source" .c).o"
+  # shellcheck disable=SC2086
+  $CC $CFLAGS $GLIB_CFLAGS -Iinclude -Isrc -isystem sokol -isystem fontstash \
+    -pthread -c "$source" -o "$object"
+done
+ar rcs build/libbosonoga_gfx.a build/gfx_obj/*.o
