@@ -6,17 +6,26 @@
 
 typedef struct _BosonogaExecution BosonogaExecution;
 
+typedef enum {
+  BOSONOGA_GFX_RECTANGLE,
+  BOSONOGA_GFX_HEX,
+} BosonogaGfxShapeKind;
+
+// In pixels, with y growing down. A hex is regular and flat-top, with its
+// first corner to the right of its center.
 typedef struct {
-  gfloat x;
-  gfloat y;
+  BosonogaGfxShapeKind kind;
+  gfloat x;  // The left of a rectangle, the center of a hex.
+  gfloat y;  // The top of a rectangle, the center of a hex.
   gfloat width;
   gfloat height;
+  gfloat radius;  // Of a hex, from its center to a corner.
   guint32 color;
-} BosonogaGfxRectangle;
+} BosonogaGfxShape;
 
-// What a gfx_frame records, for the owner of the window to draw.
+// What a gfx_frame records, for the owner of the window to draw in order.
 typedef struct {
-  GArray *rectangles;
+  GArray *shapes;
   guint32 clear_color;
   gfloat delta_time;
 } BosonogaGfxScene;
