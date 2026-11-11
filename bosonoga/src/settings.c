@@ -225,8 +225,9 @@ static gboolean bosonoga_read_key_settings(const BosonogaSettingsFile *file,
     guint32 code = 0;
     if (!bosonoga_key_named(name, &code)) {
       g_set_error(error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
-                  "%s: %s must name a key, like W, Key0 or Escape", file->path,
-                  keys[i]);
+                  "%s: %s must name a key, like SAPP_KEYCODE_W, SAPP_KEYCODE_0 "
+                  "or SAPP_KEYCODE_ESCAPE",
+                  file->path, keys[i]);
       return FALSE;
     }
     g_hash_table_insert(settings->keys, g_strdup(keys[i]),

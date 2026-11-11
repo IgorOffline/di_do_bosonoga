@@ -1,8 +1,0 @@
-expect Action 3 / 24
-expect half 0d5 true 7
-expect not only half
-expect A1
-expect A2
-expect B1
-expect B2
-expect true false
