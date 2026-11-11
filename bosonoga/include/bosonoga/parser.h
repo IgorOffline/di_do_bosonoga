@@ -187,8 +187,8 @@
 // - A KEY is a key of the [color], [global] or [key] group of the settings,
 //   see settings.h. A color can be stored and printed, and is printed as
 //   RRGGBB. A global is one INTEGER or REAL. A key of [key] names a key of the
-//   keyboard as miniquad does, so A to Z, Key0 to Key9, Space, Escape, Enter,
-//   Tab, Backspace, Left, Right, Up or Down, and its value is an input_key. An
+//   keyboard by its native sokol_app name, such as SAPP_KEYCODE_A,
+//   SAPP_KEYCODE_0 or SAPP_KEYCODE_ESCAPE. Its value is an input_key. An
 //   input_key can be stored, printed by that name, and compared with eq or
 //   not_eq. gfx_key is the input_key pressed, and is only in gfx_key_down.
 // - gfx_clear, gfx_draw_rectangle (x, y, width, height, color, with y growing
@@ -307,9 +307,9 @@ typedef struct {
   gint32 integer;
   BosonogaOperand left;
   BosonogaOperand right;
-  BosonogaOperand third; // gfx_draw statement
-  BosonogaOperand fourth; // gfx_draw statement
-  BosonogaOperand fifth; // gfx_draw statement
+  BosonogaOperand third;   // gfx_draw statement
+  BosonogaOperand fourth;  // gfx_draw statement
+  BosonogaOperand fifth;   // gfx_draw statement
 } BosonogaOp;
 
 // The most bytes of a str that new makes.
