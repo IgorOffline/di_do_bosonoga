@@ -75,6 +75,7 @@ static const gchar *const bosonoga_reserved_words[] = {
     "gfx_draw_rectangle",
     "gfx_draw_hex",
     "gfx_draw_circle",
+    "gfx_draw_text",
     "gfx_key_down",
     BOSONOGA_KEY_WORD,
     "bosonoga_global",
@@ -144,10 +145,41 @@ gboolean bosonoga_token_setting(const BosonogaParser *parser,
     value->kind = BOSONOGA_VALUE_INPUT_KEY;
     return bosonoga_settings_key(parser->settings, key_key, &value->input_key);
   }
+  // Only its kind, as the program numbers its fonts when a value names one.
+  g_autofree gchar *font_key = bosonoga_token_key(token, BOSONOGA_FONT_PREFIX);
+  if (font_key != NULL) {
+    value->kind = BOSONOGA_VALUE_FONT;
+    return bosonoga_settings_font(parser->settings, font_key) != NULL;
+  }
   g_autofree gchar *global_key =
       bosonoga_token_key(token, BOSONOGA_GLOBAL_PREFIX);
   return global_key != NULL &&
          bosonoga_settings_global(parser->settings, global_key, value);
+}
+
+void bosonoga_name_font(BosonogaParser *parser, const BosonogaToken *token,
+                        BosonogaValue *value) {
+  g_autofree gchar *key = bosonoga_token_key(token, BOSONOGA_FONT_PREFIX);
+  GArray *fonts = parser->program->fonts;
+  guint index = 0;
+  while (index < fonts->len &&
+         g_strcmp0(g_array_index(fonts, BosonogaProgramFont, index).key, key) !=
+             0) {
+    ++index;
+  }
+  if (index == fonts->len) {
+    const BosonogaSettingsFont *setting =
+        bosonoga_settings_font(parser->settings, key);
+    const BosonogaProgramFont font = {
+        .key = g_steal_pointer(&key),
+        .text = g_strdup(setting->text),
+        .path = g_strdup(setting->path),
+    };
+    g_array_append_val(fonts, font);
+  }
+  value->kind = BOSONOGA_VALUE_FONT;
+  value->font.index = index;
+  value->font.text = g_array_index(fonts, BosonogaProgramFont, index).text;
 }
 
 // Like ret_0_i32, and also ret_0 and ret_0_x, which are then wrong values.

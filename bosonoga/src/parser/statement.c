@@ -238,6 +238,92 @@ static gboolean bosonoga_parse_gfx_draw_circle(BosonogaParser *parser,
   return TRUE;
 }
 
+typedef struct {
+  const gchar *word;
+  BosonogaGfxAlign align;
+} BosonogaAlignWord;
+
+static const BosonogaAlignWord bosonoga_horizontal_aligns[] = {
+    {"left", BOSONOGA_GFX_ALIGN_LEFT},
+    {"center", BOSONOGA_GFX_ALIGN_CENTER},
+    {"right", BOSONOGA_GFX_ALIGN_RIGHT},
+};
+
+static const BosonogaAlignWord bosonoga_vertical_aligns[] = {
+    {"top", BOSONOGA_GFX_ALIGN_TOP},
+    {"middle", BOSONOGA_GFX_ALIGN_MIDDLE},
+    {"baseline", BOSONOGA_GFX_ALIGN_BASELINE},
+    {"bottom", BOSONOGA_GFX_ALIGN_BOTTOM},
+};
+
+// The words are not reserved, as nothing else can be where they are.
+static gboolean bosonoga_parse_align(BosonogaParser *parser,
+                                     const BosonogaAlignWord *words,
+                                     gsize count, const gchar *expected,
+                                     gint32 *align, GError **error) {
+  for (gsize i = 0; i < count; ++i) {
+    if (bosonoga_at_word(parser, words[i].word)) {
+      *align |= (gint32)words[i].align;
+      return bosonoga_advance(parser, error);
+    }
+  }
+  return bosonoga_parse_error(parser, expected, error);
+}
+
+static gboolean bosonoga_parse_gfx_draw_text(BosonogaParser *parser,
+                                             const BosonogaToken *start,
+                                             GError **error) {
+  const gchar *context = "gfx_draw_text";
+  gint32 align = 0;
+  BosonogaOperand x;
+  BosonogaOperand y;
+  BosonogaOperand font;
+  BosonogaOperand size;
+  BosonogaOperand color;
+  if (!bosonoga_check_in_frame(parser, start, error) ||
+      !bosonoga_parse_align(parser, bosonoga_horizontal_aligns,
+                            G_N_ELEMENTS(bosonoga_horizontal_aligns),
+                            "left, center or right", &align, error) ||
+      !bosonoga_parse_align(parser, bosonoga_vertical_aligns,
+                            G_N_ELEMENTS(bosonoga_vertical_aligns),
+                            "top, middle, baseline or bottom", &align, error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_F32, context, &x,
+                                    error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_F32, context, &y,
+                                    error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_FONT, context, &font,
+                                    error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_F32, context, &size,
+                                    error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_COLOR, context,
+                                    &color, error)) {
+    return FALSE;
+  }
+  if (!bosonoga_at_value(parser)) {
+    return bosonoga_parse_error(parser, "a value to draw", error);
+  }
+  parser->reads_new = TRUE;
+  while (bosonoga_at_value(parser)) {
+    const BosonogaToken value_token = parser->tokenizer.token;
+    BosonogaOperand value;
+    if (!bosonoga_parse_value(parser, &value, error)) {
+      return FALSE;
+    }
+    bosonoga_emit(parser, BOSONOGA_OP_DRAW_TEXT_PART, &value_token)->left =
+        value;
+  }
+  parser->reads_new = FALSE;
+
+  BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_DRAW_TEXT, start);
+  op->integer = align;
+  op->left = x;
+  op->right = y;
+  op->third = font;
+  op->fourth = size;
+  op->fifth = color;
+  return TRUE;
+}
+
 static gboolean bosonoga_parse_statement(BosonogaParser *parser,
                                          GError **error) {
   const BosonogaToken start = parser->tokenizer.token;
@@ -260,7 +346,8 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
       !bosonoga_token_is_word(&start, "gfx_clear") &&
       !bosonoga_token_is_word(&start, "gfx_draw_rectangle") &&
       !bosonoga_token_is_word(&start, "gfx_draw_hex") &&
-      !bosonoga_token_is_word(&start, "gfx_draw_circle")) {
+      !bosonoga_token_is_word(&start, "gfx_draw_circle") &&
+      !bosonoga_token_is_word(&start, "gfx_draw_text")) {
     return bosonoga_parse_error(parser, "a statement", error);
   }
   if (!bosonoga_advance(parser, error)) {
@@ -319,6 +406,9 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   }
   if (bosonoga_token_is_word(&start, "gfx_draw_circle")) {
     return bosonoga_parse_gfx_draw_circle(parser, &start, error);
+  }
+  if (bosonoga_token_is_word(&start, "gfx_draw_text")) {
+    return bosonoga_parse_gfx_draw_text(parser, &start, error);
   }
   return TRUE;  // nihil
 }

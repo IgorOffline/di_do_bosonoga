@@ -1,14 +1,20 @@
 #include "bosonoga/gfx.h"
 
-#define SOKOL_IMPL
+#include <math.h>
+#include <string.h>
+
+// The implementations are in gfx_vendor.c.
 #define SOKOL_GLCORE
 #define SOKOL_NO_ENTRY
-#include <math.h>
 #include <sokol_app.h>
 #include <sokol_gfx.h>
+#include <sokol_gl.h>
 #include <sokol_glue.h>
 #include <sokol_log.h>
-#include <string.h>
+
+// sokol_fontstash.h needs sokol_gfx.h, sokol_gl.h and fontstash.h before it.
+#include <fontstash.h>
+#include <sokol_fontstash.h>
 
 #include "bosonoga/bosonoga.h"
 #include "bosonoga/interpreter.h"
@@ -17,34 +23,11 @@
 // does not stop the window from responding.
 #define BOSONOGA_GFX_OPS_PER_FRAME 100000U
 #define BOSONOGA_GFX_FRAME_MICROSECONDS (G_USEC_PER_SEC / 60)
-#define BOSONOGA_GFX_VERTICES_PER_RECTANGLE 6U
 #define BOSONOGA_GFX_HEX_CORNERS 6U
 // Enough that a circle of corela's size looks round.
 #define BOSONOGA_GFX_CIRCLE_CORNERS 48U
-#define BOSONOGA_GFX_COLOR_CHANNELS 4
-
-static const gchar bosonoga_gfx_vertex_shader[] =
-    "#version 330\n"
-    "layout(location = 0) in vec4 position;\n"
-    "layout(location = 1) in vec4 color0;\n"
-    "out vec4 color;\n"
-    "void main() {\n"
-    "  gl_Position = position;\n"
-    "  color = color0;\n"
-    "}\n";
-
-static const gchar bosonoga_gfx_fragment_shader[] =
-    "#version 330\n"
-    "in vec4 color;\n"
-    "out vec4 frag_color;\n"
-    "void main() {\n"
-    "  frag_color = color;\n"
-    "}\n";
-
-typedef struct {
-  gfloat position[2];
-  gfloat color[BOSONOGA_GFX_COLOR_CHANNELS];
-} BosonogaGfxGpuVertex;
+// Of shapes and glyphs in one frame, which sokol_gl holds on the CPU and GPU.
+#define BOSONOGA_GFX_VERTICES_MAX (1 << 18)
 
 typedef struct {
   const BosonogaProgram *program;
@@ -52,9 +35,9 @@ typedef struct {
   BosonogaValue *slots;
   BosonogaExecution *main_execution;
   BosonogaGfxScene scene;
-  sg_pipeline pipeline;
-  sg_bindings bindings;
-  gsize vertex_buffer_size;
+  FONScontext *fons;
+  GArray *font_ids;      // Of fontstash, one per font of the program.
+  GPtrArray *font_data;  // Which fontstash reads from, and does not free.
   gint64 next_frame_time;
   gint64 last_frame_start;
   gint *exit_status;
@@ -91,28 +74,79 @@ static void bosonoga_gfx_measure_delta_time(BosonogaGfxRun *run) {
   run->last_frame_start = now;
 }
 
-static void bosonoga_gfx_create_pipeline(BosonogaGfxRun *run) {
-  const sg_shader shader = sg_make_shader(&(sg_shader_desc){
-      .vertex_func.source = bosonoga_gfx_vertex_shader,
-      .fragment_func.source = bosonoga_gfx_fragment_shader,
-      .label = "bosonoga-shader",
-  });
-  run->pipeline = sg_make_pipeline(&(sg_pipeline_desc){
-      .shader = shader,
-      .layout.attrs =
-          {
-              [0].format = SG_VERTEXFORMAT_FLOAT2,
-              [1].format = SG_VERTEXFORMAT_FLOAT4,
-          },
-      .label = "bosonoga-pipeline",
-  });
-  // Drawing with a failed pipeline does nothing, which would look like a
-  // window that works. Sokol has logged the reason.
-  if (sg_query_pipeline_state(run->pipeline) != SG_RESOURCESTATE_VALID) {
-    g_set_error(&run->error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
-                "%s: could not create the gfx pipeline", run->program->path);
-    bosonoga_gfx_fail(run);
+static guint32 bosonoga_gfx_big_endian(const guchar *bytes, guint count) {
+  guint32 value = 0;
+  for (guint i = 0; i < count; ++i) {
+    value = value << 8 | bytes[i];
   }
+  return value;
+}
+
+// stb_truetype reads a font without checking it, and crashes on a file that
+// is not one. So the table directory must be in the file, with the tables that
+// it reads first: cmap, head (to indexToLocFormat), hhea (to numberOfHMetrics)
+// and hmtx. What is inside the tables is not checked.
+static gboolean bosonoga_gfx_is_truetype(const guchar *data, gsize length) {
+  static const struct {
+    const gchar *tag;
+    guint32 size;
+  } required[] = {{"cmap", 4}, {"head", 54}, {"hhea", 36}, {"hmtx", 4}};
+  if (length < 12) {
+    return FALSE;
+  }
+  const guint32 version = bosonoga_gfx_big_endian(data, 4);
+  if (version != 0x00010000U && version != 0x74727565U /* true */ &&
+      version != 0x4F54544FU /* OTTO */) {
+    return FALSE;
+  }
+  const guint32 table_count = bosonoga_gfx_big_endian(data + 4, 2);
+  if (12 + 16 * (gsize)table_count > length) {
+    return FALSE;
+  }
+  guint found = 0;
+  for (guint32 i = 0; i < table_count; ++i) {
+    const guchar *entry = data + 12 + 16 * i;
+    const guint64 offset = bosonoga_gfx_big_endian(entry + 8, 4);
+    const guint64 size = bosonoga_gfx_big_endian(entry + 12, 4);
+    if (offset + size > length) {
+      return FALSE;
+    }
+    for (guint j = 0; j < G_N_ELEMENTS(required); ++j) {
+      if (memcmp(entry, required[j].tag, 4) == 0) {
+        if (size < required[j].size) {
+          return FALSE;
+        }
+        found |= 1U << j;
+      }
+    }
+  }
+  return found == (1U << G_N_ELEMENTS(required)) - 1;
+}
+
+static gboolean bosonoga_gfx_load_font(BosonogaGfxRun *run,
+                                       const BosonogaProgramFont *font) {
+  gchar *data = NULL;
+  gsize length = 0;
+  GError *read_error = NULL;
+  if (!g_file_get_contents(font->path, &data, &length, &read_error)) {
+    g_propagate_prefixed_error(&run->error, read_error,
+                               "%s: font_%s: ", run->program->path, font->key);
+    return FALSE;
+  }
+  g_ptr_array_add(run->font_data, data);
+  const int id = length > G_MAXINT ||
+                         !bosonoga_gfx_is_truetype((const guchar *)data, length)
+                     ? FONS_INVALID
+                     : fonsAddFontMem(run->fons, font->key,
+                                      (unsigned char *)data, (int)length, 0);
+  if (id == FONS_INVALID) {
+    g_set_error(&run->error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
+                "%s: font_%s: %s is not a TrueType font", run->program->path,
+                font->key, font->path);
+    return FALSE;
+  }
+  g_array_append_val(run->font_ids, id);
+  return TRUE;
 }
 
 static void bosonoga_gfx_init(void *user_data) {
@@ -121,11 +155,23 @@ static void bosonoga_gfx_init(void *user_data) {
       .environment = sglue_environment(),
       .logger.func = slog_func,
   });
+  // Its pipelines must match the swapchain, which has no depth buffer.
+  sgl_setup(&(sgl_desc_t){
+      .max_vertices = BOSONOGA_GFX_VERTICES_MAX,
+      .depth_format = SG_PIXELFORMAT_NONE,
+      .logger.func = slog_func,
+  });
+  run->fons = sfons_create(&(sfons_desc_t){0});
+  // Before the program runs, so that it never draws with a missing font.
+  for (guint i = 0; i < run->program->fonts->len; ++i) {
+    if (!bosonoga_gfx_load_font(
+            run, &g_array_index(run->program->fonts, BosonogaProgramFont, i))) {
+      bosonoga_gfx_fail(run);
+      return;
+    }
+  }
   run->initialized = bosonoga_gfx_run_callback(run, BOSONOGA_SECTION_GLOBAL) &&
                      bosonoga_gfx_run_callback(run, BOSONOGA_SECTION_GFX_INIT);
-  if (run->initialized) {
-    bosonoga_gfx_create_pipeline(run);
-  }
 }
 
 // Only holds back a display faster than 60 Hz. Each wait is measured from the
@@ -140,143 +186,140 @@ static void bosonoga_gfx_wait_for_frame_time(BosonogaGfxRun *run) {
   }
 }
 
-static void bosonoga_gfx_color_channels(
-    guint32 color, gfloat channels[BOSONOGA_GFX_COLOR_CHANNELS]) {
-  channels[0] = (gfloat)((color >> 16) & 0xffU) / 255.0f;
-  channels[1] = (gfloat)((color >> 8) & 0xffU) / 255.0f;
-  channels[2] = (gfloat)(color & 0xffU) / 255.0f;
-  channels[3] = 1.0f;
+static guint8 bosonoga_gfx_channel(guint32 color, guint shift) {
+  return (guint8)((color >> shift) & 0xffU);
 }
 
-// GPU coordinates go from -1 to 1, with y growing up.
-static void bosonoga_gfx_vertex(
-    gfloat x, gfloat y, const gfloat channels[BOSONOGA_GFX_COLOR_CHANNELS],
-    BosonogaGfxGpuVertex *vertex) {
-  vertex->position[0] = 2.0f * x / sapp_widthf() - 1.0f;
-  vertex->position[1] = 1.0f - 2.0f * y / sapp_heightf();
-  memcpy(vertex->color, channels, sizeof(vertex->color));
-}
-
-static guint bosonoga_gfx_vertex_count(const BosonogaGfxShape *shape) {
-  switch (shape->kind) {
-    case BOSONOGA_GFX_RECTANGLE:
-      return BOSONOGA_GFX_VERTICES_PER_RECTANGLE;
-    case BOSONOGA_GFX_HEX:
-      return 3U * BOSONOGA_GFX_HEX_CORNERS;
-    case BOSONOGA_GFX_CIRCLE:
-      return 3U * BOSONOGA_GFX_CIRCLE_CORNERS;
-  }
-  g_return_val_if_reached(0);
-}
-
-static void bosonoga_gfx_rectangle_vertices(
-    const BosonogaGfxShape *rectangle,
-    const gfloat channels[BOSONOGA_GFX_COLOR_CHANNELS],
-    BosonogaGfxGpuVertex vertices[BOSONOGA_GFX_VERTICES_PER_RECTANGLE]) {
+static void bosonoga_gfx_draw_rectangle(const BosonogaGfxShape *rectangle) {
   const gfloat left = rectangle->x;
   const gfloat top = rectangle->y;
   const gfloat right = rectangle->x + rectangle->width;
   const gfloat bottom = rectangle->y + rectangle->height;
-  const gfloat corners[BOSONOGA_GFX_VERTICES_PER_RECTANGLE][2] = {
-      {left, top}, {right, top},    {right, bottom},
-      {left, top}, {right, bottom}, {left, bottom},
-  };
-  for (guint i = 0; i < BOSONOGA_GFX_VERTICES_PER_RECTANGLE; ++i) {
-    bosonoga_gfx_vertex(corners[i][0], corners[i][1], channels, &vertices[i]);
-  }
+  sgl_begin_triangles();
+  sgl_c3b(bosonoga_gfx_channel(rectangle->color, 16),
+          bosonoga_gfx_channel(rectangle->color, 8),
+          bosonoga_gfx_channel(rectangle->color, 0));
+  sgl_v2f(left, top);
+  sgl_v2f(right, top);
+  sgl_v2f(right, bottom);
+  sgl_v2f(left, top);
+  sgl_v2f(right, bottom);
+  sgl_v2f(left, bottom);
+  sgl_end();
 }
 
 // A fan of one triangle per side of a regular polygon, around its center.
 // Corner i is at i of corner_count parts of a turn, so that the first is
 // straight right, as in corela.
-static void bosonoga_gfx_fan_vertices(
-    const BosonogaGfxShape *shape, guint corner_count,
-    const gfloat channels[BOSONOGA_GFX_COLOR_CHANNELS],
-    BosonogaGfxGpuVertex *vertices) {
+static void bosonoga_gfx_draw_fan(const BosonogaGfxShape *shape,
+                                  guint corner_count) {
   const gfloat step = (gfloat)(2.0 * G_PI) / (gfloat)corner_count;
+  sgl_begin_triangles();
+  sgl_c3b(bosonoga_gfx_channel(shape->color, 16),
+          bosonoga_gfx_channel(shape->color, 8),
+          bosonoga_gfx_channel(shape->color, 0));
   for (guint i = 0; i < corner_count; ++i) {
     const gfloat start = (gfloat)i * step;
     const gfloat end = (gfloat)(i + 1) * step;
-    BosonogaGfxGpuVertex *triangle = &vertices[3 * i];
-    bosonoga_gfx_vertex(shape->x, shape->y, channels, &triangle[0]);
-    bosonoga_gfx_vertex(shape->x + shape->radius * cosf(start),
-                        shape->y + shape->radius * sinf(start), channels,
-                        &triangle[1]);
-    bosonoga_gfx_vertex(shape->x + shape->radius * cosf(end),
-                        shape->y + shape->radius * sinf(end), channels,
-                        &triangle[2]);
+    sgl_v2f(shape->x, shape->y);
+    sgl_v2f(shape->x + shape->radius * cosf(start),
+            shape->y + shape->radius * sinf(start));
+    sgl_v2f(shape->x + shape->radius * cosf(end),
+            shape->y + shape->radius * sinf(end));
   }
+  sgl_end();
 }
 
-// The number of vertices to draw.
-static gsize bosonoga_gfx_upload_shapes(BosonogaGfxRun *run) {
+static int bosonoga_gfx_fons_align(guint32 align) {
+  static const struct {
+    BosonogaGfxAlign align;
+    int fons;
+  } aligns[] = {
+      {BOSONOGA_GFX_ALIGN_LEFT, FONS_ALIGN_LEFT},
+      {BOSONOGA_GFX_ALIGN_CENTER, FONS_ALIGN_CENTER},
+      {BOSONOGA_GFX_ALIGN_RIGHT, FONS_ALIGN_RIGHT},
+      {BOSONOGA_GFX_ALIGN_TOP, FONS_ALIGN_TOP},
+      {BOSONOGA_GFX_ALIGN_MIDDLE, FONS_ALIGN_MIDDLE},
+      {BOSONOGA_GFX_ALIGN_BOTTOM, FONS_ALIGN_BOTTOM},
+      {BOSONOGA_GFX_ALIGN_BASELINE, FONS_ALIGN_BASELINE},
+  };
+  int fons = 0;
+  for (gsize i = 0; i < G_N_ELEMENTS(aligns); ++i) {
+    if ((align & (guint32)aligns[i].align) != 0) {
+      fons |= aligns[i].fons;
+    }
+  }
+  return fons;
+}
+
+static void bosonoga_gfx_draw_text(BosonogaGfxRun *run,
+                                   const BosonogaGfxShape *text) {
+  FONScontext *fons = run->fons;
+  fonsSetFont(fons, g_array_index(run->font_ids, int, text->font));
+  fonsSetSize(fons, text->size);
+  fonsSetColor(fons, sfons_rgba(bosonoga_gfx_channel(text->color, 16),
+                                bosonoga_gfx_channel(text->color, 8),
+                                bosonoga_gfx_channel(text->color, 0), 0xff));
+  fonsSetAlign(fons, bosonoga_gfx_fons_align(text->align));
+  const gchar *start = run->scene.text->str + text->text;
+  fonsDrawText(fons, text->x, text->y, start, start + text->text_length);
+}
+
+// Shapes and texts are one list of sokol_gl, so that each is drawn over the
+// ones before it.
+static gboolean bosonoga_gfx_record_scene(BosonogaGfxRun *run) {
+  sgl_defaults();
+  sgl_matrix_mode_projection();
+  sgl_ortho(0.0f, sapp_widthf(), sapp_heightf(), 0.0f, -1.0f, 1.0f);
   const GArray *shapes = run->scene.shapes;
-  gsize vertex_count = 0;
-  for (guint i = 0; i < shapes->len; ++i) {
-    vertex_count +=
-        bosonoga_gfx_vertex_count(&g_array_index(shapes, BosonogaGfxShape, i));
-  }
-  if (vertex_count == 0) {
-    return 0;
-  }
-
-  const gsize size = vertex_count * sizeof(BosonogaGfxGpuVertex);
-  if (size > run->vertex_buffer_size) {
-    sg_destroy_buffer(run->bindings.vertex_buffers[0]);
-    run->bindings.vertex_buffers[0] = sg_make_buffer(&(sg_buffer_desc){
-        .size = size,
-        .usage = {.vertex_buffer = true, .write_transient = true},
-        .label = "bosonoga-shapes",
-    });
-    run->vertex_buffer_size = size;
-  }
-
-  g_autofree BosonogaGfxGpuVertex *vertices =
-      g_new(BosonogaGfxGpuVertex, vertex_count);
-  BosonogaGfxGpuVertex *next = vertices;
   for (guint i = 0; i < shapes->len; ++i) {
     const BosonogaGfxShape *shape = &g_array_index(shapes, BosonogaGfxShape, i);
-    gfloat channels[BOSONOGA_GFX_COLOR_CHANNELS];
-    bosonoga_gfx_color_channels(shape->color, channels);
     switch (shape->kind) {
       case BOSONOGA_GFX_RECTANGLE:
-        bosonoga_gfx_rectangle_vertices(shape, channels, next);
+        bosonoga_gfx_draw_rectangle(shape);
         break;
       case BOSONOGA_GFX_HEX:
-        bosonoga_gfx_fan_vertices(shape, BOSONOGA_GFX_HEX_CORNERS, channels,
-                                  next);
+        bosonoga_gfx_draw_fan(shape, BOSONOGA_GFX_HEX_CORNERS);
         break;
       case BOSONOGA_GFX_CIRCLE:
-        bosonoga_gfx_fan_vertices(shape, BOSONOGA_GFX_CIRCLE_CORNERS, channels,
-                                  next);
+        bosonoga_gfx_draw_fan(shape, BOSONOGA_GFX_CIRCLE_CORNERS);
+        break;
+      case BOSONOGA_GFX_TEXT:
+        bosonoga_gfx_draw_text(run, shape);
         break;
     }
-    next += bosonoga_gfx_vertex_count(shape);
   }
-  sg_write_buffer_transient(&(sg_write_buffer_desc){
-      .src.data = {vertices, size},
-      .dst.buffer = run->bindings.vertex_buffers[0],
-  });
-  return vertex_count;
+  sfons_flush(run->fons);
+  // A full sokol_gl drops what does not fit, which would look like a frame
+  // that works.
+  const sgl_error_t error = sgl_error();
+  if (error.any) {
+    g_set_error(&run->error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
+                "%s: gfx_frame draws more than %d vertices or commands",
+                run->program->path, BOSONOGA_GFX_VERTICES_MAX);
+    bosonoga_gfx_fail(run);
+    return FALSE;
+  }
+  return TRUE;
 }
 
 static void bosonoga_gfx_render_scene(BosonogaGfxRun *run) {
-  const gsize vertex_count = bosonoga_gfx_upload_shapes(run);
-  gfloat clear[BOSONOGA_GFX_COLOR_CHANNELS];
-  bosonoga_gfx_color_channels(run->scene.clear_color, clear);
+  const guint32 clear = run->scene.clear_color;
   sg_begin_pass(&(sg_pass){
       .action.colors[0] =
           {
               .load_action = SG_LOADACTION_CLEAR,
-              .clear_value = {clear[0], clear[1], clear[2], clear[3]},
+              .clear_value =
+                  {
+                      (gfloat)bosonoga_gfx_channel(clear, 16) / 255.0f,
+                      (gfloat)bosonoga_gfx_channel(clear, 8) / 255.0f,
+                      (gfloat)bosonoga_gfx_channel(clear, 0) / 255.0f,
+                      1.0f,
+                  },
           },
       .swapchain = sglue_swapchain(),
   });
-  if (vertex_count > 0) {
-    sg_apply_pipeline(run->pipeline);
-    sg_apply_bindings(&run->bindings);
-    sg_draw(0, (int)vertex_count, 1);
-  }
+  sgl_draw();
   sg_end_pass();
   sg_commit();
 }
@@ -291,7 +334,9 @@ static void bosonoga_gfx_frame(void *user_data) {
 
   run->scene.clear_color = run->settings->background_color;
   g_array_set_size(run->scene.shapes, 0);
-  if (!bosonoga_gfx_run_callback(run, BOSONOGA_SECTION_GFX_FRAME)) {
+  g_string_truncate(run->scene.text, 0);
+  if (!bosonoga_gfx_run_callback(run, BOSONOGA_SECTION_GFX_FRAME) ||
+      !bosonoga_gfx_record_scene(run)) {
     return;
   }
   bosonoga_gfx_render_scene(run);
@@ -332,6 +377,8 @@ static void bosonoga_gfx_cleanup(void *user_data) {
   if (run->initialized) {
     bosonoga_gfx_run_callback(run, BOSONOGA_SECTION_GFX_CLEANUP);
   }
+  sfons_destroy(run->fons);
+  sgl_shutdown();
   sg_shutdown();
 }
 
@@ -343,12 +390,18 @@ gboolean bosonoga_gfx_run(const BosonogaProgram *program,
       bosonoga_execution_new(program, BOSONOGA_SECTION_MAIN, slots, NULL, NULL);
   g_autoptr(GArray) shapes =
       g_array_new(FALSE, FALSE, sizeof(BosonogaGfxShape));
+  g_autoptr(GString) text = g_string_new(NULL);
+  g_autoptr(GArray) font_ids = g_array_new(FALSE, FALSE, sizeof(int));
+  g_autoptr(GPtrArray) font_data = g_ptr_array_new_with_free_func(g_free);
   BosonogaGfxRun run = {
       .program = program,
       .settings = settings,
       .slots = slots,
       .main_execution = main_execution,
       .scene.shapes = shapes,
+      .scene.text = text,
+      .font_ids = font_ids,
+      .font_data = font_data,
       .exit_status = exit_status,
   };
   sapp_run(&(sapp_desc){

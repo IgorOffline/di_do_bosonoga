@@ -35,6 +35,8 @@
 //               | "gfx_draw_rectangle" value value value value value
 //               | "gfx_draw_hex" value value value value
 //               | "gfx_draw_circle" value value value value
+//               | "gfx_draw_text" HALIGN VALIGN value value value value value
+//                 value+
 //   initial    := conversion | value ("shift_or" value)*
 //   new        := "new" "str" "of" value+
 //   update     := conversion
@@ -58,9 +60,11 @@
 //   compare    := "gt" | "lt" | "ge" | "le" | "eq" | "not_eq" | "eq_3" | "eq_6"
 //               | "not_eq_3" | "not_eq_6" | "shift_has"
 //   value      := INTEGER | REAL | STRING | BOOL | SHIFT | COLOR | GLOBAL
-//               | KEY_VALUE | "gfx_delta_time" | "gfx_key" | NAME
+//               | KEY_VALUE | FONT | "gfx_delta_time" | "gfx_key" | NAME
+//   HALIGN     := "left" | "center" | "right"
+//   VALIGN     := "top" | "middle" | "baseline" | "bottom"
 //   TYPE       := "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "flags"
-//               | "color" | "str" | "bool" | "input_key"
+//               | "color" | "str" | "bool" | "input_key" | "font"
 //   FUNCTION   := NAME "_fn", like divide_fn, which no other name is
 //   PARAMETER  := NAME, which ends with "_" TYPE, like count_i32
 //   INDEXED    := digit+ "_" TYPE, like 0_i32 and 1_str
@@ -72,6 +76,7 @@
 //   COLOR      := "color_" KEY
 //   GLOBAL     := "global_" KEY
 //   KEY_VALUE  := "key_" KEY
+//   FONT       := "font_" KEY
 //   LOOP       := "to_" digit+
 //
 // - "and" binds tighter than "or", and "not" negates only the comparison after
@@ -184,13 +189,18 @@
 //   gfx_key_down once each time a key is pressed, but not as it repeats while
 //   held, and gfx_cleanup when the window closes. Without a window, gfx_frame
 //   and gfx_key_down never run.
-// - A KEY is a key of the [color], [global] or [key] group of the settings,
-//   see settings.h. A color can be stored and printed, and is printed as
-//   RRGGBB. A global is one INTEGER or REAL. A key of [key] names a key of the
-//   keyboard by its native sokol_app name, such as SAPP_KEYCODE_A,
+// - A KEY is a key of the [color], [global], [key] or [font] group of the
+//   settings, see settings.h. A color can be stored and printed, and is printed
+//   as RRGGBB. A global is one INTEGER or REAL. A key of [key] names a key of
+//   the keyboard by its native sokol_app name, such as SAPP_KEYCODE_A,
 //   SAPP_KEYCODE_0 or SAPP_KEYCODE_ESCAPE. Its value is an input_key. An
 //   input_key can be stored, printed by that name, and compared with eq or
 //   not_eq. gfx_key is the input_key pressed, and is only in gfx_key_down.
+// - A key of [font] names a TrueType file, relative to the directory of the
+//   settings, like "asset/font/IntelOneMono-Medium.ttf". Its value is a font,
+//   which can be stored, printed as [font] has it, and compared with eq or
+//   not_eq. Only a window reads the file, before gfx_init, and fails if it is
+//   not a font.
 // - gfx_clear, gfx_draw_rectangle (x, y, width, height, color, with y growing
 //   down), gfx_draw_hex and gfx_draw_circle (center x, center y, radius,
 //   color) and gfx_delta_time (seconds since the previous frame) are only in
@@ -199,6 +209,17 @@
 //   2 radius wide and sqrt(3) radius high. A hex or circle whose radius is not
 //   above zero is not drawn. Shapes are drawn in the order of their
 //   statements, each over the ones before it.
+// - gfx_draw_text (align, x, y, font, size, color, then what it draws) is only
+//   in gfx_frame, and is a shape too. It joins its values as info prints them,
+//   into at most BOSONOGA_DRAW_TEXT_LENGTH_MAX bytes, and draws them in one
+//   line, with fontstash. HALIGN says whether x is the left, the center or
+//   the right of the text, and VALIGN whether y is its top, middle, baseline
+//   or bottom, from the ascender and descender of the font. Size is the f32
+//   height from the ascender to the descender in pixels, so that it is the
+//   height of a line in a font without a line gap: corela's 20 pixels per em
+//   of Intel One Mono, whose ascender and descender are 1.38 em apart, is
+//   27d6_f32. A text whose size is not above zero is not drawn. The words of
+//   HALIGN and VALIGN are not reserved, so left can also be a variable.
 
 typedef enum {
   BOSONOGA_SECTION_MAIN,
@@ -230,6 +251,17 @@ typedef enum {
   BOSONOGA_COMPARE_NOT_EQ_6,
   BOSONOGA_COMPARE_SHIFT_HAS,
 } BosonogaCompareKind;
+
+// Where the x and y of a text are, of one horizontal and one vertical, as in fontstash.
+typedef enum {
+  BOSONOGA_GFX_ALIGN_LEFT = 1 << 0,
+  BOSONOGA_GFX_ALIGN_CENTER = 1 << 1,
+  BOSONOGA_GFX_ALIGN_RIGHT = 1 << 2,
+  BOSONOGA_GFX_ALIGN_TOP = 1 << 3,
+  BOSONOGA_GFX_ALIGN_MIDDLE = 1 << 4,
+  BOSONOGA_GFX_ALIGN_BOTTOM = 1 << 5,
+  BOSONOGA_GFX_ALIGN_BASELINE = 1 << 6,
+} BosonogaGfxAlign;
 
 typedef enum {
   BOSONOGA_OP_PRINT_VALUE,
@@ -281,6 +313,8 @@ typedef enum {
   BOSONOGA_OP_DRAW_RECTANGLE,
   BOSONOGA_OP_DRAW_HEX,
   BOSONOGA_OP_DRAW_CIRCLE,
+  BOSONOGA_OP_DRAW_TEXT_PART,  // Appends a value to the text that draw draws.
+  BOSONOGA_OP_DRAW_TEXT,
   BOSONOGA_OP_GFX_DELTA_TIME,
   BOSONOGA_OP_GFX_KEY,
   BOSONOGA_OP_ARGUMENT,
@@ -304,13 +338,23 @@ typedef struct {
   guint target;
   guint function;
   guint index;
-  gint32 integer;
+  gint32 integer;  // Also the BosonogaGfxAlign of gfx_draw_text.
   BosonogaOperand left;
   BosonogaOperand right;
   BosonogaOperand third;   // gfx_draw statement
   BosonogaOperand fourth;  // gfx_draw statement
   BosonogaOperand fifth;   // gfx_draw statement
 } BosonogaOp;
+
+// The most bytes of a text that gfx_draw_text draws.
+#define BOSONOGA_DRAW_TEXT_LENGTH_MAX 1024
+
+// A font that the program names, which a window loads before gfx_init.
+typedef struct {
+  gchar *key;   // Of [font].
+  gchar *text;  // As [font] has it, printed for a font value.
+  gchar *path;
+} BosonogaProgramFont;
 
 // The most bytes of a str that new makes.
 #define BOSONOGA_NEW_STR_LENGTH_MAX 1024
@@ -340,7 +384,8 @@ typedef struct {
   GArray *ops;
   guint slot_count;  // Not of functions.
   GArray *functions;
-  GArray *rows;  // Of all arrays, one row after another.
+  GArray *rows;   // Of all arrays, one row after another.
+  GArray *fonts;  // Of BosonogaProgramFont, numbered by a font value.
   gboolean is_gfx;
   // A missing section starts at a BOSONOGA_OP_SECTION_END, so it can still run.
   guint entries[BOSONOGA_SECTION_COUNT];

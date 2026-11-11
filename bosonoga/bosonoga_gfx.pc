@@ -4,8 +4,8 @@ libdir=${prefix}/build
 
 Name: bosonoga_gfx
 Description: Runs the gfx programs of bosonoga in a window
-Version: 0.6.0
-Requires: bosonoga = 0.6.0
+Version: 0.7.0
+Requires: bosonoga = 0.7.0
 Cflags: -I${includedir}
 Libs: -L${libdir} -lbosonoga_gfx
 Libs.private: -pthread -lX11 -lXi -lXcursor -lGL -ldl -lm
