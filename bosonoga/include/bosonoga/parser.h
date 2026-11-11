@@ -31,22 +31,23 @@
 //               | "sleep_ms" value
 //               | "return" ("exit_success" | "exit_failure" | value*)
 //               | "gfx_clear" value
-//               | "draw_rectangle" value value value value value
+//               | "gfx_draw_rectangle" value value value value value
+//               | "gfx_draw_hex" value value value value
 //   initial    := conversion | value ("shift_or" value)*
 //   update     := conversion
 //               | ("to_add" | "to_subtract" | "to_multiply" | "to_divide"
 //                 | "to_mod") value+
 //   conversion := ("to_i32" | "to_i64" | "to_u32" | "to_u64" | "to_f32"
 //                 | "to_f64") value
-//               | ("to_sin" | "to_cos" | "to_sqrt") value
-//               | ("to_atan2" | "to_pow") value value
-//               | "to_hypot" value value
-//               | "to_abs" value
-//               | ("to_min" | "to_max") value value
-//               | ("to_floor" | "to_ceil" | "to_round") value
-//               | ("to_log" | "to_log10" | "to_exp" | "to_asin" | "to_acos"
-//                 | "to_tan") value
-//               | ("to_log1p" | "to_expm1") value
+//               | ("math_to_sin" | "math_to_cos" | "math_to_sqrt") value
+//               | ("math_to_atan2" | "math_to_pow") value value
+//               | "math_to_hypot" value value
+//               | "math_to_abs" value
+//               | ("math_to_min" | "math_to_max") value value
+//               | ("math_to_floor" | "math_to_ceil" | "math_to_round") value
+//               | ("math_to_log" | "math_to_log10" | "math_to_exp"
+//                 | "math_to_asin" | "math_to_acos" | "math_to_tan") value
+//               | ("math_to_log1p" | "math_to_expm1") value
 //   taken      := INDEXED "as" NAME
 //   call       := FUNCTION ("of" value+)? | NAME "at" value
 //   condition  := comparison (("and" | "or") comparison)*
@@ -83,16 +84,17 @@
 //   they fit in a signed 128-bit integer, and only the stored result has to fit
 //   in its type: to_add 9223372036854775807_i64 1_i64 -1_i64 gives the largest
 //   i64, and to_subtract 2_u32 3_u32 is a runtime error. Dividing by zero,
-//   to_sqrt of a negative number, a negative number to_pow a fraction and a
-//   numeric result out of range are runtime errors. Angles are real radians,
-//   and to_atan2 takes y, then x.
-// - to_abs preserves the type of one number, and gives a u32 or u64 as it is.
-//   The absolute value of the smallest i32 or i64, like -2147483648_i32, is
-//   outside its type and is a runtime error. to_min and to_max take exactly
-//   two numbers of the same type and preserve that type.
-// - to_floor, to_ceil and to_round preserve f32 or f64. Floor rounds toward
-//   negative infinity, ceil toward positive infinity, and round to the nearest
-//   whole number, with halves away from zero: -2d5_f32 becomes -3_f32.
+//   math_to_sqrt of a negative number, a negative number math_to_pow a fraction
+//   and a numeric result out of range are runtime errors. Angles are real
+//   radians, and math_to_atan2 takes y, then x.
+// - math_to_abs preserves the type of one number, and gives a u32 or u64 as it
+//   is. The absolute value of the smallest i32 or i64, like -2147483648_i32, is
+//   outside its type and is a runtime error. math_to_min and math_to_max take
+//   exactly two numbers of the same type and preserve that type.
+// - math_to_floor, math_to_ceil and math_to_round preserve f32 or f64. Floor
+//   rounds toward negative infinity, ceil toward positive infinity, and round
+//   to the nearest whole number, with halves away from zero: -2d5_f32 becomes
+//   -3_f32.
 //   Use to_i32 separately when an integer result is needed. These operations
 //   round stored binary values; they do not provide decimal arithmetic.
 // - to_i32, to_i64, to_u32, to_u64, to_f32 and to_f64 accept any numeric type,
@@ -104,19 +106,21 @@
 //   Narrowing to f32 checks range before rounding, and an i64 or u64 past 2^53
 //   rounds to the nearest f64. f64 uses double precision; printing uses 17
 //   significant digits (f32 keeps 6).
-// - Real math operations preserve f32 or f64. to_log is natural logarithm,
-//   to_log10 is base ten, and to_exp is the natural exponential. Logarithms
-//   require positive inputs; to_asin and to_acos require inputs in [-1, 1].
-//   All angles, including inverse-trig results, are radians. to_tan uses the
-//   stored approximate angle; a near-pole angle may give a large finite result.
+// - Real math operations preserve f32 or f64. math_to_log is natural
+//   logarithm, math_to_log10 is base ten, and math_to_exp is the natural
+//   exponential. Logarithms require positive inputs; math_to_asin and
+//   math_to_acos require inputs in [-1, 1]. All angles, including inverse-trig
+//   results, are radians. math_to_tan uses the stored approximate angle; a
+//   near-pole angle may give a large finite result.
 //   Nonfinite inputs and results are rejected; underflow may round to zero.
 //   eq_3 and eq_6 use absolute-or-relative tolerances 1e-3 and 1e-6 for both
 //   real types. Real numbers do not use exact eq or not_eq.
-// - to_log1p computes log(1+x) without first rounding 1+x, and requires x > -1.
-//   to_expm1 computes exp(x)-1 without subtracting nearly equal numbers.
-//   to_hypot takes two same-type reals and computes their Euclidean norm
-//   without unnecessarily squaring huge or tiny operands. These helpers
-//   preserve f32 or f64 and reject results outside that type's finite range.
+// - math_to_log1p computes log(1+x) without first rounding 1+x, and requires
+//   x > -1. math_to_expm1 computes exp(x)-1 without subtracting nearly equal
+//   numbers. math_to_hypot takes two same-type reals and computes their
+//   Euclidean norm without unnecessarily squaring huge or tiny operands. These
+//   helpers preserve f32 or f64 and reject results outside that type's finite
+//   range.
 // - A top-level const NAME is value binds an immutable scalar literal, an
 //   earlier constant, or a config value, visible to all later code, including
 //   functions and array rows. Its name cannot be redeclared or shadowed. A
@@ -170,9 +174,14 @@
 //   runs.
 // - A KEY is a key of the [color] or [global] group of the settings, see
 //   settings.h. A color can be stored and printed, and is printed as RRGGBB. A
-//   global is one INTEGER or REAL. gfx_clear, draw_rectangle (x, y, width,
-//   height, color, with y growing down) and gfx_delta_time (seconds since the
-//   previous frame) are only in gfx_frame.
+//   global is one INTEGER or REAL. gfx_clear, gfx_draw_rectangle (x, y, width,
+//   height, color, with y growing down), gfx_draw_hex (center x, center y,
+//   radius, color) and gfx_delta_time (seconds since the previous frame) are
+//   only in gfx_frame. A hex is regular and flat-top, with a corner straight
+//   right of its center, and its radius is from the center to a corner, so
+//   that it is 2 radius wide and sqrt(3) radius high. A hex whose radius is
+//   not above zero is not drawn. Shapes are drawn in the order of their
+//   statements, each over the ones before it.
 
 typedef enum {
   BOSONOGA_SECTION_MAIN,
@@ -252,6 +261,7 @@ typedef enum {
   BOSONOGA_OP_SECTION_END,
   BOSONOGA_OP_GFX_CLEAR,
   BOSONOGA_OP_DRAW_RECTANGLE,
+  BOSONOGA_OP_DRAW_HEX,
   BOSONOGA_OP_GFX_DELTA_TIME,
   BOSONOGA_OP_ARGUMENT,
   BOSONOGA_OP_CALL,
@@ -274,7 +284,8 @@ typedef struct {
   gint32 integer;
   BosonogaOperand left;
   BosonogaOperand right;
-  BosonogaOperand third;  // The last three are only of draw_rectangle.
+  BosonogaOperand third;  // The last three are only of gfx_draw_rectangle and
+                          // gfx_draw_hex.
   BosonogaOperand fourth;
   BosonogaOperand fifth;
 } BosonogaOp;

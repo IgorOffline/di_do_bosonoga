@@ -41,24 +41,26 @@ static const gchar *bosonoga_domain_error(BosonogaOpKind function, gdouble a,
                                           gdouble b) {
   switch ((gint)function) {
     case BOSONOGA_OP_ASIN:
-      return a < -1.0 || a > 1.0 ? "to_asin needs a value from -1 to 1" : NULL;
+      return a < -1.0 || a > 1.0 ? "math_to_asin needs a value from -1 to 1"
+                                 : NULL;
     case BOSONOGA_OP_ACOS:
-      return a < -1.0 || a > 1.0 ? "to_acos needs a value from -1 to 1" : NULL;
+      return a < -1.0 || a > 1.0 ? "math_to_acos needs a value from -1 to 1"
+                                 : NULL;
     case BOSONOGA_OP_SQRT:
-      return a < 0.0 ? "to_sqrt of a negative number" : NULL;
+      return a < 0.0 ? "math_to_sqrt of a negative number" : NULL;
     case BOSONOGA_OP_POW:
       if (a < 0.0 && trunc(b) != b) {
-        return "to_pow of a negative number to a fractional power";
+        return "math_to_pow of a negative number to a fractional power";
       }
       if (!(a < 0.0 || a > 0.0) && b < 0.0) {
-        return "to_pow of zero to a negative power is division by zero";
+        return "math_to_pow of zero to a negative power is division by zero";
       }
       return NULL;
     case BOSONOGA_OP_LOG:
     case BOSONOGA_OP_LOG10:
       return a <= 0.0 ? "logarithms need a positive value" : NULL;
     case BOSONOGA_OP_LOG1P:
-      return a <= -1.0 ? "to_log1p needs a value greater than -1" : NULL;
+      return a <= -1.0 ? "math_to_log1p needs a value greater than -1" : NULL;
     default:
       return NULL;
   }

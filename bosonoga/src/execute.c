@@ -227,14 +227,29 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         scene->clear_color = left->color;
         break;
       case BOSONOGA_OP_DRAW_RECTANGLE: {
-        const BosonogaGfxRectangle rectangle = {
-            left->f32,
-            right->f32,
-            bosonoga_operand_value(&op->third, frame)->f32,
-            bosonoga_operand_value(&op->fourth, frame)->f32,
-            bosonoga_operand_value(&op->fifth, frame)->color,
+        const BosonogaGfxShape rectangle = {
+            .kind = BOSONOGA_GFX_RECTANGLE,
+            .x = left->f32,
+            .y = right->f32,
+            .width = bosonoga_operand_value(&op->third, frame)->f32,
+            .height = bosonoga_operand_value(&op->fourth, frame)->f32,
+            .color = bosonoga_operand_value(&op->fifth, frame)->color,
         };
-        g_array_append_val(scene->rectangles, rectangle);
+        g_array_append_val(scene->shapes, rectangle);
+        break;
+      }
+      case BOSONOGA_OP_DRAW_HEX: {
+        const BosonogaGfxShape hex = {
+            .kind = BOSONOGA_GFX_HEX,
+            .x = left->f32,
+            .y = right->f32,
+            .radius = bosonoga_operand_value(&op->third, frame)->f32,
+            .color = bosonoga_operand_value(&op->fourth, frame)->color,
+        };
+        // As in corela, a hex without size is not drawn.
+        if (hex.radius > 0.0f) {
+          g_array_append_val(scene->shapes, hex);
+        }
         break;
       }
       case BOSONOGA_OP_ARGUMENT:

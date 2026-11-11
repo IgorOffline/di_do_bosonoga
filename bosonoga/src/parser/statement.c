@@ -110,10 +110,10 @@ static gboolean bosonoga_parse_gfx_clear(BosonogaParser *parser,
   return TRUE;
 }
 
-static gboolean bosonoga_parse_draw_rectangle(BosonogaParser *parser,
-                                              const BosonogaToken *start,
-                                              GError **error) {
-  const gchar *context = "draw_rectangle";
+static gboolean bosonoga_parse_gfx_draw_rectangle(BosonogaParser *parser,
+                                                  const BosonogaToken *start,
+                                                  GError **error) {
+  const gchar *context = "gfx_draw_rectangle";
   BosonogaOperand x;
   BosonogaOperand y;
   BosonogaOperand width;
@@ -141,6 +141,33 @@ static gboolean bosonoga_parse_draw_rectangle(BosonogaParser *parser,
   return TRUE;
 }
 
+static gboolean bosonoga_parse_gfx_draw_hex(BosonogaParser *parser,
+                                            const BosonogaToken *start,
+                                            GError **error) {
+  const gchar *context = "gfx_draw_hex";
+  BosonogaOperand x;
+  BosonogaOperand y;
+  BosonogaOperand radius;
+  BosonogaOperand color;
+  if (!bosonoga_check_in_frame(parser, start, error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_F32, context, &x,
+                                    error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_F32, context, &y,
+                                    error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_F32, context,
+                                    &radius, error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_COLOR, context,
+                                    &color, error)) {
+    return FALSE;
+  }
+  BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_DRAW_HEX, start);
+  op->left = x;
+  op->right = y;
+  op->third = radius;
+  op->fourth = color;
+  return TRUE;
+}
+
 static gboolean bosonoga_parse_statement(BosonogaParser *parser,
                                          GError **error) {
   const BosonogaToken start = parser->tokenizer.token;
@@ -160,7 +187,8 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
       !bosonoga_token_is_word(&start, "sleep_ms") &&
       !bosonoga_token_is_word(&start, "return") &&
       !bosonoga_token_is_word(&start, "gfx_clear") &&
-      !bosonoga_token_is_word(&start, "draw_rectangle")) {
+      !bosonoga_token_is_word(&start, "gfx_draw_rectangle") &&
+      !bosonoga_token_is_word(&start, "gfx_draw_hex")) {
     return bosonoga_parse_error(parser, "a statement", error);
   }
   if (!bosonoga_advance(parser, error)) {
@@ -202,8 +230,11 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   if (bosonoga_token_is_word(&start, "gfx_clear")) {
     return bosonoga_parse_gfx_clear(parser, &start, error);
   }
-  if (bosonoga_token_is_word(&start, "draw_rectangle")) {
-    return bosonoga_parse_draw_rectangle(parser, &start, error);
+  if (bosonoga_token_is_word(&start, "gfx_draw_rectangle")) {
+    return bosonoga_parse_gfx_draw_rectangle(parser, &start, error);
+  }
+  if (bosonoga_token_is_word(&start, "gfx_draw_hex")) {
+    return bosonoga_parse_gfx_draw_hex(parser, &start, error);
   }
   return TRUE;  // nihil
 }

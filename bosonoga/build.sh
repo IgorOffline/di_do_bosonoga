@@ -1,8 +1,12 @@
 #!/bin/sh
-# Builds build/libbosonoga.a, the static library of the bosonoga language. A
-# project links with it through bosonoga.pc, which is next to this script:
+# Builds build/libbosonoga.a, the static library of the bosonoga language, and
+# build/libbosonoga_gfx.a, which runs gfx programs in a window with sokol. A
+# project links with them through bosonoga.pc and bosonoga_gfx.pc, which are
+# next to this script:
 #
 #   PKG_CONFIG_PATH=path/to/bosonoga pkg-config --static --cflags --libs bosonoga
+#   PKG_CONFIG_PATH=path/to/bosonoga pkg-config --static --cflags --libs \
+#     bosonoga_gfx
 #
 # GLib is found with pkg-config too, so PKG_CONFIG_PATH must also have the
 # directory of glib-2.0.pc. CC and CFLAGS can be set to build differently.
@@ -24,3 +28,9 @@ for source in src/*.c src/parser/*.c; do
     -c "$source" -o "$object"
 done
 ar rcs build/libbosonoga.a build/obj/*.o
+
+mkdir -p build/gfx_obj
+# shellcheck disable=SC2086
+$CC $CFLAGS $GLIB_CFLAGS -Iinclude -Isrc -isystem sokol -pthread \
+  -c src/gfx.c -o build/gfx_obj/gfx.o
+ar rcs build/libbosonoga_gfx.a build/gfx_obj/gfx.o
