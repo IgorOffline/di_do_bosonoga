@@ -21,7 +21,6 @@ struct _BosonogaExecution {
   BosonogaGfxScene *scene;
   GString *output;
   gboolean to_stdout;  // Then output is an owned buffer for stdout.
-  // A frame per call, with copies of its arguments.
   GArray *stack;
   GArray *calls;  // Of BosonogaCall, innermost last.
   BosonogaValue arguments[BOSONOGA_FUNCTION_VALUES_MAX];

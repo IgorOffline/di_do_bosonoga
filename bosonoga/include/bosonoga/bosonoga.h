@@ -45,7 +45,7 @@ typedef struct {
     gboolean boolean;
     guint32 input_key;  // As sokol_app numbers keys.
     struct {
-      guint index;        // In the fonts of the program.
+      guint index;
       const gchar *text;  // As [font] has it, which the program owns.
     } font;
     struct {

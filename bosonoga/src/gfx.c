@@ -3,7 +3,6 @@
 #include <math.h>
 #include <string.h>
 
-// The implementations are in gfx_vendor.c.
 #define SOKOL_GLCORE
 #define SOKOL_NO_ENTRY
 #include <sokol_app.h>
@@ -36,7 +35,7 @@ typedef struct {
   BosonogaExecution *main_execution;
   BosonogaGfxScene scene;
   FONScontext *fons;
-  GArray *font_ids;      // Of fontstash, one per font of the program.
+  GArray *font_ids;
   GPtrArray *font_data;  // Which fontstash reads from, and does not free.
   gint64 next_frame_time;
   gint64 last_frame_start;
@@ -82,10 +81,8 @@ static guint32 bosonoga_gfx_big_endian(const guchar *bytes, guint count) {
   return value;
 }
 
-// stb_truetype reads a font without checking it, and crashes on a file that
-// is not one. So the table directory must be in the file, with the tables that
-// it reads first: cmap, head (to indexToLocFormat), hhea (to numberOfHMetrics)
-// and hmtx. What is inside the tables is not checked.
+// stb_truetype crashes on a file that is not a font, so the tables that it
+// reads first must be in the file: cmap, head, hhea and hmtx.
 static gboolean bosonoga_gfx_is_truetype(const guchar *data, gsize length) {
   static const struct {
     const gchar *tag;
@@ -162,7 +159,6 @@ static void bosonoga_gfx_init(void *user_data) {
       .logger.func = slog_func,
   });
   run->fons = sfons_create(&(sfons_desc_t){0});
-  // Before the program runs, so that it never draws with a missing font.
   for (guint i = 0; i < run->program->fonts->len; ++i) {
     if (!bosonoga_gfx_load_font(
             run, &g_array_index(run->program->fonts, BosonogaProgramFont, i))) {
@@ -208,9 +204,6 @@ static void bosonoga_gfx_draw_rectangle(const BosonogaGfxShape *rectangle) {
   sgl_end();
 }
 
-// A fan of one triangle per side of a regular polygon, around its center.
-// Corner i is at i of corner_count parts of a turn, so that the first is
-// straight right, as in corela.
 static void bosonoga_gfx_draw_fan(const BosonogaGfxShape *shape,
                                   guint corner_count) {
   const gfloat step = (gfloat)(2.0 * G_PI) / (gfloat)corner_count;
@@ -355,8 +348,6 @@ static void bosonoga_gfx_frame(void *user_data) {
   sapp_quit();
 }
 
-// As in corela, a key held down runs gfx_key_down once,
-// not again as it repeats.
 static void bosonoga_gfx_event(const sapp_event *event, void *user_data) {
   BosonogaGfxRun *run = user_data;
   if (event->type != SAPP_EVENTTYPE_KEY_DOWN || event->key_repeat ||

@@ -38,7 +38,7 @@ typedef struct {
   // Owns a str that new made, which is unset in the block it is declared in.
   gboolean is_new;
   guint block_depth;
-  guint loop_depth;  // How many loops it is in.
+  guint loop_depth;
 } BosonogaVariable;
 
 // Indices in ops of jumps, patched at the end of the loop.
@@ -51,7 +51,7 @@ typedef struct {
   BosonogaTokenizer tokenizer;
   GArray *ops;
   GArray *variables;
-  GArray *constants;  // Top-level compile-time values, shared by functions.
+  GArray *constants;
   guint slot_count;
   guint block_depth;
   GArray *loops;  // Of BosonogaLoop, innermost last.
@@ -83,8 +83,7 @@ void bosonoga_name_font(BosonogaParser *parser, const BosonogaToken *token,
 // the values that it takes.
 gboolean bosonoga_token_is_result(const BosonogaToken *token);
 
-// A word that ends with _fn and has more before it, which only a function's
-// name is.
+// A word that ends with _fn and has more before it.
 gboolean bosonoga_token_is_function_name(const BosonogaToken *token);
 
 gboolean bosonoga_token_is_reserved(const BosonogaParser *parser,
@@ -155,7 +154,6 @@ const BosonogaConstant *bosonoga_find_constant(const BosonogaParser *parser,
                                                const BosonogaToken *token);
 gboolean bosonoga_parse_constant(BosonogaParser *parser, GError **error);
 
-// Of var, or of val, which cannot be set.
 gboolean bosonoga_parse_var(BosonogaParser *parser, gboolean is_val,
                             GError **error);
 
@@ -191,8 +189,6 @@ gboolean bosonoga_parse_types(BosonogaParser *parser, BosonogaValueKind *kinds,
 
 gboolean bosonoga_parse_function(BosonogaParser *parser, GError **error);
 
-// Emits the call or array read, whose results are then taken with
-// BOSONOGA_OP_TAKE_RESULT.
 gboolean bosonoga_parse_call(BosonogaParser *parser, guint *function,
                              GError **error);
 
@@ -200,7 +196,6 @@ gboolean bosonoga_check_single_result(const BosonogaParser *parser,
                                       const BosonogaToken *token, guint index,
                                       GError **error);
 
-// The with ret 0_TYPE that ends a call that var or set ... to takes.
 gboolean bosonoga_parse_taken_result(BosonogaParser *parser, guint index,
                                      GError **error);
 

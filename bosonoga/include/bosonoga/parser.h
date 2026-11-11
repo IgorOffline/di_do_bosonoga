@@ -80,92 +80,61 @@
 //   LOOP       := "to_" digit+
 //
 // - "and" binds tighter than "or", and "not" negates only the comparison after
-//   it. A comparison without compare is of a bool, and is true if the bool
-//   is, so "if done" is "if done eq true_bool". A variable is visible to the
-//   end of its block and cannot hide another.
-// - A val is a variable that is never set after its declaration. Unlike a
-//   const, it can hold a runtime value, as in val half is to_f64 count.
-// - set ... to gives a variable a single value of its type, or a call's.
+//   it. A comparison without compare is of a bool, so "if done" is "if done eq
+//   true_bool". A variable is visible to the end of its block and cannot hide
+//   another.
+// - A val is never set after its declaration, but unlike a const it can hold a
+//   runtime value, as in val half is to_f64 count.
 // - to_subtract and to_divide apply the other values to the first, and a single
-//   value is negated or inverted. to_mod keeps the remainder, with the sign of
-//   the dividend as % and fmod in C, and needs at least two values. Integer
-//   division truncates toward zero. The values in between are exact while
-//   they fit in a signed 128-bit integer, and only the stored result has to fit
-//   in its type: to_add 9223372036854775807_i64 1_i64 -1_i64 gives the largest
-//   i64, and to_subtract 2_u32 3_u32 is a runtime error. Dividing by zero,
-//   math_to_sqrt of a negative number, a negative number math_to_pow a fraction
-//   and a numeric result out of range are runtime errors. Angles are real
-//   radians, and math_to_atan2 takes y, then x.
-// - math_to_abs preserves the type of one number, and gives a u32 or u64 as it
-//   is. The absolute value of the smallest i32 or i64, like -2147483648_i32, is
-//   outside its type and is a runtime error. math_to_min and math_to_max take
-//   exactly two numbers of the same type and preserve that type.
-// - math_to_floor, math_to_ceil and math_to_round preserve f32 or f64. Floor
-//   rounds toward negative infinity, ceil toward positive infinity, and round
-//   to the nearest whole number, with halves away from zero: -2d5_f32 becomes
-//   -3_f32.
-//   Use to_i32 separately when an integer result is needed. These operations
-//   round stored binary values; they do not provide decimal arithmetic.
-// - to_i32, to_i64, to_u32, to_u64, to_f32 and to_f64 accept any numeric type,
-//   including the target type. Conversions are explicit; arithmetic,
-//   comparisons and binary math functions require matching types. A
-//   conversion to an integer first truncates toward zero, and then checks that
-//   the whole number fits, so to_i32 of -2147483648d9_f64 is -2147483648_i32
-//   and to_u32 of -0d9_f32 is 0_u32, but to_u32 of -1_i32 is a runtime error.
-//   Narrowing to f32 checks range before rounding, and an i64 or u64 past 2^53
-//   rounds to the nearest f64. f64 uses double precision; printing uses 17
-//   significant digits (f32 keeps 6).
-// - Real math operations preserve f32 or f64. math_to_log is natural
-//   logarithm, math_to_log10 is base ten, and math_to_exp is the natural
-//   exponential. Logarithms require positive inputs; math_to_asin and
-//   math_to_acos require inputs in [-1, 1]. All angles, including inverse-trig
-//   results, are radians. math_to_tan uses the stored approximate angle; a
-//   near-pole angle may give a large finite result.
-//   Nonfinite inputs and results are rejected; underflow may round to zero.
-//   eq_3 and eq_6 use absolute-or-relative tolerances 1e-3 and 1e-6 for both
-//   real types. Real numbers do not use exact eq or not_eq.
-// - math_to_log1p computes log(1+x) without first rounding 1+x, and requires
-//   x > -1. math_to_expm1 computes exp(x)-1 without subtracting nearly equal
-//   numbers. math_to_hypot takes two same-type reals and computes their
-//   Euclidean norm without unnecessarily squaring huge or tiny operands. These
-//   helpers preserve f32 or f64 and reject results outside that type's finite
-//   range.
-// - A top-level const NAME is value binds an immutable scalar literal, an
-//   earlier constant, or a config value, visible to all later code, including
-//   functions and array rows. Its name cannot be redeclared or shadowed. A
-//   constant cannot depend on a runtime variable or a computed expression.
-//   For example: const pi is 3d141592653589793_f64.
+//   value is negated or inverted. to_mod keeps the remainder with the sign of
+//   the dividend, as % and fmod in C, and needs at least two values. Integer
+//   division truncates toward zero. The values in between are exact in a signed
+//   128-bit integer, and only the stored result has to fit its type, so to_add
+//   9223372036854775807_i64 1_i64 -1_i64 is the largest i64. Dividing by zero,
+//   an input outside the domain of a math function and a result out of range
+//   are runtime errors.
+// - math_to_abs keeps the type, and of the smallest i32 or i64 is a runtime
+//   error. math_to_min and math_to_max take two numbers of one type. The real
+//   math functions keep f32 or f64, take and give radians, and reject nonfinite
+//   inputs and results. math_to_atan2 takes y, then x, and math_to_round rounds
+//   halves away from zero. math_to_log1p, math_to_expm1 and math_to_hypot avoid
+//   the rounding of 1+x and exp(x)-1, and the overflow of squaring.
+// - Conversions are explicit, as arithmetic, comparisons and binary math
+//   functions need matching types. A conversion to an integer truncates toward
+//   zero and then checks that it fits, so to_u32 of -0d9_f32 is 0_u32, but
+//   to_u32 of -1_i32 is a runtime error. f64 prints 17 significant digits and
+//   f32 6. eq_3 and eq_6 compare reals within an absolute-or-relative 1e-3 and
+//   1e-6, and reals have no exact eq or not_eq.
+// - A top-level const binds a literal, an earlier constant or a setting, is
+//   visible to all later code, including functions and array rows, and cannot
+//   be redeclared or shadowed.
 // - An INTEGER must fit in its type, with its minus sign, so -0_u32 is 0_u32,
 //   but -1_u32 is a syntax error.
 // - break and continue apply to the innermost LOOP or while. A LOOP counts
 //   with an i32, and sleep_ms waits a u32 number of milliseconds.
 // - A STRING has no escapes, and cannot hold a quote, a backslash, a newline or
-//   NUL. A str can be stored, printed, compared with eq and not_eq, and set
-//   with set ... to, but not computed with, as to_add and the other updates
-//   are only of numbers. A bool is the same, and is printed as true or false.
-// - new str of joins its values, as info prints them, into a str that it
-//   allocates, of at most BOSONOGA_NEW_STR_LENGTH_MAX bytes. Its var or val
-//   owns it, and unset frees it and ends the variable, whose name can then be
-//   declared again. The unset is a statement of the block of its new, before
-//   the end of that block, and before a return, or a break or continue of a
-//   loop around the new. So that nothing points into it after its unset, it
-//   cannot be set, and is only read by info, a comparison or new str of.
+//   NUL. A str or a bool can be stored, printed, compared with eq and not_eq,
+//   and set with set ... to, but not computed with. A bool prints as true or
+//   false.
+// - new str of joins its values, as info prints them, into a str of at most
+//   BOSONOGA_NEW_STR_LENGTH_MAX bytes, which its var or val owns. unset frees
+//   it and the name, and is in the block of the new, before its end and before
+//   a return, break or continue that leaves it. So that nothing points into it
+//   after that, it cannot be set, and is only read by info, a comparison or
+//   new str of.
 // - A program has either one bosonoga_main or the sections of a gfx program,
-//   before either of which it can have one bosonoga_global, and any number of
-//   functions and arrays. Each can only be used after its definition, so a
-//   function can call itself but two cannot call each other.
-// - A function sees constants, its parameters and its own variables. Everything
-//   is passed and returned by value. The INDEXED types after ret, and those of
-//   an array, are numbered from 0 in order. A return gives one value per type,
-//   and the end of the block is a runtime error for a function with ret. A
-//   function that returns nothing says ret_void, and its return has no
-//   values.
-// - A caller names each value that it takes with its index and type. var and
-//   set ... to take a call that returns one value with "with ret 0_TYPE".
-//   Otherwise "call ... with ret" and a block take them, in the same way for a
-//   function and an array. Each taken value names one of them for the block,
-//   as in 0_f64 as distance, so that it is a variable of the block, which can
-//   take any of them, once each, by increasing index. Words like ret_0_i32
+//   after at most one bosonoga_global, and any number of functions and arrays.
+//   Each can only be used after its definition, so a function can call itself
+//   but two cannot call each other.
+// - A function sees constants, its parameters and its own variables, and
+//   everything is passed and returned by value. The INDEXED types after ret,
+//   and those of an array, are numbered from 0. A return gives one value per
+//   type, and the end of the block of a function with ret is a runtime error.
+//   A function that returns nothing says ret_void.
+// - A caller names each value that it takes by its index and type. var and
+//   set ... to take a call of one value with "with ret 0_TYPE". Otherwise
+//   "call ... with ret" names values for its block, once each, by increasing
+//   index, in the same way for a function and an array. Words like ret_0_i32
 //   are reserved, and are not values:
 //
 //     call task at index with ret
@@ -177,49 +146,36 @@
 //
 //   Calls nest at most BOSONOGA_CALL_DEPTH_MAX deep, and a function cannot have
 //   the statements of gfx_frame.
-// - The values of a call follow "of", and a call of a function without
-//   parameters has none.
-// - An array holds literal or constant rows. Read it with "at" and one i32
-//   index from 0 to return that row. An index without a row is a runtime error.
+// - An array holds literal or constant rows, and "at" an i32 index from 0
+//   reads one. An index without a row is a runtime error.
 // - bosonoga_global runs first and cannot return. The variables at the top of
 //   its block are shared by bosonoga_main and all sections.
 // - A gfx program has one gfx_main and at most one of each other section, in
 //   any order. Only gfx_main can return. In a window, see gfx.h, gfx_init runs
 //   once, gfx_frame once per frame, gfx_main across frames until it returns,
-//   gfx_key_down once each time a key is pressed, but not as it repeats while
-//   held, and gfx_cleanup when the window closes. Without a window, gfx_frame
-//   and gfx_key_down never run.
+//   gfx_key_down once per press, not as the key repeats, and gfx_cleanup when
+//   the window closes. Without a window, gfx_frame and gfx_key_down never run.
 // - A KEY is a key of the [color], [global], [key] or [font] group of the
-//   settings, see settings.h. A color can be stored and printed, and is printed
-//   as RRGGBB. A global is one INTEGER or REAL. A key of [key] names a key of
-//   the keyboard by its native sokol_app name, such as SAPP_KEYCODE_A,
-//   SAPP_KEYCODE_0 or SAPP_KEYCODE_ESCAPE. Its value is an input_key. An
-//   input_key can be stored, printed by that name, and compared with eq or
-//   not_eq. gfx_key is the input_key pressed, and is only in gfx_key_down.
-// - A key of [font] names a TrueType file, relative to the directory of the
-//   settings, like "asset/font/IntelOneMono-Medium.ttf". Its value is a font,
-//   which can be stored, printed as [font] has it, and compared with eq or
-//   not_eq. Only a window reads the file, before gfx_init, and fails if it is
-//   not a font.
-// - gfx_clear, gfx_draw_rectangle (x, y, width, height, color, with y growing
-//   down), gfx_draw_hex and gfx_draw_circle (center x, center y, radius,
-//   color) and gfx_delta_time (seconds since the previous frame) are only in
-//   gfx_frame. A hex is regular and flat-top, with a corner straight right of
-//   its center, and its radius is from the center to a corner, so that it is
-//   2 radius wide and sqrt(3) radius high. A hex or circle whose radius is not
-//   above zero is not drawn. Shapes are drawn in the order of their
-//   statements, each over the ones before it.
-// - gfx_draw_text (align, x, y, font, size, color, then what it draws) is only
-//   in gfx_frame, and is a shape too. It joins its values as info prints them,
-//   into at most BOSONOGA_DRAW_TEXT_LENGTH_MAX bytes, and draws them in one
-//   line, with fontstash. HALIGN says whether x is the left, the center or
-//   the right of the text, and VALIGN whether y is its top, middle, baseline
-//   or bottom, from the ascender and descender of the font. Size is the f32
-//   height from the ascender to the descender in pixels, so that it is the
-//   height of a line in a font without a line gap: corela's 20 pixels per em
-//   of Intel One Mono, whose ascender and descender are 1.38 em apart, is
-//   27d6_f32. A text whose size is not above zero is not drawn. The words of
-//   HALIGN and VALIGN are not reserved, so left can also be a variable.
+//   settings, see settings.h. A color prints as RRGGBB, and a global is one
+//   INTEGER or REAL. A key of [key] names a keyboard key by its sokol_app name,
+//   like SAPP_KEYCODE_ESCAPE, and is an input_key, which prints by that name.
+//   A key of [font] names a TrueType file relative to the settings, and is a
+//   font, which prints as [font] has it. Only a window reads the file, before
+//   gfx_init. An input_key or a font compares only with eq or not_eq.
+//   gfx_key is the input_key pressed, and is only in gfx_key_down.
+// - gfx_clear, the gfx_draw statements and gfx_delta_time (seconds since the
+//   previous frame) are only in gfx_frame. Shapes, with y growing down, are
+//   drawn in the order of their statements, each over the ones before it. A
+//   rectangle is x, y, width, height and color, and a hex or circle center x,
+//   center y, radius and color. A hex is regular and flat-top, with a corner
+//   straight right of its center, which its radius reaches. A hex, circle or
+//   text whose radius or size is not above zero is not drawn.
+// - gfx_draw_text (align, x, y, font, size, color, then what it draws) joins
+//   its values as info prints them, into at most BOSONOGA_DRAW_TEXT_LENGTH_MAX
+//   bytes, and draws them in one line with fontstash. HALIGN and VALIGN say
+//   where x and y are on the text, from the ascender and descender of the font,
+//   and are not reserved words. Size is the f32 pixel height from the ascender
+//   to the descender, so 20 pixels per em of Intel One Mono is 27d6_f32.
 
 typedef enum {
   BOSONOGA_SECTION_MAIN,
@@ -252,7 +208,7 @@ typedef enum {
   BOSONOGA_COMPARE_SHIFT_HAS,
 } BosonogaCompareKind;
 
-// Where the x and y of a text are, of one horizontal and one vertical, as in fontstash.
+// The values of fontstash, one horizontal and one vertical for a text.
 typedef enum {
   BOSONOGA_GFX_ALIGN_LEFT = 1 << 0,
   BOSONOGA_GFX_ALIGN_CENTER = 1 << 1,
@@ -313,7 +269,7 @@ typedef enum {
   BOSONOGA_OP_DRAW_RECTANGLE,
   BOSONOGA_OP_DRAW_HEX,
   BOSONOGA_OP_DRAW_CIRCLE,
-  BOSONOGA_OP_DRAW_TEXT_PART,  // Appends a value to the text that draw draws.
+  BOSONOGA_OP_DRAW_TEXT_PART,
   BOSONOGA_OP_DRAW_TEXT,
   BOSONOGA_OP_GFX_DELTA_TIME,
   BOSONOGA_OP_GFX_KEY,
@@ -323,7 +279,7 @@ typedef enum {
   BOSONOGA_OP_FUNCTION_RETURN,
   BOSONOGA_OP_TAKE_RESULT,
   BOSONOGA_OP_ARRAY_READ,
-  BOSONOGA_OP_NEW_STR_PART,  // Appends a value to the str that new makes.
+  BOSONOGA_OP_NEW_STR_PART,
   BOSONOGA_OP_NEW_STR,
   BOSONOGA_OP_UNSET,
 } BosonogaOpKind;
@@ -341,22 +297,20 @@ typedef struct {
   gint32 integer;  // Also the BosonogaGfxAlign of gfx_draw_text.
   BosonogaOperand left;
   BosonogaOperand right;
-  BosonogaOperand third;   // gfx_draw statement
-  BosonogaOperand fourth;  // gfx_draw statement
-  BosonogaOperand fifth;   // gfx_draw statement
+  // Of the gfx_draw statements.
+  BosonogaOperand third;
+  BosonogaOperand fourth;
+  BosonogaOperand fifth;
 } BosonogaOp;
 
-// The most bytes of a text that gfx_draw_text draws.
 #define BOSONOGA_DRAW_TEXT_LENGTH_MAX 1024
 
-// A font that the program names, which a window loads before gfx_init.
 typedef struct {
   gchar *key;   // Of [font].
   gchar *text;  // As [font] has it, printed for a font value.
   gchar *path;
 } BosonogaProgramFont;
 
-// The most bytes of a str that new makes.
 #define BOSONOGA_NEW_STR_LENGTH_MAX 1024
 
 // The most values that a function takes or returns, and of a row.

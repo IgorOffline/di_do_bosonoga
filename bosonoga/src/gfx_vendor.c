@@ -1,5 +1,4 @@
-// The implementations of the vendored single-header libraries of the window,
-// so that gfx.c only includes their declarations.
+// So that gfx.c only includes the declarations of the vendored headers.
 #define SOKOL_IMPL
 #define SOKOL_GLCORE
 #define SOKOL_NO_ENTRY

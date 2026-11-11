@@ -99,7 +99,6 @@ static gboolean bosonoga_parse_return(BosonogaParser *parser,
   return bosonoga_advance(parser, error);
 }
 
-// Frees what new made, and frees its name to be declared again.
 static gboolean bosonoga_parse_unset(BosonogaParser *parser, GError **error) {
   const BosonogaToken name = parser->tokenizer.token;
   if (name.kind != BOSONOGA_TOKEN_WORD ||
@@ -256,7 +255,6 @@ static const BosonogaAlignWord bosonoga_vertical_aligns[] = {
     {"bottom", BOSONOGA_GFX_ALIGN_BOTTOM},
 };
 
-// The words are not reserved, as nothing else can be where they are.
 static gboolean bosonoga_parse_align(BosonogaParser *parser,
                                      const BosonogaAlignWord *words,
                                      gsize count, const gchar *expected,
