@@ -30,6 +30,17 @@ gboolean bosonoga_parse_block(BosonogaParser *parser, GError **error) {
       return FALSE;
     }
   }
+  for (guint i = visible_count; i < parser->variables->len; ++i) {
+    const BosonogaVariable *variable =
+        &g_array_index(parser->variables, BosonogaVariable, i);
+    if (variable->is_new) {
+      return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                              BOSONOGA_ERROR_SYNTAX,
+                              "'%.*s' is new, and is unset before the end of "
+                              "its block",
+                              (gint)variable->length, variable->name);
+    }
+  }
   // The variables at the top of bosonoga_global are shared by later sections.
   if (parser->section != BOSONOGA_SECTION_GLOBAL || parser->block_depth != 1) {
     g_array_set_size(parser->variables, visible_count);
@@ -44,6 +55,7 @@ static gboolean bosonoga_parse_info(BosonogaParser *parser,
   if (!bosonoga_at_value(parser)) {
     return bosonoga_parse_error(parser, "a value", error);
   }
+  parser->reads_new = TRUE;
   while (bosonoga_at_value(parser)) {
     const BosonogaToken value_token = parser->tokenizer.token;
     BosonogaOperand value;
@@ -52,6 +64,7 @@ static gboolean bosonoga_parse_info(BosonogaParser *parser,
     }
     bosonoga_emit(parser, BOSONOGA_OP_PRINT_VALUE, &value_token)->left = value;
   }
+  parser->reads_new = FALSE;
 
   bosonoga_emit(parser, BOSONOGA_OP_PRINT_NEWLINE, start);
   return TRUE;
@@ -83,6 +96,36 @@ static gboolean bosonoga_parse_return(BosonogaParser *parser,
     return bosonoga_parse_error(parser, "exit_success or exit_failure", error);
   }
   bosonoga_emit(parser, BOSONOGA_OP_RETURN, start)->integer = status;
+  return bosonoga_advance(parser, error);
+}
+
+// Frees what new made, and frees its name to be declared again.
+static gboolean bosonoga_parse_unset(BosonogaParser *parser, GError **error) {
+  const BosonogaToken name = parser->tokenizer.token;
+  if (name.kind != BOSONOGA_TOKEN_WORD ||
+      bosonoga_token_is_reserved(parser, &name)) {
+    return bosonoga_parse_error(parser, "a variable name", error);
+  }
+  const BosonogaVariable *variable = bosonoga_find_variable(parser, &name);
+  if (variable == NULL) {
+    return bosonoga_fail_unknown_variable(parser, &name, error);
+  }
+  g_autofree gchar *shown = bosonoga_token_shown(&name);
+  if (!variable->is_new) {
+    return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_TYPE,
+                            "'%s' is not new, and only what new made is unset",
+                            shown);
+  }
+  // A visible variable of the same depth is of this block.
+  if (variable->block_depth != parser->block_depth) {
+    return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_SYNTAX,
+                            "'%s' is unset in the block where it is new",
+                            shown);
+  }
+  bosonoga_emit(parser, BOSONOGA_OP_UNSET, &name)->slot = variable->slot;
+  g_array_remove_index(parser->variables,
+                       (guint)(variable - &g_array_index(parser->variables,
+                                                         BosonogaVariable, 0)));
   return bosonoga_advance(parser, error);
 }
 
@@ -168,6 +211,33 @@ static gboolean bosonoga_parse_gfx_draw_hex(BosonogaParser *parser,
   return TRUE;
 }
 
+static gboolean bosonoga_parse_gfx_draw_circle(BosonogaParser *parser,
+                                               const BosonogaToken *start,
+                                               GError **error) {
+  const gchar *context = "gfx_draw_circle";
+  BosonogaOperand x;
+  BosonogaOperand y;
+  BosonogaOperand radius;
+  BosonogaOperand color;
+  if (!bosonoga_check_in_frame(parser, start, error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_F32, context, &x,
+                                    error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_F32, context, &y,
+                                    error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_F32, context,
+                                    &radius, error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_COLOR, context,
+                                    &color, error)) {
+    return FALSE;
+  }
+  BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_DRAW_CIRCLE, start);
+  op->left = x;
+  op->right = y;
+  op->third = radius;
+  op->fourth = color;
+  return TRUE;
+}
+
 static gboolean bosonoga_parse_statement(BosonogaParser *parser,
                                          GError **error) {
   const BosonogaToken start = parser->tokenizer.token;
@@ -178,6 +248,7 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
       !bosonoga_token_is_word(&start, "var") &&
       !bosonoga_token_is_word(&start, "val") &&
       !bosonoga_token_is_word(&start, "set") &&
+      !bosonoga_token_is_word(&start, "unset") &&
       !bosonoga_token_is_word(&start, "call") &&
       !bosonoga_token_is_word(&start, "if") &&
       !bosonoga_token_is_word(&start, "while") &&
@@ -188,7 +259,8 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
       !bosonoga_token_is_word(&start, "return") &&
       !bosonoga_token_is_word(&start, "gfx_clear") &&
       !bosonoga_token_is_word(&start, "gfx_draw_rectangle") &&
-      !bosonoga_token_is_word(&start, "gfx_draw_hex")) {
+      !bosonoga_token_is_word(&start, "gfx_draw_hex") &&
+      !bosonoga_token_is_word(&start, "gfx_draw_circle")) {
     return bosonoga_parse_error(parser, "a statement", error);
   }
   if (!bosonoga_advance(parser, error)) {
@@ -205,6 +277,9 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   }
   if (bosonoga_token_is_word(&start, "set")) {
     return bosonoga_parse_set(parser, error);
+  }
+  if (bosonoga_token_is_word(&start, "unset")) {
+    return bosonoga_parse_unset(parser, error);
   }
   if (bosonoga_token_is_word(&start, "call")) {
     return bosonoga_parse_call_statement(parser, &start, error);
@@ -223,6 +298,12 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
     return bosonoga_parse_sleep(parser, &start, error);
   }
   if (bosonoga_token_is_word(&start, "return")) {
+    const BosonogaVariable *owner = bosonoga_find_new(parser, FALSE);
+    if (owner != NULL) {
+      return bosonoga_fail_at(parser, &start, error, BOSONOGA_ERROR_SYNTAX,
+                              "unset '%.*s' before return", (gint)owner->length,
+                              owner->name);
+    }
     return parser->in_function
                ? bosonoga_parse_function_return(parser, &start, error)
                : bosonoga_parse_return(parser, &start, error);
@@ -235,6 +316,9 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   }
   if (bosonoga_token_is_word(&start, "gfx_draw_hex")) {
     return bosonoga_parse_gfx_draw_hex(parser, &start, error);
+  }
+  if (bosonoga_token_is_word(&start, "gfx_draw_circle")) {
+    return bosonoga_parse_gfx_draw_circle(parser, &start, error);
   }
   return TRUE;  // nihil
 }

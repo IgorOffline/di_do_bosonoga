@@ -8,12 +8,54 @@ static gboolean bosonoga_at_name(const BosonogaParser *parser) {
          !bosonoga_token_is_reserved(parser, token);
 }
 
-static void bosonoga_declare(BosonogaParser *parser, const BosonogaToken *name,
-                             BosonogaValueKind kind, guint slot,
-                             gboolean is_val) {
+static BosonogaVariable *bosonoga_declare(BosonogaParser *parser,
+                                          const BosonogaToken *name,
+                                          BosonogaValueKind kind, guint slot,
+                                          gboolean is_val) {
   bosonoga_declare_variable(parser, name, kind, slot);
-  g_array_index(parser->variables, BosonogaVariable, parser->variables->len - 1)
-      .is_val = is_val;
+  BosonogaVariable *variable = &g_array_index(
+      parser->variables, BosonogaVariable, parser->variables->len - 1);
+  variable->is_val = is_val;
+  return variable;
+}
+
+// After new, of new TYPE of value+, which joins the values as info prints them.
+static gboolean bosonoga_parse_new(BosonogaParser *parser,
+                                   const BosonogaToken *name, gboolean is_val,
+                                   GError **error) {
+  const BosonogaToken type = parser->tokenizer.token;
+  BosonogaValueKind kind = BOSONOGA_VALUE_STR;
+  if (type.kind != BOSONOGA_TOKEN_WORD ||
+      !bosonoga_value_kind_named(type.text, type.length, &kind)) {
+    return bosonoga_parse_error(parser, "a type, as in new str of", error);
+  }
+  if (kind != BOSONOGA_VALUE_STR) {
+    return bosonoga_fail_at(parser, &type, error, BOSONOGA_ERROR_TYPE,
+                            "new makes only a str, as in new str of "
+                            "\"A\"_str 1_i32");
+  }
+  if (!bosonoga_advance(parser, error) ||
+      !bosonoga_expect_word(parser, "of", error)) {
+    return FALSE;
+  }
+  if (!bosonoga_at_value(parser)) {
+    return bosonoga_parse_error(parser, "a value", error);
+  }
+  parser->reads_new = TRUE;
+  while (bosonoga_at_value(parser)) {
+    const BosonogaToken part = parser->tokenizer.token;
+    BosonogaOperand value;
+    if (!bosonoga_parse_value(parser, &value, error)) {
+      return FALSE;
+    }
+    bosonoga_emit(parser, BOSONOGA_OP_NEW_STR_PART, &part)->left = value;
+  }
+  parser->reads_new = FALSE;
+  const guint slot = parser->slot_count++;
+  bosonoga_emit(parser, BOSONOGA_OP_NEW_STR, name)->slot = slot;
+  bosonoga_declare(parser, name, BOSONOGA_VALUE_STR, slot, is_val)->is_new =
+      TRUE;
+  return TRUE;
 }
 
 gboolean bosonoga_parse_var(BosonogaParser *parser, gboolean is_val,
@@ -31,6 +73,10 @@ gboolean bosonoga_parse_var(BosonogaParser *parser, gboolean is_val,
   }
   if (!bosonoga_expect_word(parser, "is", error)) {
     return FALSE;
+  }
+  if (bosonoga_at_word(parser, "new")) {
+    return bosonoga_advance(parser, error) &&
+           bosonoga_parse_new(parser, &name, is_val, error);
   }
 
   // Declared after the call, so that its arguments cannot refer to it.
@@ -191,6 +237,12 @@ gboolean bosonoga_parse_set(BosonogaParser *parser, GError **error) {
   const BosonogaVariable *found = bosonoga_find_variable(parser, &name);
   if (found == NULL) {
     return bosonoga_fail_unknown_variable(parser, &name, error);
+  }
+  if (found->is_new) {
+    return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_TYPE,
+                            "'%s' is new and cannot be set, but it can be "
+                            "unset and declared again",
+                            shown);
   }
   if (found->is_val) {
     return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_TYPE,

@@ -22,6 +22,11 @@ static gboolean bosonoga_parse_section(BosonogaParser *parser,
     bosonoga_emit(parser, BOSONOGA_OP_GFX_DELTA_TIME, &parser->tokenizer.token)
         ->slot = parser->delta_time_slot;
   }
+  if (section == BOSONOGA_SECTION_GFX_KEY_DOWN) {
+    parser->key_slot = parser->slot_count++;
+    bosonoga_emit(parser, BOSONOGA_OP_GFX_KEY, &parser->tokenizer.token)->slot =
+        parser->key_slot;
+  }
   if (!bosonoga_parse_block(parser, error)) {
     return FALSE;
   }
@@ -42,6 +47,7 @@ static gboolean bosonoga_parse_gfx_section(BosonogaParser *parser,
       {"gfx_init", BOSONOGA_SECTION_GFX_INIT},
       {"gfx_frame", BOSONOGA_SECTION_GFX_FRAME},
       {"gfx_cleanup", BOSONOGA_SECTION_GFX_CLEANUP},
+      {"gfx_key_down", BOSONOGA_SECTION_GFX_KEY_DOWN},
       {"gfx_main", BOSONOGA_SECTION_MAIN},
   };
   gsize i = 0;
@@ -101,13 +107,12 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
     } else {
       const gchar *what =
           has_gfx_section ? "const, def, array, gfx_init, gfx_frame, "
-                            "gfx_cleanup or gfx_main"
+                            "gfx_cleanup, gfx_key_down or gfx_main"
           : parser->has_section[BOSONOGA_SECTION_GLOBAL]
               ? "const, def, array, bosonoga_main, gfx_init, gfx_frame, "
-                "gfx_cleanup "
-                "or gfx_main"
+                "gfx_cleanup, gfx_key_down or gfx_main"
               : "const, def, array, bosonoga_global, bosonoga_main, gfx_init, "
-                "gfx_frame, gfx_cleanup or gfx_main";
+                "gfx_frame, gfx_cleanup, gfx_key_down or gfx_main";
       if (!bosonoga_parse_gfx_section(parser, what, error)) {
         return FALSE;
       }

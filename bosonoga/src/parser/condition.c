@@ -59,7 +59,8 @@ static gboolean bosonoga_check_compare(const BosonogaParser *parser,
     return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
                             "colors cannot be compared");
   }
-  if ((left == BOSONOGA_VALUE_STR || left == BOSONOGA_VALUE_BOOL) &&
+  if ((left == BOSONOGA_VALUE_STR || left == BOSONOGA_VALUE_BOOL ||
+       left == BOSONOGA_VALUE_INPUT_KEY) &&
       compare != BOSONOGA_COMPARE_EQ && compare != BOSONOGA_COMPARE_NOT_EQ) {
     return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
                             "%s can only be compared with eq or not_eq",
@@ -108,6 +109,7 @@ static gboolean bosonoga_parse_comparison(BosonogaParser *parser,
     return FALSE;
   }
   const BosonogaToken left_token = parser->tokenizer.token;
+  parser->reads_new = TRUE;
   if (!bosonoga_parse_value(parser, &left, error)) {
     return FALSE;
   }
@@ -127,6 +129,7 @@ static gboolean bosonoga_parse_comparison(BosonogaParser *parser,
   } else {
     return bosonoga_parse_error(parser, "a comparison", error);
   }
+  parser->reads_new = FALSE;
 
   const guint jump = parser->ops->len;
   BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_JUMP_UNLESS, &operation);

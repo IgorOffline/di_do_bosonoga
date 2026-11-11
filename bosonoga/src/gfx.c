@@ -19,7 +19,8 @@
 #define BOSONOGA_GFX_FRAME_MICROSECONDS (G_USEC_PER_SEC / 60)
 #define BOSONOGA_GFX_VERTICES_PER_RECTANGLE 6U
 #define BOSONOGA_GFX_HEX_CORNERS 6U
-#define BOSONOGA_GFX_VERTICES_PER_HEX (3U * BOSONOGA_GFX_HEX_CORNERS)
+// Enough that a circle of corela's size looks round.
+#define BOSONOGA_GFX_CIRCLE_CORNERS 48U
 #define BOSONOGA_GFX_COLOR_CHANNELS 4
 
 static const gchar bosonoga_gfx_vertex_shader[] =
@@ -161,7 +162,9 @@ static guint bosonoga_gfx_vertex_count(const BosonogaGfxShape *shape) {
     case BOSONOGA_GFX_RECTANGLE:
       return BOSONOGA_GFX_VERTICES_PER_RECTANGLE;
     case BOSONOGA_GFX_HEX:
-      return BOSONOGA_GFX_VERTICES_PER_HEX;
+      return 3U * BOSONOGA_GFX_HEX_CORNERS;
+    case BOSONOGA_GFX_CIRCLE:
+      return 3U * BOSONOGA_GFX_CIRCLE_CORNERS;
   }
   g_return_val_if_reached(0);
 }
@@ -183,24 +186,24 @@ static void bosonoga_gfx_rectangle_vertices(
   }
 }
 
-// A fan of one triangle per side, around the center. Corner i is at i sixths
-// of a turn, as in corela, so that the first is straight right.
-static void bosonoga_gfx_hex_vertices(
-    const BosonogaGfxShape *hex,
+// A fan of one triangle per side of a regular polygon, around its center.
+// Corner i is at i of corner_count parts of a turn, so that the first is
+// straight right, as in corela.
+static void bosonoga_gfx_fan_vertices(
+    const BosonogaGfxShape *shape, guint corner_count,
     const gfloat channels[BOSONOGA_GFX_COLOR_CHANNELS],
-    BosonogaGfxGpuVertex vertices[BOSONOGA_GFX_VERTICES_PER_HEX]) {
-  gfloat corners[BOSONOGA_GFX_HEX_CORNERS + 1][2];
-  for (guint i = 0; i <= BOSONOGA_GFX_HEX_CORNERS; ++i) {
-    const gfloat angle =
-        (gfloat)i * (gfloat)(2.0 * G_PI / BOSONOGA_GFX_HEX_CORNERS);
-    corners[i][0] = hex->x + hex->radius * cosf(angle);
-    corners[i][1] = hex->y + hex->radius * sinf(angle);
-  }
-  for (guint i = 0; i < BOSONOGA_GFX_HEX_CORNERS; ++i) {
+    BosonogaGfxGpuVertex *vertices) {
+  const gfloat step = (gfloat)(2.0 * G_PI) / (gfloat)corner_count;
+  for (guint i = 0; i < corner_count; ++i) {
+    const gfloat start = (gfloat)i * step;
+    const gfloat end = (gfloat)(i + 1) * step;
     BosonogaGfxGpuVertex *triangle = &vertices[3 * i];
-    bosonoga_gfx_vertex(hex->x, hex->y, channels, &triangle[0]);
-    bosonoga_gfx_vertex(corners[i][0], corners[i][1], channels, &triangle[1]);
-    bosonoga_gfx_vertex(corners[i + 1][0], corners[i + 1][1], channels,
+    bosonoga_gfx_vertex(shape->x, shape->y, channels, &triangle[0]);
+    bosonoga_gfx_vertex(shape->x + shape->radius * cosf(start),
+                        shape->y + shape->radius * sinf(start), channels,
+                        &triangle[1]);
+    bosonoga_gfx_vertex(shape->x + shape->radius * cosf(end),
+                        shape->y + shape->radius * sinf(end), channels,
                         &triangle[2]);
   }
 }
@@ -240,7 +243,12 @@ static gsize bosonoga_gfx_upload_shapes(BosonogaGfxRun *run) {
         bosonoga_gfx_rectangle_vertices(shape, channels, next);
         break;
       case BOSONOGA_GFX_HEX:
-        bosonoga_gfx_hex_vertices(shape, channels, next);
+        bosonoga_gfx_fan_vertices(shape, BOSONOGA_GFX_HEX_CORNERS, channels,
+                                  next);
+        break;
+      case BOSONOGA_GFX_CIRCLE:
+        bosonoga_gfx_fan_vertices(shape, BOSONOGA_GFX_CIRCLE_CORNERS, channels,
+                                  next);
         break;
     }
     next += bosonoga_gfx_vertex_count(shape);
@@ -302,6 +310,18 @@ static void bosonoga_gfx_frame(void *user_data) {
   sapp_quit();
 }
 
+// As in corela, a key held down runs gfx_key_down once,
+// not again as it repeats.
+static void bosonoga_gfx_event(const sapp_event *event, void *user_data) {
+  BosonogaGfxRun *run = user_data;
+  if (event->type != SAPP_EVENTTYPE_KEY_DOWN || event->key_repeat ||
+      !run->initialized || run->ended) {
+    return;
+  }
+  run->scene.key = (guint32)event->key_code;
+  bosonoga_gfx_run_callback(run, BOSONOGA_SECTION_GFX_KEY_DOWN);
+}
+
 static void bosonoga_gfx_cleanup(void *user_data) {
   BosonogaGfxRun *run = user_data;
   if (!run->ended) {
@@ -336,6 +356,7 @@ gboolean bosonoga_gfx_run(const BosonogaProgram *program,
       .init_userdata_cb = bosonoga_gfx_init,
       .frame_userdata_cb = bosonoga_gfx_frame,
       .cleanup_userdata_cb = bosonoga_gfx_cleanup,
+      .event_userdata_cb = bosonoga_gfx_event,
       .width = settings->gfx_width,
       .height = settings->gfx_height,
       .depth_format = SAPP_PIXELFORMAT_NONE,

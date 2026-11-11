@@ -24,6 +24,8 @@ BosonogaExecution *bosonoga_execution_new(const BosonogaProgram *program,
   execution->stack = g_array_sized_new(FALSE, TRUE, sizeof(BosonogaValue),
                                        BOSONOGA_STACK_RESERVED);
   execution->calls = g_array_new(FALSE, FALSE, sizeof(BosonogaCall));
+  execution->join = g_string_new(NULL);
+  execution->owned = g_ptr_array_new_with_free_func(g_free);
   return execution;
 }
 
@@ -33,6 +35,8 @@ void bosonoga_execution_free(BosonogaExecution *execution) {
   }
   g_array_unref(execution->stack);
   g_array_unref(execution->calls);
+  g_string_free(execution->join, TRUE);
+  g_ptr_array_unref(execution->owned);
   g_free(execution);
 }
 

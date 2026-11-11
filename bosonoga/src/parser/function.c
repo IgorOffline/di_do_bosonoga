@@ -127,19 +127,21 @@ gboolean bosonoga_parse_types(BosonogaParser *parser, BosonogaValueKind *kinds,
   return TRUE;
 }
 
-// The type is after the last underscore, as in count_i32.
+// The type is after an underscore, as in count_i32, and a type can have one
+// of its own, as in pressed_input_key.
 static gboolean bosonoga_parameter_kind(const BosonogaToken *token,
                                         BosonogaValueKind *kind) {
   if (token->kind != BOSONOGA_TOKEN_WORD) {
     return FALSE;
   }
-  gsize underscore = token->length;
-  while (underscore > 0 && token->text[underscore - 1] != '_') {
-    --underscore;
+  for (gsize start = token->length; start > 1; --start) {
+    if (token->text[start - 1] == '_' &&
+        bosonoga_value_kind_named(token->text + start, token->length - start,
+                                  kind)) {
+      return TRUE;
+    }
   }
-  return underscore > 1 &&
-         bosonoga_value_kind_named(token->text + underscore,
-                                   token->length - underscore, kind);
+  return FALSE;
 }
 
 static gboolean bosonoga_parse_function_rest(BosonogaParser *parser,

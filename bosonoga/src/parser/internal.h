@@ -15,7 +15,9 @@
 #define BOSONOGA_LOOP_PREFIX "to_"
 #define BOSONOGA_COLOR_PREFIX "color_"
 #define BOSONOGA_GLOBAL_PREFIX "global_"
+#define BOSONOGA_KEY_PREFIX "key_"
 #define BOSONOGA_DELTA_TIME_WORD "gfx_delta_time"
+#define BOSONOGA_KEY_WORD "gfx_key"
 #define BOSONOGA_RESULT_PREFIX "ret_"
 #define BOSONOGA_FUNCTION_SUFFIX "_fn"
 #define BOSONOGA_VOID_WORD "ret_void"
@@ -32,6 +34,10 @@ typedef struct {
   BosonogaValueKind kind;
   guint slot;
   gboolean is_val;
+  // Owns a str that new made, which is unset in the block it is declared in.
+  gboolean is_new;
+  guint block_depth;
+  guint loop_depth;  // How many loops it is in.
 } BosonogaVariable;
 
 // Indices in ops of jumps, patched at the end of the loop.
@@ -52,9 +58,12 @@ typedef struct {
   GArray *functions;
   gboolean in_function;  // Then the function is the last of functions.
   guint delta_time_slot;
+  guint key_slot;
   gboolean has_section[BOSONOGA_SECTION_COUNT];
   BosonogaProgram *program;
   const BosonogaSettings *settings;
+  // While the value parsed is only read, as in info, so that it can be new.
+  gboolean reads_new;
 } BosonogaParser;
 
 gboolean bosonoga_token_is_word(const BosonogaToken *token, const gchar *word);
@@ -110,6 +119,10 @@ void bosonoga_patch_jumps_to_here(BosonogaParser *parser, const GArray *jumps);
 
 const BosonogaVariable *bosonoga_find_variable(const BosonogaParser *parser,
                                                const BosonogaToken *token);
+
+// The first variable that is new, or only of those in the innermost loop.
+const BosonogaVariable *bosonoga_find_new(const BosonogaParser *parser,
+                                          gboolean in_loop);
 
 void bosonoga_declare_variable(BosonogaParser *parser,
                                const BosonogaToken *name,

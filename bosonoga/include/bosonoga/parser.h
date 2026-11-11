@@ -10,8 +10,8 @@
 //   program    := item+
 //   item       := ("bosonoga_global" | "bosonoga_main") block | section
 //                 | function | array | "const" NAME "is" value
-//   section    := ("gfx_init" | "gfx_frame" | "gfx_cleanup" | "gfx_main")
-//                 block
+//   section    := ("gfx_init" | "gfx_frame" | "gfx_cleanup" | "gfx_key_down"
+//                 | "gfx_main") block
 //   function   := "def" FUNCTION PARAMETER* ("ret" INDEXED+ | "ret_void")
 //                 block
 //   array      := "array" NAME INDEXED+ "di" row+ "do"
@@ -19,7 +19,8 @@
 //   block      := "di" statement+ "do"
 //   statement  := "info" value+
 //               | ("var" | "val") NAME "is"
-//                 (initial | call "with" "ret" INDEXED)
+//                 (initial | call "with" "ret" INDEXED | new)
+//               | "unset" NAME
 //               | "set" NAME update
 //               | "set" NAME "to" (value | call "with" "ret" INDEXED)
 //               | "call" call ("with" "ret" taken+ block)?
@@ -33,7 +34,9 @@
 //               | "gfx_clear" value
 //               | "gfx_draw_rectangle" value value value value value
 //               | "gfx_draw_hex" value value value value
+//               | "gfx_draw_circle" value value value value
 //   initial    := conversion | value ("shift_or" value)*
+//   new        := "new" "str" "of" value+
 //   update     := conversion
 //               | ("to_add" | "to_subtract" | "to_multiply" | "to_divide"
 //                 | "to_mod") value+
@@ -55,9 +58,9 @@
 //   compare    := "gt" | "lt" | "ge" | "le" | "eq" | "not_eq" | "eq_3" | "eq_6"
 //               | "not_eq_3" | "not_eq_6" | "shift_has"
 //   value      := INTEGER | REAL | STRING | BOOL | SHIFT | COLOR | GLOBAL
-//               | "gfx_delta_time" | NAME
+//               | KEY_VALUE | "gfx_delta_time" | "gfx_key" | NAME
 //   TYPE       := "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "flags"
-//               | "color" | "str" | "bool"
+//               | "color" | "str" | "bool" | "input_key"
 //   FUNCTION   := NAME "_fn", like divide_fn, which no other name is
 //   PARAMETER  := NAME, which ends with "_" TYPE, like count_i32
 //   INDEXED    := digit+ "_" TYPE, like 0_i32 and 1_str
@@ -68,6 +71,7 @@
 //   SHIFT      := "shift_" digit+
 //   COLOR      := "color_" KEY
 //   GLOBAL     := "global_" KEY
+//   KEY_VALUE  := "key_" KEY
 //   LOOP       := "to_" digit+
 //
 // - "and" binds tighter than "or", and "not" negates only the comparison after
@@ -134,6 +138,13 @@
 //   NUL. A str can be stored, printed, compared with eq and not_eq, and set
 //   with set ... to, but not computed with, as to_add and the other updates
 //   are only of numbers. A bool is the same, and is printed as true or false.
+// - new str of joins its values, as info prints them, into a str that it
+//   allocates, of at most BOSONOGA_NEW_STR_LENGTH_MAX bytes. Its var or val
+//   owns it, and unset frees it and ends the variable, whose name can then be
+//   declared again. The unset is a statement of the block of its new, before
+//   the end of that block, and before a return, or a break or continue of a
+//   loop around the new. So that nothing points into it after its unset, it
+//   cannot be set, and is only read by info, a comparison or new str of.
 // - A program has either one bosonoga_main or the sections of a gfx program,
 //   before either of which it can have one bosonoga_global, and any number of
 //   functions and arrays. Each can only be used after its definition, so a
@@ -170,17 +181,23 @@
 // - A gfx program has one gfx_main and at most one of each other section, in
 //   any order. Only gfx_main can return. In a window, see gfx.h, gfx_init runs
 //   once, gfx_frame once per frame, gfx_main across frames until it returns,
-//   and gfx_cleanup when the window closes. Without a window, gfx_frame never
-//   runs.
-// - A KEY is a key of the [color] or [global] group of the settings, see
-//   settings.h. A color can be stored and printed, and is printed as RRGGBB. A
-//   global is one INTEGER or REAL. gfx_clear, gfx_draw_rectangle (x, y, width,
-//   height, color, with y growing down), gfx_draw_hex (center x, center y,
-//   radius, color) and gfx_delta_time (seconds since the previous frame) are
-//   only in gfx_frame. A hex is regular and flat-top, with a corner straight
-//   right of its center, and its radius is from the center to a corner, so
-//   that it is 2 radius wide and sqrt(3) radius high. A hex whose radius is
-//   not above zero is not drawn. Shapes are drawn in the order of their
+//   gfx_key_down once each time a key is pressed, but not as it repeats while
+//   held, and gfx_cleanup when the window closes. Without a window, gfx_frame
+//   and gfx_key_down never run.
+// - A KEY is a key of the [color], [global] or [key] group of the settings,
+//   see settings.h. A color can be stored and printed, and is printed as
+//   RRGGBB. A global is one INTEGER or REAL. A key of [key] names a key of the
+//   keyboard as miniquad does, so A to Z, Key0 to Key9, Space, Escape, Enter,
+//   Tab, Backspace, Left, Right, Up or Down, and its value is an input_key. An
+//   input_key can be stored, printed by that name, and compared with eq or
+//   not_eq. gfx_key is the input_key pressed, and is only in gfx_key_down.
+// - gfx_clear, gfx_draw_rectangle (x, y, width, height, color, with y growing
+//   down), gfx_draw_hex and gfx_draw_circle (center x, center y, radius,
+//   color) and gfx_delta_time (seconds since the previous frame) are only in
+//   gfx_frame. A hex is regular and flat-top, with a corner straight right of
+//   its center, and its radius is from the center to a corner, so that it is
+//   2 radius wide and sqrt(3) radius high. A hex or circle whose radius is not
+//   above zero is not drawn. Shapes are drawn in the order of their
 //   statements, each over the ones before it.
 
 typedef enum {
@@ -188,6 +205,7 @@ typedef enum {
   BOSONOGA_SECTION_GFX_INIT,
   BOSONOGA_SECTION_GFX_FRAME,
   BOSONOGA_SECTION_GFX_CLEANUP,
+  BOSONOGA_SECTION_GFX_KEY_DOWN,
   BOSONOGA_SECTION_GLOBAL,
   BOSONOGA_SECTION_COUNT,
 } BosonogaSection;
@@ -262,13 +280,18 @@ typedef enum {
   BOSONOGA_OP_GFX_CLEAR,
   BOSONOGA_OP_DRAW_RECTANGLE,
   BOSONOGA_OP_DRAW_HEX,
+  BOSONOGA_OP_DRAW_CIRCLE,
   BOSONOGA_OP_GFX_DELTA_TIME,
+  BOSONOGA_OP_GFX_KEY,
   BOSONOGA_OP_ARGUMENT,
   BOSONOGA_OP_CALL,
   BOSONOGA_OP_RESULT,
   BOSONOGA_OP_FUNCTION_RETURN,
   BOSONOGA_OP_TAKE_RESULT,
   BOSONOGA_OP_ARRAY_READ,
+  BOSONOGA_OP_NEW_STR_PART,  // Appends a value to the str that new makes.
+  BOSONOGA_OP_NEW_STR,
+  BOSONOGA_OP_UNSET,
 } BosonogaOpKind;
 
 typedef struct {
@@ -284,11 +307,13 @@ typedef struct {
   gint32 integer;
   BosonogaOperand left;
   BosonogaOperand right;
-  BosonogaOperand third;  // The last three are only of gfx_draw_rectangle and
-                          // gfx_draw_hex.
-  BosonogaOperand fourth;
-  BosonogaOperand fifth;
+  BosonogaOperand third; // gfx_draw statement
+  BosonogaOperand fourth; // gfx_draw statement
+  BosonogaOperand fifth; // gfx_draw statement
 } BosonogaOp;
+
+// The most bytes of a str that new makes.
+#define BOSONOGA_NEW_STR_LENGTH_MAX 1024
 
 // The most values that a function takes or returns, and of a row.
 #define BOSONOGA_FUNCTION_VALUES_MAX 16

@@ -26,6 +26,8 @@ struct _BosonogaExecution {
   GArray *calls;  // Of BosonogaCall, innermost last.
   BosonogaValue arguments[BOSONOGA_FUNCTION_VALUES_MAX];
   BosonogaValue results[BOSONOGA_FUNCTION_VALUES_MAX];
+  GString *join;     // The str that new makes, until it is made.
+  GPtrArray *owned;  // What new made and is not unset, freed with it.
 };
 
 BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
