@@ -3,6 +3,8 @@
 #include <math.h>
 #include <string.h>
 
+#include "key.h"
+
 #define BOSONOGA_TOLERANCE_3 1e-3
 #define BOSONOGA_TOLERANCE_6 1e-6
 // Every integer type is inside it, and every real inside it converts exactly.
@@ -42,6 +44,9 @@ void bosonoga_print_value(GString *output, const BosonogaValue *value) {
     case BOSONOGA_VALUE_BOOL:
       g_string_append(output, value->boolean ? "true" : "false");
       break;
+    case BOSONOGA_VALUE_INPUT_KEY:
+      g_string_append(output, bosonoga_key_name(value->input_key));
+      break;
   }
 }
 
@@ -77,6 +82,9 @@ static gboolean bosonoga_equal(const BosonogaValue *left,
   }
   if (left->kind == BOSONOGA_VALUE_BOOL) {
     return left->boolean == right->boolean;
+  }
+  if (left->kind == BOSONOGA_VALUE_INPUT_KEY) {
+    return left->input_key == right->input_key;
   }
   return bosonoga_order(left, right) == 0;
 }

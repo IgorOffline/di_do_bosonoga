@@ -20,9 +20,28 @@ const BosonogaVariable *bosonoga_find_variable(const BosonogaParser *parser,
 void bosonoga_declare_variable(BosonogaParser *parser,
                                const BosonogaToken *name,
                                BosonogaValueKind kind, guint slot) {
-  const BosonogaVariable variable = {name->text, name->length, kind, slot,
-                                     FALSE};
+  const BosonogaVariable variable = {
+      .name = name->text,
+      .length = name->length,
+      .kind = kind,
+      .slot = slot,
+      .block_depth = parser->block_depth,
+      .loop_depth = parser->loops->len,
+  };
   g_array_append_val(parser->variables, variable);
+}
+
+const BosonogaVariable *bosonoga_find_new(const BosonogaParser *parser,
+                                          gboolean in_loop) {
+  for (guint i = 0; i < parser->variables->len; ++i) {
+    const BosonogaVariable *variable =
+        &g_array_index(parser->variables, BosonogaVariable, i);
+    if (variable->is_new &&
+        (!in_loop || variable->loop_depth == parser->loops->len)) {
+      return variable;
+    }
+  }
+  return NULL;
 }
 
 gboolean bosonoga_fail_unknown_variable(const BosonogaParser *parser,
@@ -95,6 +114,7 @@ gboolean bosonoga_at_value(const BosonogaParser *parser) {
              bosonoga_token_is_numbered(token, BOSONOGA_SHIFT_PREFIX) ||
              bosonoga_token_is_result(token) ||
              bosonoga_token_is_word(token, BOSONOGA_DELTA_TIME_WORD) ||
+             bosonoga_token_is_word(token, BOSONOGA_KEY_WORD) ||
              bosonoga_token_setting(parser, token, &value);
     }
     case BOSONOGA_TOKEN_END:
@@ -141,6 +161,15 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
     operand->literal.kind = BOSONOGA_VALUE_F32;
     operand->is_variable = TRUE;
     operand->slot = parser->delta_time_slot;
+  } else if (bosonoga_token_is_word(token, BOSONOGA_KEY_WORD)) {
+    if (parser->section != BOSONOGA_SECTION_GFX_KEY_DOWN) {
+      return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_SYNTAX,
+                              "%s can only be in gfx_key_down",
+                              BOSONOGA_KEY_WORD);
+    }
+    operand->literal.kind = BOSONOGA_VALUE_INPUT_KEY;
+    operand->is_variable = TRUE;
+    operand->slot = parser->key_slot;
   } else if (bosonoga_find_constant(parser, token) != NULL) {
     operand->literal = bosonoga_find_constant(parser, token)->value;
   } else if (bosonoga_token_setting(parser, token, &operand->literal)) {
@@ -149,6 +178,14 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
     const BosonogaVariable *variable = bosonoga_find_variable(parser, token);
     if (variable == NULL) {
       return bosonoga_fail_unknown_variable(parser, token, error);
+    }
+    // A copy would outlive the unset of what it points into.
+    if (variable->is_new && !parser->reads_new) {
+      g_autofree gchar *shown = bosonoga_token_shown(token);
+      return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
+                              "'%s' is new, so it is only read by info, a "
+                              "comparison or new str of, and is not copied",
+                              shown);
     }
     operand->literal.kind = variable->kind;
     operand->is_variable = TRUE;

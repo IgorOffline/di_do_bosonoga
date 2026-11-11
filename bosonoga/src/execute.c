@@ -252,6 +252,19 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         }
         break;
       }
+      case BOSONOGA_OP_DRAW_CIRCLE: {
+        const BosonogaGfxShape circle = {
+            .kind = BOSONOGA_GFX_CIRCLE,
+            .x = left->f32,
+            .y = right->f32,
+            .radius = bosonoga_operand_value(&op->third, frame)->f32,
+            .color = bosonoga_operand_value(&op->fourth, frame)->color,
+        };
+        if (circle.radius > 0.0f) {
+          g_array_append_val(scene->shapes, circle);
+        }
+        break;
+      }
       case BOSONOGA_OP_ARGUMENT:
         execution->arguments[op->index] = *left;
         break;
@@ -276,9 +289,43 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
           return BOSONOGA_EXECUTION_FAILED;
         }
         break;
+      case BOSONOGA_OP_NEW_STR_PART:
+        bosonoga_print_value(execution->join, left);
+        if (execution->join->len > BOSONOGA_NEW_STR_LENGTH_MAX) {
+          bosonoga_runtime_error(program, op, error,
+                                 "new str of is longer than %d bytes",
+                                 BOSONOGA_NEW_STR_LENGTH_MAX);
+          return BOSONOGA_EXECUTION_FAILED;
+        }
+        break;
+      case BOSONOGA_OP_NEW_STR: {
+        GString *join = execution->join;
+        gchar *text = g_strndup(join->str, join->len);
+        g_ptr_array_add(execution->owned, text);
+        frame[op->slot].kind = BOSONOGA_VALUE_STR;
+        frame[op->slot].str.text = text;
+        frame[op->slot].str.length = join->len;
+        g_string_truncate(join, 0);
+        break;
+      }
+      case BOSONOGA_OP_UNSET: {
+        GPtrArray *owned = execution->owned;
+        for (guint j = 0; j < owned->len; ++j) {
+          if (g_ptr_array_index(owned, j) == frame[op->slot].str.text) {
+            g_ptr_array_remove_index_fast(owned, j);
+            break;
+          }
+        }
+        memset(&frame[op->slot], 0, sizeof(frame[op->slot]));
+        break;
+      }
       case BOSONOGA_OP_GFX_DELTA_TIME:
         frame[op->slot].kind = BOSONOGA_VALUE_F32;
         frame[op->slot].f32 = scene->delta_time;
+        break;
+      case BOSONOGA_OP_GFX_KEY:
+        frame[op->slot].kind = BOSONOGA_VALUE_INPUT_KEY;
+        frame[op->slot].input_key = scene->key;
         break;
     }
   }

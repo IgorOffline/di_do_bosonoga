@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "bosonoga/bosonoga.h"
+#include "key.h"
 #include "tokenizer.h"
 #include "value.h"
 
@@ -10,6 +11,7 @@
 #define BOSONOGA_SETTINGS_GROUP_GFX "gfx"
 #define BOSONOGA_SETTINGS_GROUP_COLOR "color"
 #define BOSONOGA_SETTINGS_GROUP_GLOBAL "global"
+#define BOSONOGA_SETTINGS_GROUP_KEY "key"
 #define BOSONOGA_SETTINGS_KEY_BACKGROUND "background"
 #define BOSONOGA_COLOR_HEX_LENGTH 6
 
@@ -27,6 +29,20 @@ void bosonoga_settings_clear(BosonogaSettings *settings) {
   if (settings->globals != NULL) {
     g_hash_table_unref(settings->globals);
   }
+  if (settings->keys != NULL) {
+    g_hash_table_unref(settings->keys);
+  }
+}
+
+gboolean bosonoga_settings_key(const BosonogaSettings *settings,
+                               const gchar *key, guint32 *code) {
+  gpointer found = NULL;
+  if (settings->keys == NULL ||
+      !g_hash_table_lookup_extended(settings->keys, key, NULL, &found)) {
+    return FALSE;
+  }
+  *code = GPOINTER_TO_UINT(found);
+  return TRUE;
 }
 
 gboolean bosonoga_settings_global(const BosonogaSettings *settings,
@@ -191,6 +207,34 @@ static gboolean bosonoga_read_global_settings(const BosonogaSettingsFile *file,
   return TRUE;
 }
 
+static gboolean bosonoga_read_key_settings(const BosonogaSettingsFile *file,
+                                           BosonogaSettings *settings,
+                                           GError **error) {
+  settings->keys = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+  if (!g_key_file_has_group(file->key_file, BOSONOGA_SETTINGS_GROUP_KEY)) {
+    return TRUE;
+  }
+  g_auto(GStrv) keys = g_key_file_get_keys(
+      file->key_file, BOSONOGA_SETTINGS_GROUP_KEY, NULL, NULL);
+  for (gsize i = 0; keys != NULL && keys[i] != NULL; ++i) {
+    g_autofree gchar *name = bosonoga_read_text_setting(
+        file, BOSONOGA_SETTINGS_GROUP_KEY, keys[i], error);
+    if (name == NULL) {
+      return FALSE;
+    }
+    guint32 code = 0;
+    if (!bosonoga_key_named(name, &code)) {
+      g_set_error(error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
+                  "%s: %s must name a key, like W, Key0 or Escape", file->path,
+                  keys[i]);
+      return FALSE;
+    }
+    g_hash_table_insert(settings->keys, g_strdup(keys[i]),
+                        GUINT_TO_POINTER(code));
+  }
+  return TRUE;
+}
+
 gboolean bosonoga_read_settings(const gchar *path, BosonogaSettings *settings,
                                 GError **error) {
   g_autoptr(GKeyFile) key_file = g_key_file_new();
@@ -220,5 +264,6 @@ gboolean bosonoga_read_settings(const gchar *path, BosonogaSettings *settings,
     return FALSE;
   }
   return bosonoga_read_color_settings(&file, settings, error) &&
-         bosonoga_read_global_settings(&file, settings, error);
+         bosonoga_read_global_settings(&file, settings, error) &&
+         bosonoga_read_key_settings(&file, settings, error);
 }

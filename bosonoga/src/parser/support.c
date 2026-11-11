@@ -13,6 +13,8 @@ static const gchar *const bosonoga_reserved_words[] = {
     "var",
     "val",
     "set",
+    "unset",
+    "new",
     "is",
     "if",
     "else",
@@ -72,6 +74,9 @@ static const gchar *const bosonoga_reserved_words[] = {
     "gfx_clear",
     "gfx_draw_rectangle",
     "gfx_draw_hex",
+    "gfx_draw_circle",
+    "gfx_key_down",
+    BOSONOGA_KEY_WORD,
     "bosonoga_global",
     BOSONOGA_DELTA_TIME_WORD,
     "while",
@@ -133,6 +138,11 @@ gboolean bosonoga_token_setting(const BosonogaParser *parser,
   if (color_key != NULL) {
     value->kind = BOSONOGA_VALUE_COLOR;
     return bosonoga_settings_color(parser->settings, color_key, &value->color);
+  }
+  g_autofree gchar *key_key = bosonoga_token_key(token, BOSONOGA_KEY_PREFIX);
+  if (key_key != NULL) {
+    value->kind = BOSONOGA_VALUE_INPUT_KEY;
+    return bosonoga_settings_key(parser->settings, key_key, &value->input_key);
   }
   g_autofree gchar *global_key =
       bosonoga_token_key(token, BOSONOGA_GLOBAL_PREFIX);
