@@ -121,7 +121,6 @@ gboolean bosonoga_math(BosonogaOpKind function, const BosonogaValue *left,
     return bosonoga_whole_math(function, left, right, result, error);
   }
   const gdouble a = bosonoga_real(left);
-  // Only the binary functions have a right value.
   const gdouble b =
       bosonoga_kind_is_real(right->kind) ? bosonoga_real(right) : 0.0;
   const gchar *domain = bosonoga_domain_error(function, a, b);

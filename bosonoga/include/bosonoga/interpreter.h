@@ -13,8 +13,7 @@ typedef enum {
   BOSONOGA_GFX_TEXT,
 } BosonogaGfxShapeKind;
 
-// In pixels, with y growing down. A hex is regular and flat-top, with its
-// first corner to the right of its center.
+// In pixels, with y growing down.
 typedef struct {
   BosonogaGfxShapeKind kind;
   // The left of a rectangle, the center of a hex or circle, and of a text as
@@ -23,10 +22,10 @@ typedef struct {
   gfloat y;  // The top of a rectangle, the center of a hex or circle.
   gfloat width;
   gfloat height;
-  gfloat radius;  // Of a circle, or of a hex from its center to a corner.
+  gfloat radius;
   guint32 color;
-  gfloat size;    // Of a text, from its ascender to its descender.
-  guint font;     // Of a text, in the fonts of the program.
+  gfloat size;
+  guint font;
   guint32 align;  // Of a text, BosonogaGfxAlign.
   gsize text;     // Of a text, its offset in the text of the scene.
   gsize text_length;
@@ -38,7 +37,7 @@ typedef struct {
   GString *text;  // Of all texts, one after another.
   guint32 clear_color;
   gfloat delta_time;
-  guint32 key;  // The key that gfx_key_down runs for.
+  guint32 key;
 } BosonogaGfxScene;
 
 typedef enum {

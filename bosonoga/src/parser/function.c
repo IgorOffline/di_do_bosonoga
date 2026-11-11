@@ -241,8 +241,6 @@ gboolean bosonoga_parse_function(BosonogaParser *parser, GError **error) {
   function.name = name.text;
   function.name_length = name.length;
 
-  // A function has its own variables and slots, sees no bosonoga_global,
-  // and parses as bosonoga_main does, without the statements of gfx_frame.
   g_autoptr(GArray) variables =
       g_array_new(FALSE, FALSE, sizeof(BosonogaVariable));
   GArray *outer_variables = parser->variables;

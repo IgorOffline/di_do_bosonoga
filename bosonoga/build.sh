@@ -1,15 +1,6 @@
 #!/bin/sh
-# Builds build/libbosonoga.a, the static library of the bosonoga language, and
-# build/libbosonoga_gfx.a, which runs gfx programs in a window with sokol. A
-# project links with them through bosonoga.pc and bosonoga_gfx.pc, which are
-# next to this script:
-#
-#   PKG_CONFIG_PATH=path/to/bosonoga pkg-config --static --cflags --libs bosonoga
-#   PKG_CONFIG_PATH=path/to/bosonoga pkg-config --static --cflags --libs \
-#     bosonoga_gfx
-#
-# GLib is found with pkg-config too, so PKG_CONFIG_PATH must also have the
-# directory of glib-2.0.pc. CC and CFLAGS can be set to build differently.
+# A project links with the libraries through bosonoga.pc and bosonoga_gfx.pc,
+# with the directory of glib-2.0.pc also in PKG_CONFIG_PATH.
 set -eu
 cd "$(dirname "$0")"
 
@@ -20,7 +11,6 @@ GLIB_CFLAGS=$(pkg-config --cflags glib-2.0 | sed 's/-I/-isystem /g')
 rm -rf build
 mkdir -p build/obj
 for source in src/*.c src/parser/*.c; do
-  # The window backend is independent of the console library.
   case "$source" in src/gfx.c | src/gfx_vendor.c) continue ;; esac
   object="build/obj/$(echo "${source#src/}" | tr / _).o"
   # shellcheck disable=SC2086

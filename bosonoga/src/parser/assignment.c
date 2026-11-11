@@ -19,7 +19,6 @@ static BosonogaVariable *bosonoga_declare(BosonogaParser *parser,
   return variable;
 }
 
-// After new, of new TYPE of value+, which joins the values as info prints them.
 static gboolean bosonoga_parse_new(BosonogaParser *parser,
                                    const BosonogaToken *name, gboolean is_val,
                                    GError **error) {

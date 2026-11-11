@@ -22,7 +22,6 @@ gboolean bosonoga_kind_is_real(BosonogaValueKind kind);
 
 gboolean bosonoga_kind_is_number(BosonogaValueKind kind);
 
-// Of an integer value.
 BosonogaWide bosonoga_whole(const BosonogaValue *value);
 
 // Of any number, rounded if it is an integer outside the precision of f64.

@@ -45,7 +45,6 @@ static gchar *bosonoga_read_expected(const gchar *display_path,
   return g_string_free_and_steal(g_steal_pointer(&expected));
 }
 
-// A test without an expected file can print anything.
 static gboolean bosonoga_check_output(const gchar *path,
                                       const gchar *display_path,
                                       const GString *output, GError **error) {

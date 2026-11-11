@@ -250,7 +250,6 @@ static BosonogaValueKind bosonoga_converted_kind(BosonogaOpKind conversion) {
   }
 }
 
-// A real converts to an integer toward zero.
 gboolean bosonoga_convert(BosonogaOpKind conversion, const BosonogaValue *value,
                           BosonogaValue *result, GError **error) {
   const BosonogaValueKind kind = bosonoga_converted_kind(conversion);

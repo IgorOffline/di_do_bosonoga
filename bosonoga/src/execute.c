@@ -246,7 +246,6 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
             .radius = bosonoga_operand_value(&op->third, frame)->f32,
             .color = bosonoga_operand_value(&op->fourth, frame)->color,
         };
-        // As in corela, a hex without size is not drawn.
         if (hex.radius > 0.0f) {
           g_array_append_val(scene->shapes, hex);
         }

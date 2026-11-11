@@ -6,9 +6,8 @@
 
 #define BOSONOGA_SETTINGS_FILE "regina.ini"
 
-// A file of the [font] group, which only a window reads.
 typedef struct {
-  gchar *text;  // As the settings have it.
+  gchar *text;
   gchar *path;  // Of text, relative to the directory of the settings.
 } BosonogaSettingsFont;
 
@@ -20,8 +19,8 @@ typedef struct {
   GHashTable *colors;  // Key to 0xRRGGBB.
   guint32 background_color;
   GHashTable *globals;
-  GHashTable *keys;   // Key to a code of a key name, see parser.h.
-  GHashTable *fonts;  // Key to its BosonogaSettingsFont.
+  GHashTable *keys;  // Key to a code of a key name, see parser.h.
+  GHashTable *fonts;
 } BosonogaSettings;
 
 void bosonoga_settings_clear(BosonogaSettings *settings);
@@ -34,7 +33,6 @@ gboolean bosonoga_settings_color(const BosonogaSettings *settings,
 gboolean bosonoga_settings_key(const BosonogaSettings *settings,
                                const gchar *key, guint32 *code);
 
-// NULL if the key is not of [font].
 const BosonogaSettingsFont *bosonoga_settings_font(
     const BosonogaSettings *settings, const gchar *key);
 

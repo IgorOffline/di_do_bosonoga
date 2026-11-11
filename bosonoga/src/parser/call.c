@@ -80,7 +80,6 @@ gboolean bosonoga_parse_call(BosonogaParser *parser, guint *function,
   return TRUE;
 }
 
-// As in "0_i32, 1_str".
 static gchar *bosonoga_results_named(const BosonogaFunction *called) {
   GString *named = g_string_new(NULL);
   for (guint i = 0; i < called->result_count; ++i) {
@@ -155,9 +154,6 @@ gboolean bosonoga_parse_taken_result(BosonogaParser *parser, guint index,
   return bosonoga_advance(parser, error);
 }
 
-// The values that a block takes, each as in 0_i32 as count, by increasing
-// index, up to the di of the block. Each is copied to a variable of the block,
-// and the values that are not named are not copied.
 static gboolean bosonoga_parse_bindings(BosonogaParser *parser,
                                         const BosonogaToken *call_name,
                                         guint index, GError **error) {
