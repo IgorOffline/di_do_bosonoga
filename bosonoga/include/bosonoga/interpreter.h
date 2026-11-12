@@ -11,13 +11,14 @@ typedef enum {
   BOSONOGA_GFX_HEX,
   BOSONOGA_GFX_CIRCLE,
   BOSONOGA_GFX_TEXT,
+  BOSONOGA_GFX_ICON,
 } BosonogaGfxShapeKind;
 
 // In pixels, with y growing down.
 typedef struct {
   BosonogaGfxShapeKind kind;
-  // The left of a rectangle, the center of a hex or circle, and of a text as
-  // its align says.
+  // The left of a rectangle, the center of a hex, circle or icon, and of a
+  // text as its align says.
   gfloat x;
   gfloat y;  // The top of a rectangle, the center of a hex or circle.
   gfloat width;
@@ -29,6 +30,8 @@ typedef struct {
   guint32 align;  // Of a text, BosonogaGfxAlign.
   gsize text;     // Of a text, its offset in the text of the scene.
   gsize text_length;
+  guint icon;
+  gfloat angle;  // Of an icon, in radians clockwise.
 } BosonogaGfxShape;
 
 // What a gfx_frame records, for the owner of the window to draw in order.

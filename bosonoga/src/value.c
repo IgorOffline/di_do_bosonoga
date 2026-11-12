@@ -8,6 +8,7 @@ static const BosonogaValueKind bosonoga_kinds[] = {
     BOSONOGA_VALUE_U64,   BOSONOGA_VALUE_F32,       BOSONOGA_VALUE_F64,
     BOSONOGA_VALUE_FLAGS, BOSONOGA_VALUE_COLOR,     BOSONOGA_VALUE_STR,
     BOSONOGA_VALUE_BOOL,  BOSONOGA_VALUE_INPUT_KEY, BOSONOGA_VALUE_FONT,
+    BOSONOGA_VALUE_ICON,
 };
 
 const gchar *bosonoga_value_kind_name(BosonogaValueKind kind) {
@@ -36,6 +37,8 @@ const gchar *bosonoga_value_kind_name(BosonogaValueKind kind) {
       return "input_key";
     case BOSONOGA_VALUE_FONT:
       return "font";
+    case BOSONOGA_VALUE_ICON:
+      return "icon";
   }
   g_return_val_if_reached("unknown");
 }
@@ -83,6 +86,7 @@ BosonogaWide bosonoga_whole(const BosonogaValue *value) {
     case BOSONOGA_VALUE_BOOL:
     case BOSONOGA_VALUE_INPUT_KEY:
     case BOSONOGA_VALUE_FONT:
+    case BOSONOGA_VALUE_ICON:
       break;
   }
   g_return_val_if_reached(0);
@@ -133,6 +137,7 @@ gboolean bosonoga_set_whole(BosonogaValue *value, BosonogaValueKind kind,
     case BOSONOGA_VALUE_BOOL:
     case BOSONOGA_VALUE_INPUT_KEY:
     case BOSONOGA_VALUE_FONT:
+    case BOSONOGA_VALUE_ICON:
       g_return_val_if_reached(FALSE);
   }
   value->kind = kind;

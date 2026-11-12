@@ -322,7 +322,7 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
             .kind = BOSONOGA_GFX_TEXT,
             .x = left->f32,
             .y = right->f32,
-            .font = bosonoga_operand_value(&op->third, frame)->font.index,
+            .font = bosonoga_operand_value(&op->third, frame)->asset.index,
             .size = bosonoga_operand_value(&op->fourth, frame)->f32,
             .color = bosonoga_operand_value(&op->fifth, frame)->color,
             .align = (guint32)op->integer,
@@ -334,6 +334,18 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
           g_array_append_val(scene->shapes, text);
         }
         g_string_truncate(join, 0);
+        break;
+      }
+      case BOSONOGA_OP_DRAW_ICON: {
+        const BosonogaGfxShape icon = {
+            .kind = BOSONOGA_GFX_ICON,
+            .x = left->f32,
+            .y = right->f32,
+            .icon = bosonoga_operand_value(&op->third, frame)->asset.index,
+            .angle = bosonoga_operand_value(&op->fourth, frame)->f32,
+            .color = bosonoga_operand_value(&op->fifth, frame)->color,
+        };
+        g_array_append_val(scene->shapes, icon);
         break;
       }
       case BOSONOGA_OP_ARGUMENT:

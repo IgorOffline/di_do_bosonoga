@@ -19,3 +19,9 @@
 
 #define SOKOL_FONTSTASH_IMPL
 #include <sokol_fontstash.h>
+
+// Icons are PNG files, which gfx.c reads into memory.
+#define STBI_ONLY_PNG
+#define STBI_NO_STDIO
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>

@@ -322,6 +322,37 @@ static gboolean bosonoga_parse_gfx_draw_text(BosonogaParser *parser,
   return TRUE;
 }
 
+static gboolean bosonoga_parse_gfx_draw_icon(BosonogaParser *parser,
+                                             const BosonogaToken *start,
+                                             GError **error) {
+  const gchar *context = "gfx_draw_icon";
+  BosonogaOperand x;
+  BosonogaOperand y;
+  BosonogaOperand icon;
+  BosonogaOperand angle;
+  BosonogaOperand color;
+  if (!bosonoga_check_in_frame(parser, start, error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_F32, context, &x,
+                                    error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_F32, context, &y,
+                                    error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_ICON, context, &icon,
+                                    error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_F32, context, &angle,
+                                    error) ||
+      !bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_COLOR, context,
+                                    &color, error)) {
+    return FALSE;
+  }
+  BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_DRAW_ICON, start);
+  op->left = x;
+  op->right = y;
+  op->third = icon;
+  op->fourth = angle;
+  op->fifth = color;
+  return TRUE;
+}
+
 static gboolean bosonoga_parse_statement(BosonogaParser *parser,
                                          GError **error) {
   const BosonogaToken start = parser->tokenizer.token;
@@ -345,7 +376,8 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
       !bosonoga_token_is_word(&start, "gfx_draw_rectangle") &&
       !bosonoga_token_is_word(&start, "gfx_draw_hex") &&
       !bosonoga_token_is_word(&start, "gfx_draw_circle") &&
-      !bosonoga_token_is_word(&start, "gfx_draw_text")) {
+      !bosonoga_token_is_word(&start, "gfx_draw_text") &&
+      !bosonoga_token_is_word(&start, "gfx_draw_icon")) {
     return bosonoga_parse_error(parser, "a statement", error);
   }
   if (!bosonoga_advance(parser, error)) {
@@ -407,6 +439,9 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   }
   if (bosonoga_token_is_word(&start, "gfx_draw_text")) {
     return bosonoga_parse_gfx_draw_text(parser, &start, error);
+  }
+  if (bosonoga_token_is_word(&start, "gfx_draw_icon")) {
+    return bosonoga_parse_gfx_draw_icon(parser, &start, error);
   }
   return TRUE;  // nihil
 }

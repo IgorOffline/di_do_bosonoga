@@ -15,6 +15,9 @@
 #include <fontstash.h>
 #include <sokol_fontstash.h>
 
+#define STBI_NO_STDIO
+#include <stb_image.h>
+
 #include "bosonoga/bosonoga.h"
 #include "bosonoga/interpreter.h"
 
@@ -27,6 +30,14 @@
 #define BOSONOGA_GFX_CIRCLE_CORNERS 48U
 // Of shapes and glyphs in one frame, which sokol_gl holds on the CPU and GPU.
 #define BOSONOGA_GFX_VERTICES_MAX (1 << 18)
+#define BOSONOGA_GFX_ICON_CHANNELS 4  // RGBA
+
+typedef struct {
+  sg_image image;
+  sg_view view;
+  gint width;
+  gint height;
+} BosonogaGfxIcon;
 
 typedef struct {
   const BosonogaProgram *program;
@@ -37,6 +48,9 @@ typedef struct {
   FONScontext *fons;
   GArray *font_ids;
   GPtrArray *font_data;  // Which fontstash reads from, and does not free.
+  GArray *icons;         // Of BosonogaGfxIcon, numbered as in the program.
+  sg_sampler icon_sampler;
+  sgl_pipeline icon_pipeline;
   gint64 next_frame_time;
   gint64 last_frame_start;
   gint *exit_status;
@@ -121,7 +135,7 @@ static gboolean bosonoga_gfx_is_truetype(const guchar *data, gsize length) {
 }
 
 static gboolean bosonoga_gfx_load_font(BosonogaGfxRun *run,
-                                       const BosonogaProgramFont *font) {
+                                       const BosonogaProgramAsset *font) {
   gchar *data = NULL;
   gsize length = 0;
   GError *read_error = NULL;
@@ -146,6 +160,79 @@ static gboolean bosonoga_gfx_load_font(BosonogaGfxRun *run,
   return TRUE;
 }
 
+// Sokol stops the program on what it cannot make, so the size of the PNG is
+// checked first, and also so that a large one is not decoded. Only its alpha is
+// kept, over white, so that the color of gfx_draw_icon tints it without dark
+// edges where it is filtered.
+static gboolean bosonoga_gfx_load_icon(BosonogaGfxRun *run,
+                                       const BosonogaProgramAsset *icon) {
+  g_autofree gchar *data = NULL;
+  gsize length = 0;
+  GError *read_error = NULL;
+  if (!g_file_get_contents(icon->path, &data, &length, &read_error)) {
+    g_propagate_prefixed_error(&run->error, read_error,
+                               "%s: icon_%s: ", run->program->path, icon->key);
+    return FALSE;
+  }
+  const stbi_uc *bytes = (const stbi_uc *)data;
+  int width = 0;
+  int height = 0;
+  int channels = 0;
+  if (length > G_MAXINT ||
+      !stbi_info_from_memory(bytes, (int)length, &width, &height, &channels)) {
+    g_set_error(&run->error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
+                "%s: icon_%s: %s is not a PNG image", run->program->path,
+                icon->key, icon->path);
+    return FALSE;
+  }
+  if (width > BOSONOGA_ICON_SIDE_MAX || height > BOSONOGA_ICON_SIDE_MAX) {
+    g_set_error(&run->error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
+                "%s: icon_%s: %s is %d by %d pixels, more than %d a side",
+                run->program->path, icon->key, icon->path, width, height,
+                BOSONOGA_ICON_SIDE_MAX);
+    return FALSE;
+  }
+  stbi_uc *pixels =
+      stbi_load_from_memory(bytes, (int)length, &width, &height, &channels,
+                            BOSONOGA_GFX_ICON_CHANNELS);
+  if (pixels == NULL) {
+    g_set_error(&run->error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
+                "%s: icon_%s: %s is not a PNG image: %s", run->program->path,
+                icon->key, icon->path, stbi_failure_reason());
+    return FALSE;
+  }
+  const gsize size = (gsize)width * (gsize)height * BOSONOGA_GFX_ICON_CHANNELS;
+  for (gsize i = 0; i < size; i += BOSONOGA_GFX_ICON_CHANNELS) {
+    pixels[i] = 0xff;
+    pixels[i + 1] = 0xff;
+    pixels[i + 2] = 0xff;
+  }
+  BosonogaGfxIcon made = {.width = width, .height = height};
+  made.image = sg_make_image(&(sg_image_desc){
+      .width = width,
+      .height = height,
+      .pixel_format = SG_PIXELFORMAT_RGBA8,
+      .data = {.ptr = pixels, .size = size},
+      .label = icon->key,
+  });
+  stbi_image_free(pixels);
+  if (sg_query_image_state(made.image) == SG_RESOURCESTATE_VALID) {
+    made.view = sg_make_view(&(sg_view_desc){
+        .texture.image = made.image,
+        .label = icon->key,
+    });
+  }
+  // Also when it failed, so that the cleanup destroys what was made.
+  g_array_append_val(run->icons, made);
+  if (sg_query_view_state(made.view) != SG_RESOURCESTATE_VALID) {
+    g_set_error(&run->error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
+                "%s: icon_%s: %s cannot be made into a texture",
+                run->program->path, icon->key, icon->path);
+    return FALSE;
+  }
+  return TRUE;
+}
+
 static void bosonoga_gfx_init(void *user_data) {
   BosonogaGfxRun *run = user_data;
   sg_setup(&(sg_desc){
@@ -160,8 +247,31 @@ static void bosonoga_gfx_init(void *user_data) {
   });
   run->fons = sfons_create(&(sfons_desc_t){0});
   for (guint i = 0; i < run->program->fonts->len; ++i) {
-    if (!bosonoga_gfx_load_font(
-            run, &g_array_index(run->program->fonts, BosonogaProgramFont, i))) {
+    if (!bosonoga_gfx_load_font(run, &g_array_index(run->program->fonts,
+                                                    BosonogaProgramAsset, i))) {
+      bosonoga_gfx_fail(run);
+      return;
+    }
+  }
+  run->icon_sampler = sg_make_sampler(&(sg_sampler_desc){
+      .min_filter = SG_FILTER_LINEAR,
+      .mag_filter = SG_FILTER_LINEAR,
+      .wrap_u = SG_WRAP_CLAMP_TO_EDGE,
+      .wrap_v = SG_WRAP_CLAMP_TO_EDGE,
+      .label = "bosonoga-icon-sampler",
+  });
+  run->icon_pipeline = sgl_make_pipeline(&(sg_pipeline_desc){
+      .colors[0].blend =
+          {
+              .enabled = true,
+              .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
+              .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+          },
+      .label = "bosonoga-icon-pipeline",
+  });
+  for (guint i = 0; i < run->program->icons->len; ++i) {
+    if (!bosonoga_gfx_load_icon(run, &g_array_index(run->program->icons,
+                                                    BosonogaProgramAsset, i))) {
       bosonoga_gfx_fail(run);
       return;
     }
@@ -258,8 +368,39 @@ static void bosonoga_gfx_draw_text(BosonogaGfxRun *run,
   fonsDrawText(fons, text->x, text->y, start, start + text->text_length);
 }
 
-// Shapes and texts are one list of sokol_gl, so that each is drawn over the
-// ones before it.
+// Turned about its center, which is moved so that, unturned, its corner is on a
+// whole pixel.
+static void bosonoga_gfx_draw_icon(const BosonogaGfxRun *run,
+                                   const BosonogaGfxShape *shape) {
+  const BosonogaGfxIcon *icon =
+      &g_array_index(run->icons, BosonogaGfxIcon, shape->icon);
+  const gfloat half_width = (gfloat)icon->width / 2.0f;
+  const gfloat half_height = (gfloat)icon->height / 2.0f;
+  sgl_push_pipeline();
+  sgl_load_pipeline(run->icon_pipeline);
+  sgl_enable_texture();
+  sgl_texture(icon->view, run->icon_sampler);
+  sgl_matrix_mode_modelview();
+  sgl_push_matrix();
+  sgl_translate(roundf(shape->x - half_width) + half_width,
+                roundf(shape->y - half_height) + half_height, 0.0f);
+  sgl_rotate(shape->angle, 0.0f, 0.0f, 1.0f);
+  sgl_begin_quads();
+  sgl_c3b(bosonoga_gfx_channel(shape->color, 16),
+          bosonoga_gfx_channel(shape->color, 8),
+          bosonoga_gfx_channel(shape->color, 0));
+  sgl_v2f_t2f(-half_width, -half_height, 0.0f, 0.0f);
+  sgl_v2f_t2f(half_width, -half_height, 1.0f, 0.0f);
+  sgl_v2f_t2f(half_width, half_height, 1.0f, 1.0f);
+  sgl_v2f_t2f(-half_width, half_height, 0.0f, 1.0f);
+  sgl_end();
+  sgl_pop_matrix();
+  sgl_disable_texture();
+  sgl_pop_pipeline();
+}
+
+// Shapes, texts and icons are one list of sokol_gl, so that each is drawn over
+// the ones before it.
 static gboolean bosonoga_gfx_record_scene(BosonogaGfxRun *run) {
   sgl_defaults();
   sgl_matrix_mode_projection();
@@ -279,6 +420,9 @@ static gboolean bosonoga_gfx_record_scene(BosonogaGfxRun *run) {
         break;
       case BOSONOGA_GFX_TEXT:
         bosonoga_gfx_draw_text(run, shape);
+        break;
+      case BOSONOGA_GFX_ICON:
+        bosonoga_gfx_draw_icon(run, shape);
         break;
     }
   }
@@ -368,6 +512,14 @@ static void bosonoga_gfx_cleanup(void *user_data) {
   if (run->initialized) {
     bosonoga_gfx_run_callback(run, BOSONOGA_SECTION_GFX_CLEANUP);
   }
+  for (guint i = 0; i < run->icons->len; ++i) {
+    const BosonogaGfxIcon *icon =
+        &g_array_index(run->icons, BosonogaGfxIcon, i);
+    sg_destroy_view(icon->view);
+    sg_destroy_image(icon->image);
+  }
+  sgl_destroy_pipeline(run->icon_pipeline);
+  sg_destroy_sampler(run->icon_sampler);
   sfons_destroy(run->fons);
   sgl_shutdown();
   sg_shutdown();
@@ -384,6 +536,7 @@ gboolean bosonoga_gfx_run(const BosonogaProgram *program,
   g_autoptr(GString) text = g_string_new(NULL);
   g_autoptr(GArray) font_ids = g_array_new(FALSE, FALSE, sizeof(int));
   g_autoptr(GPtrArray) font_data = g_ptr_array_new_with_free_func(g_free);
+  g_autoptr(GArray) icons = g_array_new(FALSE, FALSE, sizeof(BosonogaGfxIcon));
   BosonogaGfxRun run = {
       .program = program,
       .settings = settings,
@@ -393,6 +546,7 @@ gboolean bosonoga_gfx_run(const BosonogaProgram *program,
       .scene.text = text,
       .font_ids = font_ids,
       .font_data = font_data,
+      .icons = icons,
       .exit_status = exit_status,
   };
   sapp_run(&(sapp_desc){

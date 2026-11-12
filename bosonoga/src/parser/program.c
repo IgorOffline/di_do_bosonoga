@@ -148,11 +148,11 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
   return TRUE;
 }
 
-static void bosonoga_program_font_clear(gpointer data) {
-  BosonogaProgramFont *font = data;
-  g_free(font->key);
-  g_free(font->text);
-  g_free(font->path);
+static void bosonoga_program_asset_clear(gpointer data) {
+  BosonogaProgramAsset *asset = data;
+  g_free(asset->key);
+  g_free(asset->text);
+  g_free(asset->path);
 }
 
 void bosonoga_program_free(BosonogaProgram *program) {
@@ -160,6 +160,7 @@ void bosonoga_program_free(BosonogaProgram *program) {
   g_array_unref(program->functions);
   g_array_unref(program->rows);
   g_array_unref(program->fonts);
+  g_array_unref(program->icons);
   g_free(program);
 }
 
@@ -178,8 +179,10 @@ BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
   program->ops = g_array_new(FALSE, TRUE, sizeof(BosonogaOp));
   program->functions = g_array_new(FALSE, FALSE, sizeof(BosonogaFunction));
   program->rows = g_array_new(FALSE, FALSE, sizeof(BosonogaValue));
-  program->fonts = g_array_new(FALSE, FALSE, sizeof(BosonogaProgramFont));
-  g_array_set_clear_func(program->fonts, bosonoga_program_font_clear);
+  program->fonts = g_array_new(FALSE, FALSE, sizeof(BosonogaProgramAsset));
+  g_array_set_clear_func(program->fonts, bosonoga_program_asset_clear);
+  program->icons = g_array_new(FALSE, FALSE, sizeof(BosonogaProgramAsset));
+  g_array_set_clear_func(program->icons, bosonoga_program_asset_clear);
 
   BosonogaParser parser;
   memset(&parser, 0, sizeof(parser));

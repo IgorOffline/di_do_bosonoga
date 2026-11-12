@@ -40,6 +40,7 @@
 //               | "gfx_draw_circle" value value value value
 //               | "gfx_draw_text" HALIGN VALIGN value value value value value
 //                 value+
+//               | "gfx_draw_icon" value value value value value
 //   initial    := conversion | len | value ("shift_or" value)*
 //   len        := ("len_col" | "len_row") NAME
 //   new        := "new" "str" "of" value+
@@ -64,11 +65,12 @@
 //   compare    := "gt" | "lt" | "ge" | "le" | "eq" | "not_eq" | "eq_3" | "eq_6"
 //               | "not_eq_3" | "not_eq_6" | "shift_has"
 //   value      := INTEGER | REAL | STRING | BOOL | SHIFT | COLOR | GLOBAL
-//               | KEY_VALUE | FONT | "gfx_delta_time" | "gfx_key" | NAME
+//               | KEY_VALUE | FONT | ICON | "gfx_delta_time" | "gfx_key"
+//               | NAME
 //   HALIGN     := "left" | "center" | "right"
 //   VALIGN     := "top" | "middle" | "baseline" | "bottom"
 //   TYPE       := "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "flags"
-//               | "color" | "str" | "bool" | "input_key" | "font"
+//               | "color" | "str" | "bool" | "input_key" | "font" | "icon"
 //   FUNCTION   := NAME "_fn", like divide_fn, which no other name is
 //   PARAMETER  := NAME, which ends with "_" TYPE, like count_i32
 //   INDEXED    := digit+ "_" TYPE, like 0_i32 and 1_str
@@ -81,6 +83,7 @@
 //   GLOBAL     := "global_" KEY
 //   KEY_VALUE  := "key_" KEY
 //   FONT       := "font_" KEY
+//   ICON       := "icon_" KEY
 //   LOOP       := "to_" digit+
 //
 // - "and" binds tighter than "or", and "not" negates only the comparison after
@@ -167,13 +170,14 @@
 //   once, gfx_frame once per frame, gfx_main across frames until it returns,
 //   gfx_key_down once per press, not as the key repeats, and gfx_cleanup when
 //   the window closes. Without a window, gfx_frame and gfx_key_down never run.
-// - A KEY is a key of the [color], [global], [key] or [font] group of the
-//   settings, see settings.h. A color prints as RRGGBB, and a global is one
+// - A KEY is a key of the [color], [global], [key], [font] or [icon] group of
+//   the settings, see settings.h. A color prints as RRGGBB, and a global is one
 //   INTEGER or REAL. A key of [key] names a keyboard key by its sokol_app name,
 //   like SAPP_KEYCODE_ESCAPE, and is an input_key, which prints by that name.
-//   A key of [font] names a TrueType file relative to the settings, and is a
-//   font, which prints as [font] has it. Only a window reads the file, before
-//   gfx_init. An input_key or a font compares only with eq or not_eq.
+//   A key of [font] names a TrueType file and a key of [icon] a PNG file,
+//   relative to the settings, and is a font or an icon, which prints as the
+//   settings have it. Only a window reads the files, before gfx_init. An
+//   input_key, font or icon compares only with eq or not_eq.
 //   gfx_key is the input_key pressed, and is only in gfx_key_down.
 // - gfx_clear, the gfx_draw statements and gfx_delta_time (seconds since the
 //   previous frame) are only in gfx_frame. Shapes, with y growing down, are
@@ -188,6 +192,10 @@
 //   where x and y are on the text, from the ascender and descender of the font,
 //   and are not reserved words. Size is the f32 pixel height from the ascender
 //   to the descender, so 20 pixels per em of Intel One Mono is 27d6_f32.
+// - gfx_draw_icon (center x, center y, icon, angle, color) draws the alpha of
+//   the PNG in color, at its own size of at most BOSONOGA_ICON_SIDE_MAX pixels
+//   a side, turned clockwise by the f32 angle in radians. Unturned, its corner
+//   is on a whole pixel, so that it is sharp.
 
 typedef enum {
   BOSONOGA_SECTION_MAIN,
@@ -283,6 +291,7 @@ typedef enum {
   BOSONOGA_OP_DRAW_CIRCLE,
   BOSONOGA_OP_DRAW_TEXT_PART,
   BOSONOGA_OP_DRAW_TEXT,
+  BOSONOGA_OP_DRAW_ICON,
   BOSONOGA_OP_GFX_DELTA_TIME,
   BOSONOGA_OP_GFX_KEY,
   BOSONOGA_OP_ARGUMENT,
@@ -319,11 +328,15 @@ typedef struct {
 
 #define BOSONOGA_DRAW_TEXT_LENGTH_MAX 1024
 
+// The smallest most that OpenGL 3.3 guarantees for a texture.
+#define BOSONOGA_ICON_SIDE_MAX 1024
+
+// A font or icon that the program names, which a window loads before gfx_init.
 typedef struct {
-  gchar *key;   // Of [font].
-  gchar *text;  // As [font] has it, printed for a font value.
+  gchar *key;   // Of [font] or [icon].
+  gchar *text;  // As the settings have it, printed for its value.
   gchar *path;
-} BosonogaProgramFont;
+} BosonogaProgramAsset;
 
 #define BOSONOGA_NEW_STR_LENGTH_MAX 1024
 
@@ -356,8 +369,10 @@ typedef struct {
   GArray *ops;
   guint slot_count;  // Not of functions.
   GArray *functions;
-  GArray *rows;   // Of all arrays, one row after another.
-  GArray *fonts;  // Of BosonogaProgramFont, numbered by a font value.
+  GArray *rows;  // Of all arrays, one row after another.
+  // Of BosonogaProgramAsset, numbered by a font or icon value.
+  GArray *fonts;
+  GArray *icons;
   gboolean is_gfx;
   // A missing section starts at a BOSONOGA_OP_SECTION_END, so it can still run.
   guint entries[BOSONOGA_SECTION_COUNT];

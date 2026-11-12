@@ -130,7 +130,8 @@ static gboolean bosonoga_append_zero_row(BosonogaParser *parser,
                                          GError **error) {
   for (guint i = 0; i < array->result_count; ++i) {
     const BosonogaValueKind kind = array->results[i];
-    if (kind == BOSONOGA_VALUE_INPUT_KEY || kind == BOSONOGA_VALUE_FONT) {
+    if (kind == BOSONOGA_VALUE_INPUT_KEY || kind == BOSONOGA_VALUE_FONT ||
+        kind == BOSONOGA_VALUE_ICON) {
       return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
                               "a zeroed row cannot have %s, which has no zero, "
                               "but literal rows can",

@@ -174,8 +174,9 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
     operand->literal = bosonoga_find_constant(parser, token)->value;
   } else if (bosonoga_token_setting(parser, token, &operand->literal)) {
     // The value of a setting is known now, so it is a literal.
-    if (operand->literal.kind == BOSONOGA_VALUE_FONT) {
-      bosonoga_name_font(parser, token, &operand->literal);
+    if (operand->literal.kind == BOSONOGA_VALUE_FONT ||
+        operand->literal.kind == BOSONOGA_VALUE_ICON) {
+      bosonoga_name_asset(parser, token, &operand->literal);
     }
   } else {
     const BosonogaVariable *variable = bosonoga_find_variable(parser, token);
