@@ -33,6 +33,7 @@
 //               | "while" condition block
 //               | "break" | "continue" | "nihil"
 //               | "sleep_ms" value
+//               | "gfx_await_next_frame"
 //               | "return" ("exit_success" | "exit_failure" | value*)
 //               | "gfx_clear" value
 //               | "gfx_draw_rectangle" value value value value value
@@ -170,6 +171,9 @@
 //   once, gfx_frame once per frame, gfx_main across frames until it returns,
 //   gfx_key_down once per press, not as the key repeats, and gfx_cleanup when
 //   the window closes. Without a window, gfx_frame and gfx_key_down never run.
+// - gfx_await_next_frame waits for the next frame, so that a loop in gfx_main
+//   steps once per frame, at most 60 times a second, and does not use up the
+//   ops of a frame. It is only in gfx_main, and not in a function.
 // - A KEY is a key of the [color], [global], [key], [font] or [icon] group of
 //   the settings, see settings.h. A color prints as RRGGBB, and a global is one
 //   INTEGER or REAL. A key of [key] names a keyboard key by its sokol_app name,
@@ -282,6 +286,7 @@ typedef enum {
   BOSONOGA_OP_LOOP_TEST,
   BOSONOGA_OP_LOOP_NEXT,
   BOSONOGA_OP_SLEEP,
+  BOSONOGA_OP_AWAIT_NEXT_FRAME,
   BOSONOGA_OP_RETURN,
   BOSONOGA_OP_MISSING_RETURN,
   BOSONOGA_OP_SECTION_END,

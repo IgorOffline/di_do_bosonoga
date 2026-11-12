@@ -246,6 +246,8 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         execution->wake_time = g_get_monotonic_time() +
                                (gint64)left->u32 * G_TIME_SPAN_MILLISECOND;
         return BOSONOGA_EXECUTION_SLEEPING;
+      case BOSONOGA_OP_AWAIT_NEXT_FRAME:
+        return BOSONOGA_EXECUTION_AWAITING_FRAME;
       case BOSONOGA_OP_RETURN:
         *exit_status = op->integer;
         return BOSONOGA_EXECUTION_RETURNED;
