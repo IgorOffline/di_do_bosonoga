@@ -13,6 +13,7 @@
 #define BOSONOGA_SETTINGS_GROUP_GLOBAL "global"
 #define BOSONOGA_SETTINGS_GROUP_KEY "key"
 #define BOSONOGA_SETTINGS_GROUP_FONT "font"
+#define BOSONOGA_SETTINGS_GROUP_ICON "icon"
 #define BOSONOGA_SETTINGS_KEY_BACKGROUND "background"
 #define BOSONOGA_COLOR_HEX_LENGTH 6
 
@@ -37,21 +38,31 @@ void bosonoga_settings_clear(BosonogaSettings *settings) {
   if (settings->fonts != NULL) {
     g_hash_table_unref(settings->fonts);
   }
-}
-
-static void bosonoga_settings_font_free(gpointer data) {
-  BosonogaSettingsFont *font = data;
-  g_free(font->text);
-  g_free(font->path);
-  g_free(font);
-}
-
-const BosonogaSettingsFont *bosonoga_settings_font(
-    const BosonogaSettings *settings, const gchar *key) {
-  if (settings->fonts == NULL) {
-    return NULL;
+  if (settings->icons != NULL) {
+    g_hash_table_unref(settings->icons);
   }
-  return g_hash_table_lookup(settings->fonts, key);
+}
+
+static void bosonoga_settings_asset_free(gpointer data) {
+  BosonogaSettingsAsset *asset = data;
+  g_free(asset->text);
+  g_free(asset->path);
+  g_free(asset);
+}
+
+static const BosonogaSettingsAsset *bosonoga_settings_asset(GHashTable *assets,
+                                                            const gchar *key) {
+  return assets == NULL ? NULL : g_hash_table_lookup(assets, key);
+}
+
+const BosonogaSettingsAsset *bosonoga_settings_font(
+    const BosonogaSettings *settings, const gchar *key) {
+  return bosonoga_settings_asset(settings->fonts, key);
+}
+
+const BosonogaSettingsAsset *bosonoga_settings_icon(
+    const BosonogaSettings *settings, const gchar *key) {
+  return bosonoga_settings_asset(settings->icons, key);
 }
 
 gboolean bosonoga_settings_key(const BosonogaSettings *settings,
@@ -257,36 +268,34 @@ static gboolean bosonoga_read_key_settings(const BosonogaSettingsFile *file,
 }
 
 // The files are not opened here, so that a program without a window runs
-// without them.
-static gboolean bosonoga_read_font_settings(const BosonogaSettingsFile *file,
-                                            BosonogaSettings *settings,
-                                            GError **error) {
-  settings->fonts = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
-                                          bosonoga_settings_font_free);
-  if (!g_key_file_has_group(file->key_file, BOSONOGA_SETTINGS_GROUP_FONT)) {
+// without them. What and example say what the group names, for the error.
+static gboolean bosonoga_read_asset_settings(
+    const BosonogaSettingsFile *file, const gchar *group, const gchar *what,
+    const gchar *example, GHashTable **assets, GError **error) {
+  *assets = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
+                                  bosonoga_settings_asset_free);
+  if (!g_key_file_has_group(file->key_file, group)) {
     return TRUE;
   }
-  g_auto(GStrv) keys = g_key_file_get_keys(
-      file->key_file, BOSONOGA_SETTINGS_GROUP_FONT, NULL, NULL);
+  g_auto(GStrv) keys = g_key_file_get_keys(file->key_file, group, NULL, NULL);
   for (gsize i = 0; keys != NULL && keys[i] != NULL; ++i) {
-    g_autofree gchar *text = bosonoga_read_text_setting(
-        file, BOSONOGA_SETTINGS_GROUP_FONT, keys[i], error);
+    g_autofree gchar *text =
+        bosonoga_read_text_setting(file, group, keys[i], error);
     if (text == NULL) {
       return FALSE;
     }
     if (text[0] == '\0') {
       g_set_error(error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
-                  "%s: %s must name a font file, like "
-                  "\"asset/font/IntelOneMono-Medium.ttf\"",
-                  file->path, keys[i]);
+                  "%s: %s must name %s, like \"%s\"", file->path, keys[i], what,
+                  example);
       return FALSE;
     }
-    BosonogaSettingsFont *font = g_new0(BosonogaSettingsFont, 1);
-    font->path = g_path_is_absolute(text)
-                     ? g_strdup(text)
-                     : g_build_filename(file->directory, text, NULL);
-    font->text = g_steal_pointer(&text);
-    g_hash_table_insert(settings->fonts, g_strdup(keys[i]), font);
+    BosonogaSettingsAsset *asset = g_new0(BosonogaSettingsAsset, 1);
+    asset->path = g_path_is_absolute(text)
+                      ? g_strdup(text)
+                      : g_build_filename(file->directory, text, NULL);
+    asset->text = g_steal_pointer(&text);
+    g_hash_table_insert(*assets, g_strdup(keys[i]), asset);
   }
   return TRUE;
 }
@@ -323,5 +332,10 @@ gboolean bosonoga_read_settings(const gchar *path, BosonogaSettings *settings,
   return bosonoga_read_color_settings(&file, settings, error) &&
          bosonoga_read_global_settings(&file, settings, error) &&
          bosonoga_read_key_settings(&file, settings, error) &&
-         bosonoga_read_font_settings(&file, settings, error);
+         bosonoga_read_asset_settings(
+             &file, BOSONOGA_SETTINGS_GROUP_FONT, "a font file",
+             "asset/font/IntelOneMono-Medium.ttf", &settings->fonts, error) &&
+         bosonoga_read_asset_settings(&file, BOSONOGA_SETTINGS_GROUP_ICON,
+                                      "an icon file", "asset/icon/chevron.png",
+                                      &settings->icons, error);
 }

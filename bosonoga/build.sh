@@ -24,6 +24,6 @@ for source in src/gfx.c src/gfx_vendor.c; do
   object="build/gfx_obj/$(basename "$source" .c).o"
   # shellcheck disable=SC2086
   $CC $CFLAGS $GLIB_CFLAGS -Iinclude -Isrc -isystem sokol -isystem fontstash \
-    -pthread -c "$source" -o "$object"
+    -isystem stb -pthread -c "$source" -o "$object"
 done
 ar rcs build/libbosonoga_gfx.a build/gfx_obj/*.o

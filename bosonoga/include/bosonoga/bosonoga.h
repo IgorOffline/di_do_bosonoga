@@ -29,6 +29,7 @@ typedef enum {
   BOSONOGA_VALUE_BOOL,
   BOSONOGA_VALUE_INPUT_KEY,
   BOSONOGA_VALUE_FONT,
+  BOSONOGA_VALUE_ICON,
 } BosonogaValueKind;
 
 typedef struct {
@@ -44,10 +45,11 @@ typedef struct {
     guint32 color;  // 0xRRGGBB
     gboolean boolean;
     guint32 input_key;  // As sokol_app numbers keys.
+    // Of a font or icon, numbered in the program.
     struct {
       guint index;
-      const gchar *text;  // As [font] has it, which the program owns.
-    } font;
+      const gchar *text;  // As [font] or [icon] has it, which the program owns.
+    } asset;
     struct {
       // Not NUL-terminated. Of the source, or of what new made, which the
       // execution owns.

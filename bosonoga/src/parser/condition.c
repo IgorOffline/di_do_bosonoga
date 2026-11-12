@@ -60,7 +60,8 @@ static gboolean bosonoga_check_compare(const BosonogaParser *parser,
                             "colors cannot be compared");
   }
   if ((left == BOSONOGA_VALUE_STR || left == BOSONOGA_VALUE_BOOL ||
-       left == BOSONOGA_VALUE_INPUT_KEY || left == BOSONOGA_VALUE_FONT) &&
+       left == BOSONOGA_VALUE_INPUT_KEY || left == BOSONOGA_VALUE_FONT ||
+       left == BOSONOGA_VALUE_ICON) &&
       compare != BOSONOGA_COMPARE_EQ && compare != BOSONOGA_COMPARE_NOT_EQ) {
     return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
                             "%s can only be compared with eq or not_eq",
