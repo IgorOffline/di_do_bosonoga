@@ -179,7 +179,7 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
     }
   } else {
     const BosonogaVariable *variable = bosonoga_find_variable(parser, token);
-    if (variable == NULL) {
+    if (variable == NULL || variable->is_array) {
       return bosonoga_fail_unknown_variable(parser, token, error);
     }
     // A copy would outlive the unset of what it points into.

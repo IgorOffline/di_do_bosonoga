@@ -25,7 +25,12 @@ gboolean bosonoga_parse_constant(BosonogaParser *parser, GError **error) {
   }
   const BosonogaToken source = parser->tokenizer.token;
   BosonogaOperand value;
-  if (!bosonoga_parse_value(parser, &value, error)) {
+  memset(&value, 0, sizeof(value));
+  if (bosonoga_at_len(parser)) {
+    if (!bosonoga_parse_len(parser, &value.literal, error)) {
+      return FALSE;
+    }
+  } else if (!bosonoga_parse_value(parser, &value, error)) {
     return FALSE;
   }
   if (value.is_variable) {

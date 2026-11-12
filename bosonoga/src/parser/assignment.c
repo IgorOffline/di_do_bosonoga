@@ -77,6 +77,15 @@ gboolean bosonoga_parse_var(BosonogaParser *parser, gboolean is_val,
     return bosonoga_advance(parser, error) &&
            bosonoga_parse_new(parser, &name, is_val, error);
   }
+  if (bosonoga_at_word(parser, "array")) {
+    if (is_val) {
+      return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                              BOSONOGA_ERROR_SYNTAX,
+                              "a val array is top-level, and an array of a "
+                              "block is a var");
+    }
+    return bosonoga_parse_var_array(parser, &name, error);
+  }
 
   // Declared after the call, so that its arguments cannot refer to it.
   if (bosonoga_find_function(parser, &parser->tokenizer.token) >= 0) {
@@ -102,6 +111,16 @@ gboolean bosonoga_parse_var(BosonogaParser *parser, gboolean is_val,
     if (!bosonoga_parse_conversion(parser, slot, &kind, error)) {
       return FALSE;
     }
+  } else if (bosonoga_at_len(parser)) {
+    const BosonogaToken start = parser->tokenizer.token;
+    BosonogaOperand length;
+    memset(&length, 0, sizeof(length));
+    if (!bosonoga_parse_len(parser, &length.literal, error)) {
+      return FALSE;
+    }
+    BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_ASSIGN, &start);
+    op->slot = slot;
+    op->left = length;
   } else {
     const BosonogaToken start = parser->tokenizer.token;
     BosonogaOperand initial;
@@ -184,9 +203,20 @@ static gboolean bosonoga_parse_set_to(BosonogaParser *parser,
     return FALSE;
   }
   if (bosonoga_find_function(parser, &parser->tokenizer.token) < 0) {
+    const BosonogaToken start = parser->tokenizer.token;
     BosonogaOperand value;
-    if (!bosonoga_parse_value_of_kind(parser, target->kind, "set ... to",
-                                      &value, error)) {
+    memset(&value, 0, sizeof(value));
+    if (bosonoga_at_len(parser)) {
+      if (!bosonoga_parse_len(parser, &value.literal, error)) {
+        return FALSE;
+      }
+      if (target->kind != BOSONOGA_VALUE_I32) {
+        return bosonoga_fail_at(parser, &start, error, BOSONOGA_ERROR_TYPE,
+                                "'%s' is %s, but a len is i32", shown,
+                                bosonoga_value_kind_name(target->kind));
+      }
+    } else if (!bosonoga_parse_value_of_kind(parser, target->kind, "set ... to",
+                                             &value, error)) {
       return FALSE;
     }
     if (bosonoga_at_value(parser)) {
@@ -235,7 +265,30 @@ gboolean bosonoga_parse_set(BosonogaParser *parser, GError **error) {
   }
   const BosonogaVariable *found = bosonoga_find_variable(parser, &name);
   if (found == NULL) {
+    const gint function = bosonoga_find_function(parser, &name);
+    if (function >= 0 &&
+        g_array_index(parser->functions, BosonogaFunction, (guint)function)
+            .is_array) {
+      return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_TYPE,
+                              "'%s' is a val array and cannot be set, but a "
+                              "var array of a block can",
+                              shown);
+    }
     return bosonoga_fail_unknown_variable(parser, &name, error);
+  }
+  if (found->is_array) {
+    const BosonogaVariable array = *found;
+    if (!bosonoga_advance(parser, error)) {
+      return FALSE;
+    }
+    if (!bosonoga_at_word(parser, "at")) {
+      return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                              BOSONOGA_ERROR_SYNTAX,
+                              "'%s' is an array, whose rows are set with set "
+                              "%s at INDEX to and one value per column",
+                              shown, shown);
+    }
+    return bosonoga_parse_array_write(parser, &name, &array, error);
   }
   if (found->is_new) {
     return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_TYPE,

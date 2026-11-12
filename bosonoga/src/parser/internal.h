@@ -37,6 +37,8 @@ typedef struct {
   gboolean is_val;
   // Owns a str that new made, which is unset in the block it is declared in.
   gboolean is_new;
+  gboolean is_array;
+  guint function;  // Of an array, in functions.
   guint block_depth;
   guint loop_depth;
 } BosonogaVariable;
@@ -57,7 +59,8 @@ typedef struct {
   GArray *loops;  // Of BosonogaLoop, innermost last.
   BosonogaSection section;
   GArray *functions;
-  gboolean in_function;  // Then the function is the last of functions.
+  gboolean in_function;
+  guint function;  // In functions, while in_function.
   guint delta_time_slot;
   guint key_slot;
   gboolean has_section[BOSONOGA_SECTION_COUNT];
@@ -209,9 +212,22 @@ gboolean bosonoga_parse_function_return(BosonogaParser *parser,
 
 gchar *bosonoga_values_shown(const BosonogaValueKind *kinds, guint count);
 
-gboolean bosonoga_parse_array(BosonogaParser *parser, GError **error);
+gboolean bosonoga_parse_val_array(BosonogaParser *parser,
+                                  const BosonogaToken *name, GError **error);
 
-// Called after the name of the array, found in functions.
+gboolean bosonoga_parse_var_array(BosonogaParser *parser,
+                                  const BosonogaToken *name, GError **error);
+
+gboolean bosonoga_parse_array_write(BosonogaParser *parser,
+                                    const BosonogaToken *name,
+                                    const BosonogaVariable *array,
+                                    GError **error);
+
+gboolean bosonoga_at_len(const BosonogaParser *parser);
+
+gboolean bosonoga_parse_len(BosonogaParser *parser, BosonogaValue *value,
+                            GError **error);
+
 gboolean bosonoga_parse_array_read(BosonogaParser *parser,
                                    const BosonogaToken *name, guint found,
                                    GError **error);

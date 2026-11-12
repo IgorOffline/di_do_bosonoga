@@ -9,20 +9,23 @@
 //
 //   program    := item+
 //   item       := ("bosonoga_global" | "bosonoga_main") block | section
-//                 | function | array | "const" NAME "is" value
+//                 | function | "val" NAME "is" array
+//                 | "const" NAME "is" (value | len)
 //   section    := ("gfx_init" | "gfx_frame" | "gfx_cleanup" | "gfx_key_down"
 //                 | "gfx_main") block
 //   function   := "def" FUNCTION PARAMETER* ("ret" INDEXED+ | "ret_void")
 //                 block
-//   array      := "array" NAME INDEXED+ "di" row+ "do"
+//   array      := "array" INDEXED+ "di" row+ "do"
 //   row        := "row" value+
 //   block      := "di" statement+ "do"
 //   statement  := "info" value+
 //               | ("var" | "val") NAME "is"
 //                 (initial | call "with" "ret" INDEXED | new)
+//               | "var" NAME "is" (array | "array" INDEXED+ "rows" value)
 //               | "unset" NAME
 //               | "set" NAME update
-//               | "set" NAME "to" (value | call "with" "ret" INDEXED)
+//               | "set" NAME "to" (value | len | call "with" "ret" INDEXED)
+//               | "set" NAME "at" value "to" value+
 //               | "call" call ("with" "ret" taken+ block)?
 //               | "if" condition block ("else" "if" condition block)*
 //                 ("else" block)?
@@ -37,7 +40,8 @@
 //               | "gfx_draw_circle" value value value value
 //               | "gfx_draw_text" HALIGN VALIGN value value value value value
 //                 value+
-//   initial    := conversion | value ("shift_or" value)*
+//   initial    := conversion | len | value ("shift_or" value)*
+//   len        := ("len_col" | "len_row") NAME
 //   new        := "new" "str" "of" value+
 //   update     := conversion
 //               | ("to_add" | "to_subtract" | "to_multiply" | "to_divide"
@@ -146,8 +150,16 @@
 //
 //   Calls nest at most BOSONOGA_CALL_DEPTH_MAX deep, and a function cannot have
 //   the statements of gfx_frame.
-// - An array holds literal or constant rows, and "at" an i32 index from 0
-//   reads one. An index without a row is a runtime error.
+// - An array has rows of the INDEXED types, and "at" an i32 index from 0 reads
+//   one. An index without a row is a runtime error. A val array is top-level,
+//   with literal or constant rows, and is seen by all later code. A var array
+//   is a variable of a block, with such rows, or "rows" and an i32 literal or
+//   constant of zeroed ones (0, false, an empty str or 000000, but no input_key
+//   or font), made again each time its declaration runs. It holds at most
+//   BOSONOGA_ARRAY_VALUES_MAX values, and set ... at writes a whole row, but it
+//   is not set whole, passed, printed or compared. len_col is the length of a
+//   column, the number of rows, and len_row the length of a row, an i32 known
+//   before the program runs.
 // - bosonoga_global runs first and cannot return. The variables at the top of
 //   its block are shared by bosonoga_main and all sections.
 // - A gfx program has one gfx_main and at most one of each other section, in
@@ -279,6 +291,8 @@ typedef enum {
   BOSONOGA_OP_FUNCTION_RETURN,
   BOSONOGA_OP_TAKE_RESULT,
   BOSONOGA_OP_ARRAY_READ,
+  BOSONOGA_OP_ARRAY_INIT,
+  BOSONOGA_OP_ARRAY_WRITE,
   BOSONOGA_OP_NEW_STR_PART,
   BOSONOGA_OP_NEW_STR,
   BOSONOGA_OP_UNSET,
@@ -316,12 +330,16 @@ typedef struct {
 // The most values that a function takes or returns, and of a row.
 #define BOSONOGA_FUNCTION_VALUES_MAX 16
 #define BOSONOGA_CALL_DEPTH_MAX 10000
+#define BOSONOGA_ARRAY_VALUES_MAX 65536
 
 // An array is read like a function of its index that returns a row.
 typedef struct {
   const gchar *name;  // Slice of the source.
   gsize name_length;
   gboolean is_array;
+  gboolean is_var;     // Of an array that is a variable, in slots from slot.
+  gboolean is_zeroed;  // Then its rows are copies of the row at first_value.
+  guint slot;
   guint entry;
   guint parameter_count;
   guint result_count;
