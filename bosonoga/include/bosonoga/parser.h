@@ -11,6 +11,7 @@
 //   item       := ("bosonoga_global" | "bosonoga_main") block | section
 //                 | function | "val" NAME "is" array
 //                 | "const" NAME "is" (value | len)
+//                 | "io_raw_import" STRING
 //   section    := ("gfx_init" | "gfx_frame" | "gfx_cleanup" | "gfx_key_down"
 //                 | "gfx_main") block
 //   function   := "def" FUNCTION PARAMETER* ("ret" INDEXED+ | "ret_void")
@@ -164,6 +165,12 @@
 //   is not set whole, passed, printed or compared. len_col is the length of a
 //   column, the number of rows, and len_row the length of a row, an i32 known
 //   before the program runs.
+// - io_raw_import reads the tokens of another file in its place, as if they
+//   were written there, and then goes on after it, as in io_raw_import
+//   "lorem.bosonoga"_str. The file is in the directory of the program, so its
+//   name has no directory, and it ends with .bosonoga. Each file is imported at
+//   most once, and the program itself not at all. An error in an imported file
+//   names that file.
 // - bosonoga_global runs first and cannot return. The variables at the top of
 //   its block are shared by bosonoga_main and all sections.
 // - A gfx program has one gfx_main and at most one of each other section, in
@@ -316,6 +323,7 @@ typedef struct {
   BosonogaOpKind kind;
   BosonogaCompareKind compare;
   gboolean negate;
+  const gchar *path;  // Of the file of the op, the program's or an import's.
   gsize line;
   gsize column;
   guint slot;
@@ -369,8 +377,15 @@ typedef struct {
   guint first_value;  // Only of an array, index in program->rows of row 0.
 } BosonogaFunction;
 
+// A file that io_raw_import read, which the program points into.
+typedef struct {
+  gchar *path;  // UTF-8, as error messages show it.
+  gchar *source;
+} BosonogaProgramImport;
+
 typedef struct {
   const gchar *path;  // Not owned.
+  GArray *imports;    // Of BosonogaProgramImport, in the order of reading.
   GArray *ops;
   guint slot_count;  // Not of functions.
   GArray *functions;
@@ -384,7 +399,9 @@ typedef struct {
 } BosonogaProgram;
 
 // The program points into path and source, which must outlive it. Path is
-// UTF-8, for error messages. The settings are not used after this returns.
+// UTF-8, for error messages, and names the file of the source, as
+// io_raw_import reads the files next to it. The settings are not used after
+// this returns.
 BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
                                 gsize length, const BosonogaSettings *settings,
                                 GError **error);

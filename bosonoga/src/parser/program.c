@@ -62,6 +62,91 @@ static gboolean bosonoga_parse_gfx_section(BosonogaParser *parser,
                                 error);
 }
 
+#define BOSONOGA_FILE_SUFFIX ".bosonoga"
+#define BOSONOGA_EXPECTED_FILE_SUFFIX ".xp.bosonoga"
+
+static gboolean bosonoga_text_ends_with(const gchar *text, gsize length,
+                                        const gchar *suffix) {
+  const gsize suffix_length = strlen(suffix);
+  return length >= suffix_length &&
+         memcmp(text + length - suffix_length, suffix, suffix_length) == 0;
+}
+
+// A file of the directory, named like lorem.bosonoga, and not expected output.
+static gboolean bosonoga_is_import_name(const gchar *text, gsize length) {
+  if (length <= strlen(BOSONOGA_FILE_SUFFIX) || text[0] == '.' ||
+      !g_utf8_validate(text, (gssize)length, NULL) ||
+      !bosonoga_text_ends_with(text, length, BOSONOGA_FILE_SUFFIX) ||
+      bosonoga_text_ends_with(text, length, BOSONOGA_EXPECTED_FILE_SUFFIX)) {
+    return FALSE;
+  }
+  for (gsize i = 0; i < length; ++i) {
+    if (text[i] == '/' || text[i] == '\\') {
+      return FALSE;
+    }
+  }
+  return TRUE;
+}
+
+// After io_raw_import, reads the tokens of the file until its end, and then
+// those after the file name.
+static gboolean bosonoga_parse_import(BosonogaParser *parser, GError **error) {
+  if (!bosonoga_advance(parser, error)) {
+    return FALSE;
+  }
+  const BosonogaToken name = parser->tokenizer.token;
+  if (name.kind != BOSONOGA_TOKEN_LITERAL ||
+      name.value.kind != BOSONOGA_VALUE_STR) {
+    return bosonoga_parse_error(
+        parser, "a file name, as in io_raw_import \"lorem.bosonoga\"_str",
+        error);
+  }
+  if (!bosonoga_is_import_name(name.value.str.text, name.value.str.length)) {
+    return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_SYNTAX,
+                            "io_raw_import takes the name of a .bosonoga file "
+                            "in the directory of the program, as in "
+                            "io_raw_import \"lorem.bosonoga\"_str");
+  }
+  g_autofree gchar *file_name =
+      g_strndup(name.value.str.text, name.value.str.length);
+  g_autofree gchar *program_name = g_path_get_basename(parser->program->path);
+  if (g_str_equal(file_name, program_name)) {
+    return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_SYNTAX,
+                            "a program cannot import itself");
+  }
+  GArray *imports = parser->program->imports;
+  for (guint i = 0; i < imports->len; ++i) {
+    g_autofree gchar *imported = g_path_get_basename(
+        g_array_index(imports, BosonogaProgramImport, i).path);
+    if (g_str_equal(file_name, imported)) {
+      return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_SYNTAX,
+                              "%s is already imported", file_name);
+    }
+  }
+
+  g_autofree gchar *directory = g_path_get_dirname(parser->program->path);
+  g_autofree gchar *path = g_str_equal(directory, ".")
+                               ? g_strdup(file_name)
+                               : g_build_filename(directory, file_name, NULL);
+  g_autoptr(GError) read_error = NULL;
+  g_autofree gchar *system_path =
+      g_filename_from_utf8(path, -1, NULL, NULL, &read_error);
+  gchar *source = NULL;
+  gsize source_length = 0;
+  if (system_path == NULL ||
+      !g_file_get_contents(system_path, &source, &source_length, &read_error)) {
+    return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_SYNTAX,
+                            "cannot import %s: %s", path, read_error->message);
+  }
+  const BosonogaProgramImport import = {g_steal_pointer(&path), source};
+  g_array_append_val(imports, import);
+
+  g_array_append_val(parser->outer_tokenizers, parser->tokenizer);
+  bosonoga_tokenizer_init(&parser->tokenizer, import.path, import.source,
+                          source_length);
+  return bosonoga_advance(parser, error);
+}
+
 static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
   if (!bosonoga_advance(parser, error)) {
     return FALSE;
@@ -69,7 +154,11 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
   gboolean has_main = FALSE;
   gboolean has_gfx_section = FALSE;
   do {
-    if (bosonoga_at_word(parser, "const")) {
+    if (bosonoga_at_word(parser, "io_raw_import")) {
+      if (!bosonoga_parse_import(parser, error)) {
+        return FALSE;
+      }
+    } else if (bosonoga_at_word(parser, "const")) {
       if (!bosonoga_parse_constant(parser, error)) {
         return FALSE;
       }
@@ -155,7 +244,14 @@ static void bosonoga_program_asset_clear(gpointer data) {
   g_free(asset->path);
 }
 
+static void bosonoga_program_import_clear(gpointer data) {
+  BosonogaProgramImport *import = data;
+  g_free(import->path);
+  g_free(import->source);
+}
+
 void bosonoga_program_free(BosonogaProgram *program) {
+  g_array_unref(program->imports);
   g_array_unref(program->ops);
   g_array_unref(program->functions);
   g_array_unref(program->rows);
@@ -176,6 +272,8 @@ BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
   g_array_set_clear_func(loops, bosonoga_loop_clear);
   g_autoptr(BosonogaProgram) program = g_new0(BosonogaProgram, 1);
   program->path = path;
+  program->imports = g_array_new(FALSE, FALSE, sizeof(BosonogaProgramImport));
+  g_array_set_clear_func(program->imports, bosonoga_program_import_clear);
   program->ops = g_array_new(FALSE, TRUE, sizeof(BosonogaOp));
   program->functions = g_array_new(FALSE, FALSE, sizeof(BosonogaFunction));
   program->rows = g_array_new(FALSE, FALSE, sizeof(BosonogaValue));
@@ -184,9 +282,12 @@ BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
   program->icons = g_array_new(FALSE, FALSE, sizeof(BosonogaProgramAsset));
   g_array_set_clear_func(program->icons, bosonoga_program_asset_clear);
 
+  g_autoptr(GArray) outer_tokenizers =
+      g_array_new(FALSE, FALSE, sizeof(BosonogaTokenizer));
   BosonogaParser parser;
   memset(&parser, 0, sizeof(parser));
   bosonoga_tokenizer_init(&parser.tokenizer, path, source, length);
+  parser.outer_tokenizers = outer_tokenizers;
   parser.ops = program->ops;
   parser.variables = variables;
   parser.constants = constants;

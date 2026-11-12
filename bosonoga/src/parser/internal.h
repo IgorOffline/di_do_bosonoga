@@ -52,6 +52,9 @@ typedef struct {
 
 typedef struct {
   BosonogaTokenizer tokenizer;
+  // Of the files that import the one being read, the innermost last, each
+  // after its io_raw_import.
+  GArray *outer_tokenizers;
   GArray *ops;
   GArray *variables;
   GArray *constants;
