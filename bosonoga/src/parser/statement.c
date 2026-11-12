@@ -82,6 +82,19 @@ static gboolean bosonoga_parse_sleep(BosonogaParser *parser,
   return TRUE;
 }
 
+static gboolean bosonoga_parse_await_next_frame(BosonogaParser *parser,
+                                                const BosonogaToken *start,
+                                                GError **error) {
+  if (parser->section != BOSONOGA_SECTION_MAIN || !parser->program->is_gfx ||
+      parser->in_function) {
+    g_autofree gchar *shown = bosonoga_token_shown(start);
+    return bosonoga_fail_at(parser, start, error, BOSONOGA_ERROR_SYNTAX,
+                            "%s can only be in gfx_main", shown);
+  }
+  bosonoga_emit(parser, BOSONOGA_OP_AWAIT_NEXT_FRAME, start);
+  return TRUE;
+}
+
 static gboolean bosonoga_parse_return(BosonogaParser *parser,
                                       const BosonogaToken *start,
                                       GError **error) {
@@ -371,6 +384,7 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
       !bosonoga_token_is_word(&start, "continue") &&
       !bosonoga_token_is_word(&start, "nihil") &&
       !bosonoga_token_is_word(&start, "sleep_ms") &&
+      !bosonoga_token_is_word(&start, "gfx_await_next_frame") &&
       !bosonoga_token_is_word(&start, "return") &&
       !bosonoga_token_is_word(&start, "gfx_clear") &&
       !bosonoga_token_is_word(&start, "gfx_draw_rectangle") &&
@@ -413,6 +427,9 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   }
   if (bosonoga_token_is_word(&start, "sleep_ms")) {
     return bosonoga_parse_sleep(parser, &start, error);
+  }
+  if (bosonoga_token_is_word(&start, "gfx_await_next_frame")) {
+    return bosonoga_parse_await_next_frame(parser, &start, error);
   }
   if (bosonoga_token_is_word(&start, "return")) {
     const BosonogaVariable *owner = bosonoga_find_new(parser, FALSE);

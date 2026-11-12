@@ -67,6 +67,7 @@ static const gchar *const bosonoga_reserved_words[] = {
     "shift_or",
     "shift_has",
     "sleep_ms",
+    "gfx_await_next_frame",
     "gfx_init",
     "gfx_frame",
     "gfx_main",

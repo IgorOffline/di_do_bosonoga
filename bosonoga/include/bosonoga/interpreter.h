@@ -46,6 +46,7 @@ typedef struct {
 typedef enum {
   BOSONOGA_EXECUTION_RUNNING,
   BOSONOGA_EXECUTION_SLEEPING,
+  BOSONOGA_EXECUTION_AWAITING_FRAME,
   BOSONOGA_EXECUTION_RETURNED,
   BOSONOGA_EXECUTION_FAILED,
 } BosonogaExecutionState;
@@ -65,7 +66,8 @@ void bosonoga_execution_free(BosonogaExecution *execution);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(BosonogaExecution, bosonoga_execution_free)
 
-// Runs at most op_budget ops, and none while asleep, without blocking.
+// Runs at most op_budget ops, and none while asleep, without blocking. After
+// gfx_await_next_frame it is AWAITING_FRAME, and the next call goes on.
 BosonogaExecutionState bosonoga_execution_advance(BosonogaExecution *execution,
                                                   guint op_budget,
                                                   gint *exit_status,

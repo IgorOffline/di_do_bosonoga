@@ -79,6 +79,7 @@ gboolean bosonoga_run_section(const BosonogaProgram *program,
     switch (
         bosonoga_execution_advance(execution, G_MAXUINT, exit_status, error)) {
       case BOSONOGA_EXECUTION_RUNNING:
+      case BOSONOGA_EXECUTION_AWAITING_FRAME:
         break;
       case BOSONOGA_EXECUTION_SLEEPING: {
         const gint64 remaining = execution->wake_time - g_get_monotonic_time();

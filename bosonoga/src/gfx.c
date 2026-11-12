@@ -483,6 +483,7 @@ static void bosonoga_gfx_frame(void *user_data) {
                                      run->exit_status, &run->error)) {
     case BOSONOGA_EXECUTION_RUNNING:
     case BOSONOGA_EXECUTION_SLEEPING:
+    case BOSONOGA_EXECUTION_AWAITING_FRAME:
       return;
     case BOSONOGA_EXECUTION_RETURNED:
     case BOSONOGA_EXECUTION_FAILED:
