@@ -1,0 +1,9 @@
+expect steps: 3 rows of 2
+expect 3 three
+expect zeroed: 0 false []
+expect written: 2 true arrow
+expect path: 2
+expect gate: 4
+expect sum: 6
+expect fresh: 0
+expect fresh: 0

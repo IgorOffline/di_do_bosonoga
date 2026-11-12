@@ -262,8 +262,8 @@ gboolean bosonoga_parse_call_statement(BosonogaParser *parser,
 gboolean bosonoga_parse_function_return(BosonogaParser *parser,
                                         const BosonogaToken *start,
                                         GError **error) {
-  const BosonogaFunction *function = &g_array_index(
-      parser->functions, BosonogaFunction, parser->functions->len - 1);
+  const BosonogaFunction *function =
+      &g_array_index(parser->functions, BosonogaFunction, parser->function);
   if (bosonoga_at_word(parser, "exit_success") ||
       bosonoga_at_word(parser, "exit_failure")) {
     return bosonoga_fail_at(

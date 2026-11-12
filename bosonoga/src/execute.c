@@ -72,13 +72,10 @@ static void bosonoga_return(BosonogaExecution *execution) {
   execution->next = call.return_to;
 }
 
-static gboolean bosonoga_read_array(BosonogaExecution *execution,
-                                    const BosonogaOp *op,
-                                    const BosonogaValue *index,
-                                    GError **error) {
-  const BosonogaProgram *program = execution->program;
-  const BosonogaFunction *array =
-      &g_array_index(program->functions, BosonogaFunction, op->function);
+static gboolean bosonoga_check_row(const BosonogaProgram *program,
+                                   const BosonogaOp *op,
+                                   const BosonogaFunction *array,
+                                   const BosonogaValue *index, GError **error) {
   if (index->i32 < 0 || (guint)index->i32 >= array->row_count) {
     if (array->row_count == 1) {
       return bosonoga_runtime_error(
@@ -90,11 +87,57 @@ static gboolean bosonoga_read_array(BosonogaExecution *execution,
         (gint)array->name_length, array->name, array->row_count - 1,
         index->i32);
   }
+  return TRUE;
+}
+
+static void bosonoga_init_array(const BosonogaProgram *program,
+                                const BosonogaOp *op, BosonogaValue *frame) {
+  const BosonogaFunction *array =
+      &g_array_index(program->functions, BosonogaFunction, op->function);
+  const BosonogaValue *rows =
+      &g_array_index(program->rows, BosonogaValue, array->first_value);
+  const gsize row_size = array->result_count * sizeof(BosonogaValue);
+  if (!array->is_zeroed) {
+    memcpy(&frame[array->slot], rows, array->row_count * row_size);
+    return;
+  }
+  for (guint i = 0; i < array->row_count; ++i) {
+    memcpy(&frame[array->slot + i * array->result_count], rows, row_size);
+  }
+}
+
+static gboolean bosonoga_read_array(BosonogaExecution *execution,
+                                    const BosonogaOp *op,
+                                    const BosonogaValue *index,
+                                    const BosonogaValue *frame,
+                                    GError **error) {
+  const BosonogaProgram *program = execution->program;
+  const BosonogaFunction *array =
+      &g_array_index(program->functions, BosonogaFunction, op->function);
+  if (!bosonoga_check_row(program, op, array, index, error)) {
+    return FALSE;
+  }
+  const guint offset = (guint)index->i32 * array->result_count;
   memcpy(execution->results,
-         &g_array_index(
-             program->rows, BosonogaValue,
-             array->first_value + (guint)index->i32 * array->result_count),
+         array->is_var ? &frame[array->slot + offset]
+                       : &g_array_index(program->rows, BosonogaValue,
+                                        array->first_value + offset),
          array->result_count * sizeof(BosonogaValue));
+  return TRUE;
+}
+
+static gboolean bosonoga_write_array(const BosonogaExecution *execution,
+                                     const BosonogaOp *op,
+                                     const BosonogaValue *index,
+                                     BosonogaValue *frame, GError **error) {
+  const BosonogaProgram *program = execution->program;
+  const BosonogaFunction *array =
+      &g_array_index(program->functions, BosonogaFunction, op->function);
+  if (!bosonoga_check_row(program, op, array, index, error)) {
+    return FALSE;
+  }
+  memcpy(&frame[array->slot + (guint)index->i32 * array->result_count],
+         execution->arguments, array->result_count * sizeof(BosonogaValue));
   return TRUE;
 }
 
@@ -313,7 +356,15 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         frame[op->slot] = execution->results[op->index];
         break;
       case BOSONOGA_OP_ARRAY_READ:
-        if (!bosonoga_read_array(execution, op, left, error)) {
+        if (!bosonoga_read_array(execution, op, left, frame, error)) {
+          return BOSONOGA_EXECUTION_FAILED;
+        }
+        break;
+      case BOSONOGA_OP_ARRAY_INIT:
+        bosonoga_init_array(program, op, frame);
+        break;
+      case BOSONOGA_OP_ARRAY_WRITE:
+        if (!bosonoga_write_array(execution, op, left, frame, error)) {
           return BOSONOGA_EXECUTION_FAILED;
         }
         break;

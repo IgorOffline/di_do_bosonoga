@@ -93,6 +93,8 @@ static const gchar *const bosonoga_reserved_words[] = {
     "to",
     "array",
     "row",
+    "len_col",
+    "len_row",
     "expect",
     "at",
     "of",

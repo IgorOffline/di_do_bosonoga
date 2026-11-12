@@ -37,7 +37,6 @@ static gboolean bosonoga_parse_section(BosonogaParser *parser,
   return TRUE;
 }
 
-// What lists the items that can be here, for the error if this is none.
 static gboolean bosonoga_parse_gfx_section(BosonogaParser *parser,
                                            const gchar *what, GError **error) {
   static const struct {
@@ -78,12 +77,25 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
       if (!bosonoga_parse_function(parser, error)) {
         return FALSE;
       }
-    } else if (bosonoga_at_word(parser, "array")) {
-      if (!bosonoga_parse_array(parser, error)) {
+    } else if (bosonoga_at_word(parser, "val")) {
+      BosonogaToken name;
+      if (!bosonoga_advance(parser, error) ||
+          !bosonoga_parse_new_name(parser, &name, error) ||
+          !bosonoga_expect_word(parser, "is", error) ||
+          !bosonoga_parse_val_array(parser, &name, error)) {
         return FALSE;
       }
+    } else if (bosonoga_at_word(parser, "array")) {
+      return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                              BOSONOGA_ERROR_SYNTAX,
+                              "an array is declared as val NAME is array, as "
+                              "in val task is array 0_i32");
+    } else if (bosonoga_at_word(parser, "var")) {
+      return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                              BOSONOGA_ERROR_SYNTAX,
+                              "a var is a variable of a block, and a "
+                              "top-level array is a val");
     } else if (bosonoga_at_word(parser, "bosonoga_global")) {
-      // Its variables must be declared before the sections that use them.
       if (has_main || has_gfx_section ||
           parser->has_section[BOSONOGA_SECTION_GLOBAL]) {
         return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
@@ -102,16 +114,16 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
         return FALSE;
       }
     } else if (has_main) {
-      return bosonoga_parse_error(parser, "const, def, array or end of file",
+      return bosonoga_parse_error(parser, "const, def, val or end of file",
                                   error);
     } else {
       const gchar *what =
-          has_gfx_section ? "const, def, array, gfx_init, gfx_frame, "
+          has_gfx_section ? "const, def, val, gfx_init, gfx_frame, "
                             "gfx_cleanup, gfx_key_down or gfx_main"
           : parser->has_section[BOSONOGA_SECTION_GLOBAL]
-              ? "const, def, array, bosonoga_main, gfx_init, gfx_frame, "
+              ? "const, def, val, bosonoga_main, gfx_init, gfx_frame, "
                 "gfx_cleanup, gfx_key_down or gfx_main"
-              : "const, def, array, bosonoga_global, bosonoga_main, gfx_init, "
+              : "const, def, val, bosonoga_global, bosonoga_main, gfx_init, "
                 "gfx_frame, gfx_cleanup, gfx_key_down or gfx_main";
       if (!bosonoga_parse_gfx_section(parser, what, error)) {
         return FALSE;

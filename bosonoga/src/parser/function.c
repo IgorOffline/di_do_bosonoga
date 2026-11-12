@@ -7,10 +7,14 @@ gint bosonoga_find_function(const BosonogaParser *parser,
   if (token->kind != BOSONOGA_TOKEN_WORD) {
     return -1;
   }
+  const BosonogaVariable *variable = bosonoga_find_variable(parser, token);
+  if (variable != NULL) {
+    return variable->is_array ? (gint)variable->function : -1;
+  }
   for (guint i = 0; i < parser->functions->len; ++i) {
     const BosonogaFunction *function =
         &g_array_index(parser->functions, BosonogaFunction, i);
-    if (function->name_length == token->length &&
+    if (!function->is_var && function->name_length == token->length &&
         memcmp(function->name, token->text, token->length) == 0) {
       return (gint)i;
     }
@@ -123,7 +127,8 @@ gboolean bosonoga_parse_types(BosonogaParser *parser, BosonogaValueKind *kinds,
     if (!bosonoga_advance(parser, error)) {
       return FALSE;
     }
-  } while (!bosonoga_at_word(parser, "di"));
+  } while (!bosonoga_at_word(parser, "di") &&
+           !bosonoga_at_word(parser, "rows"));
   return TRUE;
 }
 
@@ -195,6 +200,7 @@ static gboolean bosonoga_parse_function_rest(BosonogaParser *parser,
   function->entry = parser->ops->len;
   const guint index = parser->functions->len;
   g_array_append_val(parser->functions, *function);
+  parser->function = index;
   if (!bosonoga_parse_block(parser, error)) {
     return FALSE;
   }
