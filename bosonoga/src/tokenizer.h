@@ -19,6 +19,7 @@ typedef enum {
 
 typedef struct {
   BosonogaTokenKind kind;
+  const gchar *path;  // Of the file of the token, for error messages.
   const gchar *text;  // Slice of the source, the whole token.
   gsize length;
   gsize line;

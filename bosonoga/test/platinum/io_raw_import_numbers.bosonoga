@@ -1,0 +1,10 @@
+const base is 21_i32
+
+io_raw_import "io_raw_import_squares.bosonoga"_str
+
+def doubled_fn number_i32 ret 0_i32
+di
+  var doubled is number_i32
+  set doubled to_multiply doubled 2_i32
+  return doubled
+do

@@ -3,20 +3,18 @@
 
 #include "execution.h"
 
-static gboolean bosonoga_runtime_error(const BosonogaProgram *program,
-                                       const BosonogaOp *op, GError **error,
+static gboolean bosonoga_runtime_error(const BosonogaOp *op, GError **error,
                                        const gchar *format, ...)
-    G_GNUC_PRINTF(4, 5);
+    G_GNUC_PRINTF(3, 4);
 
-static gboolean bosonoga_runtime_error(const BosonogaProgram *program,
-                                       const BosonogaOp *op, GError **error,
+static gboolean bosonoga_runtime_error(const BosonogaOp *op, GError **error,
                                        const gchar *format, ...) {
   va_list args;
   va_start(args, format);
   g_autofree gchar *message = g_strdup_vprintf(format, args);
   va_end(args);
   g_set_error(error, BOSONOGA_ERROR, BOSONOGA_ERROR_RUNTIME,
-              "%s:%" G_GSIZE_FORMAT ":%" G_GSIZE_FORMAT ": %s", program->path,
+              "%s:%" G_GSIZE_FORMAT ":%" G_GSIZE_FORMAT ": %s", op->path,
               op->line, op->column, message);
   return FALSE;
 }
@@ -27,10 +25,10 @@ static const BosonogaValue *bosonoga_operand_value(
 }
 
 // The numeric errors do not know where in the program they are.
-static BosonogaExecutionState bosonoga_fail_at_op(
-    const BosonogaProgram *program, const BosonogaOp *op, GError **error) {
+static BosonogaExecutionState bosonoga_fail_at_op(const BosonogaOp *op,
+                                                  GError **error) {
   g_prefix_error(error, "%s:%" G_GSIZE_FORMAT ":%" G_GSIZE_FORMAT ": ",
-                 program->path, op->line, op->column);
+                 op->path, op->line, op->column);
   return BOSONOGA_EXECUTION_FAILED;
 }
 
@@ -50,7 +48,7 @@ static gboolean bosonoga_call(BosonogaExecution *execution,
   const BosonogaFunction *function = &g_array_index(
       execution->program->functions, BosonogaFunction, op->function);
   if (execution->calls->len == BOSONOGA_CALL_DEPTH_MAX) {
-    return bosonoga_runtime_error(execution->program, op, error,
+    return bosonoga_runtime_error(op, error,
                                   "calls are nested more than %d deep",
                                   BOSONOGA_CALL_DEPTH_MAX);
   }
@@ -72,18 +70,17 @@ static void bosonoga_return(BosonogaExecution *execution) {
   execution->next = call.return_to;
 }
 
-static gboolean bosonoga_check_row(const BosonogaProgram *program,
-                                   const BosonogaOp *op,
+static gboolean bosonoga_check_row(const BosonogaOp *op,
                                    const BosonogaFunction *array,
                                    const BosonogaValue *index, GError **error) {
   if (index->i32 < 0 || (guint)index->i32 >= array->row_count) {
     if (array->row_count == 1) {
       return bosonoga_runtime_error(
-          program, op, error, "'%.*s' has only row 0, not %" G_GINT32_FORMAT,
+          op, error, "'%.*s' has only row 0, not %" G_GINT32_FORMAT,
           (gint)array->name_length, array->name, index->i32);
     }
     return bosonoga_runtime_error(
-        program, op, error, "'%.*s' has rows 0 to %u, not %" G_GINT32_FORMAT,
+        op, error, "'%.*s' has rows 0 to %u, not %" G_GINT32_FORMAT,
         (gint)array->name_length, array->name, array->row_count - 1,
         index->i32);
   }
@@ -114,7 +111,7 @@ static gboolean bosonoga_read_array(BosonogaExecution *execution,
   const BosonogaProgram *program = execution->program;
   const BosonogaFunction *array =
       &g_array_index(program->functions, BosonogaFunction, op->function);
-  if (!bosonoga_check_row(program, op, array, index, error)) {
+  if (!bosonoga_check_row(op, array, index, error)) {
     return FALSE;
   }
   const guint offset = (guint)index->i32 * array->result_count;
@@ -133,7 +130,7 @@ static gboolean bosonoga_write_array(const BosonogaExecution *execution,
   const BosonogaProgram *program = execution->program;
   const BosonogaFunction *array =
       &g_array_index(program->functions, BosonogaFunction, op->function);
-  if (!bosonoga_check_row(program, op, array, index, error)) {
+  if (!bosonoga_check_row(op, array, index, error)) {
     return FALSE;
   }
   memcpy(&frame[array->slot + (guint)index->i32 * array->result_count],
@@ -180,7 +177,7 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
       case BOSONOGA_OP_CONVERT_TO_F32:
       case BOSONOGA_OP_CONVERT_TO_F64:
         if (!bosonoga_convert(op->kind, left, &frame[op->slot], error)) {
-          return bosonoga_fail_at_op(program, op, error);
+          return bosonoga_fail_at_op(op, error);
         }
         break;
       case BOSONOGA_OP_ABS:
@@ -204,7 +201,7 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
       case BOSONOGA_OP_EXPM1:
       case BOSONOGA_OP_HYPOT:
         if (!bosonoga_math(op->kind, left, right, &frame[op->slot], error)) {
-          return bosonoga_fail_at_op(program, op, error);
+          return bosonoga_fail_at_op(op, error);
         }
         break;
       case BOSONOGA_OP_ACCUMULATOR_LOAD:
@@ -216,12 +213,12 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
       case BOSONOGA_OP_ACCUMULATOR_DIVIDE:
       case BOSONOGA_OP_ACCUMULATOR_MOD:
         if (!bosonoga_accumulator_step(accumulator, op->kind, left, error)) {
-          return bosonoga_fail_at_op(program, op, error);
+          return bosonoga_fail_at_op(op, error);
         }
         break;
       case BOSONOGA_OP_ACCUMULATOR_STORE:
         if (!bosonoga_accumulator_store(accumulator, &frame[op->slot], error)) {
-          return bosonoga_fail_at_op(program, op, error);
+          return bosonoga_fail_at_op(op, error);
         }
         break;
       case BOSONOGA_OP_JUMP:
@@ -258,11 +255,11 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
                              g_array_index(execution->calls, BosonogaCall,
                                            execution->calls->len - 1)
                                  .function);
-          bosonoga_runtime_error(program, op, error,
+          bosonoga_runtime_error(op, error,
                                  "the function '%.*s' ended without a return",
                                  (gint)function->name_length, function->name);
         } else {
-          bosonoga_runtime_error(program, op, error,
+          bosonoga_runtime_error(op, error,
                                  "the program ended without a return");
         }
         return BOSONOGA_EXECUTION_FAILED;
@@ -312,7 +309,7 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
       case BOSONOGA_OP_DRAW_TEXT_PART:
         bosonoga_print_value(execution->join, left);
         if (execution->join->len > BOSONOGA_DRAW_TEXT_LENGTH_MAX) {
-          bosonoga_runtime_error(program, op, error,
+          bosonoga_runtime_error(op, error,
                                  "gfx_draw_text is longer than %d bytes",
                                  BOSONOGA_DRAW_TEXT_LENGTH_MAX);
           return BOSONOGA_EXECUTION_FAILED;
@@ -385,7 +382,7 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
       case BOSONOGA_OP_NEW_STR_PART:
         bosonoga_print_value(execution->join, left);
         if (execution->join->len > BOSONOGA_NEW_STR_LENGTH_MAX) {
-          bosonoga_runtime_error(program, op, error,
+          bosonoga_runtime_error(op, error,
                                  "new str of is longer than %d bytes",
                                  BOSONOGA_NEW_STR_LENGTH_MAX);
           return BOSONOGA_EXECUTION_FAILED;

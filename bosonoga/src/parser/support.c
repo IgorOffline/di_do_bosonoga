@@ -38,6 +38,7 @@ static const gchar *const bosonoga_reserved_words[] = {
     "to_multiply",
     "to_divide",
     "const",
+    "io_raw_import",
     "to_f64",
     "math_to_log",
     "math_to_log10",
@@ -95,6 +96,7 @@ static const gchar *const bosonoga_reserved_words[] = {
     "to",
     "array",
     "row",
+    "rows",
     "len_col",
     "len_row",
     "expect",
@@ -237,7 +239,8 @@ gboolean bosonoga_fail_at(const BosonogaParser *parser,
   va_end(args);
   g_set_error(error, BOSONOGA_ERROR, (gint)code,
               "%s:%" G_GSIZE_FORMAT ":%" G_GSIZE_FORMAT ": %s",
-              parser->tokenizer.path, token->line, token->column, message);
+              token->path != NULL ? token->path : parser->tokenizer.path,
+              token->line, token->column, message);
   return FALSE;
 }
 
@@ -254,7 +257,20 @@ gboolean bosonoga_parse_error(const BosonogaParser *parser,
 }
 
 gboolean bosonoga_advance(BosonogaParser *parser, GError **error) {
-  return bosonoga_tokenizer_advance(&parser->tokenizer, error);
+  if (!bosonoga_tokenizer_advance(&parser->tokenizer, error)) {
+    return FALSE;
+  }
+  while (parser->tokenizer.token.kind == BOSONOGA_TOKEN_END &&
+         parser->outer_tokenizers->len > 0) {
+    const guint last = parser->outer_tokenizers->len - 1;
+    parser->tokenizer =
+        g_array_index(parser->outer_tokenizers, BosonogaTokenizer, last);
+    g_array_set_size(parser->outer_tokenizers, last);
+    if (!bosonoga_tokenizer_advance(&parser->tokenizer, error)) {
+      return FALSE;
+    }
+  }
+  return TRUE;
 }
 
 gboolean bosonoga_at_word(const BosonogaParser *parser, const gchar *word) {
@@ -275,6 +291,7 @@ BosonogaOp *bosonoga_emit(BosonogaParser *parser, BosonogaOpKind kind,
   BosonogaOp *op =
       &g_array_index(parser->ops, BosonogaOp, parser->ops->len - 1);
   op->kind = kind;
+  op->path = token->path;
   op->line = token->line;
   op->column = token->column;
   return op;

@@ -212,6 +212,7 @@ gboolean bosonoga_tokenizer_advance(BosonogaTokenizer *tokenizer,
 
   BosonogaToken token = {
       .kind = BOSONOGA_TOKEN_END,
+      .path = tokenizer->path,
       .text = tokenizer->cursor,
       .line = tokenizer->line,
       .column = tokenizer->column,

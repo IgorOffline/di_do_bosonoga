@@ -5,6 +5,7 @@
 #include "bosonoga/bosonoga.h"
 #include "bosonoga/interpreter.h"
 #include "bosonoga/parser.h"
+#include "tokenizer.h"
 
 #define BOSONOGA_TEST_SUFFIX ".bosonoga"
 #define BOSONOGA_EXPECTED_SUFFIX ".xp.bosonoga"
@@ -115,6 +116,35 @@ gboolean bosonoga_test_passes(const gchar *path,
   return TRUE;
 }
 
+// Adds the names that the file imports. A file that cannot be read or lexed
+// adds nothing, and fails as a test.
+static void bosonoga_add_imports(const gchar *path, GHashTable *imported) {
+  g_autofree gchar *source = NULL;
+  gsize source_length = 0;
+  if (!g_file_get_contents(path, &source, &source_length, NULL)) {
+    return;
+  }
+  BosonogaTokenizer tokenizer;
+  bosonoga_tokenizer_init(&tokenizer, "", source, source_length);
+  while (bosonoga_tokenizer_advance(&tokenizer, NULL) &&
+         tokenizer.token.kind != BOSONOGA_TOKEN_END) {
+    if (tokenizer.token.kind == BOSONOGA_TOKEN_WORD &&
+        tokenizer.token.length == strlen("io_raw_import") &&
+        memcmp(tokenizer.token.text, "io_raw_import", tokenizer.token.length) ==
+            0) {
+      if (!bosonoga_tokenizer_advance(&tokenizer, NULL)) {
+        return;
+      }
+      if (tokenizer.token.kind != BOSONOGA_TOKEN_LITERAL ||
+          tokenizer.token.value.kind != BOSONOGA_VALUE_STR) {
+        continue;
+      }
+      g_hash_table_add(imported, g_strndup(tokenizer.token.value.str.text,
+                                           tokenizer.token.value.str.length));
+    }
+  }
+}
+
 // Unlike g_dir_read_name and g_utf8_collate, the same on every system.
 static gint bosonoga_compare_names(gconstpointer left, gconstpointer right) {
   return strcmp(left, right);
@@ -139,7 +169,18 @@ gboolean bosonoga_run_test_directory(const gchar *directory,
   }
   g_ptr_array_sort_values(names, bosonoga_compare_names);
 
+  g_autoptr(GHashTable) imported =
+      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
   for (guint i = 0; i < names->len; ++i) {
+    g_autofree gchar *path =
+        g_build_filename(directory, g_ptr_array_index(names, i), NULL);
+    bosonoga_add_imports(path, imported);
+  }
+
+  for (guint i = 0; i < names->len; ++i) {
+    if (g_hash_table_contains(imported, g_ptr_array_index(names, i))) {
+      continue;
+    }
     g_autofree gchar *path =
         g_build_filename(directory, g_ptr_array_index(names, i), NULL);
     ++*total;
