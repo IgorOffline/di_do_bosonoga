@@ -39,6 +39,8 @@ static const gchar *const bosonoga_reserved_words[] = {
     "to_divide",
     "const",
     "io_raw_import",
+    "mod",
+    "pub",
     "to_f64",
     "math_to_log",
     "math_to_log10",
@@ -260,12 +262,17 @@ gboolean bosonoga_advance(BosonogaParser *parser, GError **error) {
   if (!bosonoga_tokenizer_advance(&parser->tokenizer, error)) {
     return FALSE;
   }
+  // The end of a module is the end of its items, which the program reads.
   while (parser->tokenizer.token.kind == BOSONOGA_TOKEN_END &&
-         parser->outer_tokenizers->len > 0) {
-    const guint last = parser->outer_tokenizers->len - 1;
-    parser->tokenizer =
-        g_array_index(parser->outer_tokenizers, BosonogaTokenizer, last);
-    g_array_set_size(parser->outer_tokenizers, last);
+         parser->outer_files->len > 0) {
+    const guint last = parser->outer_files->len - 1;
+    const BosonogaOuterFile *outer =
+        &g_array_index(parser->outer_files, BosonogaOuterFile, last);
+    if (outer->is_module) {
+      return TRUE;
+    }
+    parser->tokenizer = outer->tokenizer;
+    g_array_set_size(parser->outer_files, last);
     if (!bosonoga_tokenizer_advance(&parser->tokenizer, error)) {
       return FALSE;
     }

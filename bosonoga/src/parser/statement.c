@@ -41,8 +41,12 @@ gboolean bosonoga_parse_block(BosonogaParser *parser, GError **error) {
                               (gint)variable->length, variable->name);
     }
   }
-  // The variables at the top of bosonoga_global are shared by later sections.
+  // The variables at the top of bosonoga_global are shared by later sections,
+  // and so are checked at the end of the program.
   if (parser->section != BOSONOGA_SECTION_GLOBAL || parser->block_depth != 1) {
+    if (!bosonoga_check_variables_used(parser, visible_count, error)) {
+      return FALSE;
+    }
     g_array_set_size(parser->variables, visible_count);
   }
   --parser->block_depth;
@@ -134,11 +138,41 @@ static gboolean bosonoga_parse_unset(BosonogaParser *parser, GError **error) {
                             "'%s' is unset in the block where it is new",
                             shown);
   }
+  if (!variable->declaration.is_used) {
+    return bosonoga_fail_unused(parser, &variable->declaration, "read", error);
+  }
   bosonoga_emit(parser, BOSONOGA_OP_UNSET, &name)->slot = variable->slot;
   g_array_remove_index(parser->variables,
                        (guint)(variable - &g_array_index(parser->variables,
                                                          BosonogaVariable, 0)));
   return bosonoga_advance(parser, error);
+}
+
+// After pub, of a variable that later sections share.
+static gboolean bosonoga_parse_pub_variable(BosonogaParser *parser,
+                                            const BosonogaToken *start,
+                                            GError **error) {
+  if (parser->scope == 0) {
+    return bosonoga_fail_at(parser, start, error, BOSONOGA_ERROR_SYNTAX,
+                            "pub is only in a module, a file read with mod");
+  }
+  if (parser->section != BOSONOGA_SECTION_GLOBAL || parser->block_depth != 1 ||
+      parser->in_function) {
+    return bosonoga_fail_at(parser, start, error, BOSONOGA_ERROR_SYNTAX,
+                            "pub is before a top-level const, def or val, or "
+                            "a var or val at the top of bosonoga_global");
+  }
+  const gboolean is_val = bosonoga_at_word(parser, "val");
+  if (!is_val && !bosonoga_at_word(parser, "var")) {
+    return bosonoga_parse_error(parser, "var or val after pub", error);
+  }
+  if (!bosonoga_advance(parser, error) ||
+      !bosonoga_parse_var(parser, is_val, error)) {
+    return FALSE;
+  }
+  g_array_index(parser->variables, BosonogaVariable, parser->variables->len - 1)
+      .declaration.is_pub = TRUE;
+  return TRUE;
 }
 
 static gboolean bosonoga_check_in_frame(const BosonogaParser *parser,
@@ -373,6 +407,7 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
     return bosonoga_parse_loop(parser, error);
   }
   if (!bosonoga_token_is_word(&start, "info") &&
+      !bosonoga_token_is_word(&start, "pub") &&
       !bosonoga_token_is_word(&start, "var") &&
       !bosonoga_token_is_word(&start, "val") &&
       !bosonoga_token_is_word(&start, "set") &&
@@ -400,6 +435,9 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
 
   if (bosonoga_token_is_word(&start, "info")) {
     return bosonoga_parse_info(parser, &start, error);
+  }
+  if (bosonoga_token_is_word(&start, "pub")) {
+    return bosonoga_parse_pub_variable(parser, &start, error);
   }
   if (bosonoga_token_is_word(&start, "var") ||
       bosonoga_token_is_word(&start, "val")) {

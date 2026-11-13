@@ -146,7 +146,8 @@ gboolean bosonoga_parse_loop(BosonogaParser *parser, GError **error) {
   }
 
   bosonoga_begin_loop(parser);
-  if (!bosonoga_parse_block(parser, error)) {
+  if (!bosonoga_parse_block(parser, error) ||
+      !bosonoga_check_variables_used(parser, visible_count, error)) {
     return FALSE;
   }
   g_array_set_size(parser->variables, visible_count);

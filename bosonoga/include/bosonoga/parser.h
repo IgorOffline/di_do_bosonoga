@@ -9,9 +9,9 @@
 //
 //   program    := item+
 //   item       := ("bosonoga_global" | "bosonoga_main") block | section
-//                 | function | "val" NAME "is" array
-//                 | "const" NAME "is" (value | len)
-//                 | "io_raw_import" STRING
+//                 | "pub"? (function | "val" NAME "is" array
+//                   | "const" NAME "is" (value | len))
+//                 | ("io_raw_import" | "mod") STRING
 //   section    := ("gfx_init" | "gfx_frame" | "gfx_cleanup" | "gfx_key_down"
 //                 | "gfx_main") block
 //   function   := "def" FUNCTION PARAMETER* ("ret" INDEXED+ | "ret_void")
@@ -20,9 +20,10 @@
 //   row        := "row" value+
 //   block      := "di" statement+ "do"
 //   statement  := "info" value+
-//               | ("var" | "val") NAME "is"
+//               | "pub"? ("var" | "val") NAME "is"
 //                 (initial | call "with" "ret" INDEXED | new)
-//               | "var" NAME "is" (array | "array" INDEXED+ "rows" value)
+//               | "pub"? "var" NAME "is"
+//                 (array | "array" INDEXED+ "rows" value)
 //               | "unset" NAME
 //               | "set" NAME update
 //               | "set" NAME "to" (value | len | call "with" "ret" INDEXED)
@@ -168,9 +169,27 @@
 // - io_raw_import reads the tokens of another file in its place, as if they
 //   were written there, and then goes on after it, as in io_raw_import
 //   "lorem.bosonoga"_str. The file is in the directory of the program, so its
-//   name has no directory, and it ends with .bosonoga. Each file is imported at
-//   most once, and the program itself not at all. An error in an imported file
-//   names that file.
+//   name has no directory, and it ends with .bosonoga. An error in an imported
+//   file names that file.
+// - mod reads a module, a file named as for io_raw_import, as in mod
+//   "lorem.bosonoga"_str. A module has the items of a program, sections too,
+//   at least one, and ends with its file, which no item runs past. Each file
+//   is read at most once, with mod or io_raw_import, and the program itself
+//   not at all. What io_raw_import reads into a module is of that module.
+// - A name that a module declares is private to it, and is seen there and in
+//   the modules that it reads with mod. pub also lets the program or module
+//   that read it with mod see the name, with the modules that one reads. So a
+//   module sees what is declared before its mod, but the program does not see
+//   the pub names of the modules that its modules read. pub is only in a
+//   module, before a top-level const, def or val, or a var or val at the top
+//   of bosonoga_global. The rows of an array are pub with it, and a row is not
+//   pub on its own. A name is still unique in the whole program, whether or
+//   not it is seen.
+// - What is declared is used, or it is an error before the program runs. A
+//   constant, a variable, a parameter and a value taken from a call are read,
+//   a function is called, other than by itself, and an array is read or has
+//   its len taken. Setting a variable or a row of an array, or unsetting it,
+//   is not reading it, and a pub name is used like any other.
 // - bosonoga_global runs first and cannot return. The variables at the top of
 //   its block are shared by bosonoga_main and all sections.
 // - A gfx program has one gfx_main and at most one of each other section, in
