@@ -2,12 +2,15 @@
 
 #include "parser/internal.h"
 
-gint bosonoga_find_function(const BosonogaParser *parser,
-                            const BosonogaToken *token) {
+static gint bosonoga_find_function_in(const BosonogaParser *parser,
+                                      const BosonogaToken *token,
+                                      gboolean visible_only) {
   if (token->kind != BOSONOGA_TOKEN_WORD) {
     return -1;
   }
-  const BosonogaVariable *variable = bosonoga_find_variable(parser, token);
+  const BosonogaVariable *variable =
+      visible_only ? bosonoga_find_variable(parser, token)
+                   : bosonoga_find_variable_any(parser, token);
   if (variable != NULL) {
     return variable->is_array ? (gint)variable->function : -1;
   }
@@ -16,10 +19,25 @@ gint bosonoga_find_function(const BosonogaParser *parser,
         &g_array_index(parser->functions, BosonogaFunction, i);
     if (!function->is_var && function->name_length == token->length &&
         memcmp(function->name, token->text, token->length) == 0) {
-      return (gint)i;
+      return !visible_only ||
+                     bosonoga_is_visible(
+                         parser, &g_array_index(parser->function_declarations,
+                                                BosonogaDeclaration, i))
+                 ? (gint)i
+                 : -1;
     }
   }
   return -1;
+}
+
+gint bosonoga_find_function(const BosonogaParser *parser,
+                            const BosonogaToken *token) {
+  return bosonoga_find_function_in(parser, token, TRUE);
+}
+
+gint bosonoga_find_function_any(const BosonogaParser *parser,
+                                const BosonogaToken *token) {
+  return bosonoga_find_function_in(parser, token, FALSE);
 }
 
 const gchar *bosonoga_function_noun(const BosonogaFunction *function) {
@@ -38,7 +56,7 @@ gboolean bosonoga_check_new_function_name(const BosonogaParser *parser,
     return bosonoga_parse_error(parser, what, error);
   }
   g_autofree gchar *shown = bosonoga_token_shown(name);
-  const gint found = bosonoga_find_function(parser, name);
+  const gint found = bosonoga_find_function_any(parser, name);
   if (found >= 0) {
     return bosonoga_fail_at(
         parser, name, error, BOSONOGA_ERROR_NAME, "%s '%s' already exists",
@@ -46,11 +64,11 @@ gboolean bosonoga_check_new_function_name(const BosonogaParser *parser,
             &g_array_index(parser->functions, BosonogaFunction, (guint)found)),
         shown);
   }
-  if (bosonoga_find_constant(parser, name) != NULL) {
+  if (bosonoga_find_constant_any(parser, name) != NULL) {
     return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
                             "'%s' is already a constant", shown);
   }
-  if (bosonoga_find_variable(parser, name) != NULL) {
+  if (bosonoga_find_variable_any(parser, name) != NULL) {
     return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
                             "'%s' is already a variable", shown);
   }
@@ -199,9 +217,10 @@ static gboolean bosonoga_parse_function_rest(BosonogaParser *parser,
   // It is defined before its block, so that the block can call it.
   function->entry = parser->ops->len;
   const guint index = parser->functions->len;
-  g_array_append_val(parser->functions, *function);
+  bosonoga_append_function(parser, function, name);
   parser->function = index;
-  if (!bosonoga_parse_block(parser, error)) {
+  if (!bosonoga_parse_block(parser, error) ||
+      !bosonoga_check_variables_used(parser, 0, error)) {
     return FALSE;
   }
   bosonoga_emit(parser,

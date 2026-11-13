@@ -2,8 +2,8 @@
 
 #include "parser/internal.h"
 
-const BosonogaConstant *bosonoga_find_constant(const BosonogaParser *parser,
-                                               const BosonogaToken *token) {
+const BosonogaConstant *bosonoga_find_constant_any(const BosonogaParser *parser,
+                                                   const BosonogaToken *token) {
   for (guint i = 0; i < parser->constants->len; ++i) {
     const BosonogaConstant *constant =
         &g_array_index(parser->constants, BosonogaConstant, i);
@@ -14,6 +14,22 @@ const BosonogaConstant *bosonoga_find_constant(const BosonogaParser *parser,
     }
   }
   return NULL;
+}
+
+const BosonogaConstant *bosonoga_find_constant(const BosonogaParser *parser,
+                                               const BosonogaToken *token) {
+  const BosonogaConstant *constant = bosonoga_find_constant_any(parser, token);
+  return constant != NULL && bosonoga_is_visible(parser, &constant->declaration)
+             ? constant
+             : NULL;
+}
+
+void bosonoga_use_constant(BosonogaParser *parser,
+                           const BosonogaConstant *constant) {
+  const guint index = (guint)(constant - &g_array_index(parser->constants,
+                                                        BosonogaConstant, 0));
+  g_array_index(parser->constants, BosonogaConstant, index)
+      .declaration.is_used = TRUE;
 }
 
 gboolean bosonoga_parse_constant(BosonogaParser *parser, GError **error) {
@@ -38,7 +54,8 @@ gboolean bosonoga_parse_constant(BosonogaParser *parser, GError **error) {
         parser, &source, error, BOSONOGA_ERROR_TYPE,
         "a constant needs a literal or an earlier constant");
   }
-  const BosonogaConstant constant = {name.text, name.length, value.literal};
+  BosonogaConstant constant = {name.text, name.length, value.literal, {0}};
+  bosonoga_declare_name(parser, &constant.declaration, &name);
   g_array_append_val(parser->constants, constant);
   return TRUE;
 }

@@ -1,0 +1,3 @@
+// Its pub names are seen by mod_numbers.bosonoga, which reads it with mod, but
+// not by the program.
+pub const two is 2_i32

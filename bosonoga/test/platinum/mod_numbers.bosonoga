@@ -1,0 +1,25 @@
+// A module sees what is declared before its mod, like offset, and its own
+// private names, like factor and shifted_fn. The program sees only its pub
+// ones.
+mod "mod_digits.bosonoga"_str
+io_raw_import "mod_squares.bosonoga"_str
+
+pub const base is 21_i32
+
+const factor is two
+
+def shifted_fn number_i32 ret 0_i32
+di
+  var shifted is number_i32
+  set shifted to_add shifted offset
+  set shifted to_subtract shifted offset
+  return shifted
+do
+
+pub def doubled_fn number_i32 ret 0_i32
+di
+  val shifted is shifted_fn of number_i32 with ret 0_i32
+  var doubled is shifted
+  set doubled to_multiply doubled factor
+  return doubled
+do

@@ -28,6 +28,12 @@ static gboolean bosonoga_parse_rows(BosonogaParser *parser,
   }
   do {
     const BosonogaToken row = parser->tokenizer.token;
+    if (bosonoga_at_word(parser, "pub")) {
+      return bosonoga_fail_at(parser, &row, error, BOSONOGA_ERROR_SYNTAX,
+                              "a row is pub with its array, as in pub val "
+                              "%s is array",
+                              name);
+    }
     if (!bosonoga_expect_word(parser, "row", error)) {
       return FALSE;
     }
@@ -41,6 +47,9 @@ static gboolean bosonoga_parse_rows(BosonogaParser *parser,
       if (token->kind == BOSONOGA_TOKEN_WORD &&
           !bosonoga_token_is_reserved(parser, token) &&
           bosonoga_find_constant(parser, token) == NULL) {
+        if (!bosonoga_check_not_hidden(parser, token, error)) {
+          return FALSE;
+        }
         g_autofree gchar *shown = bosonoga_token_shown(token);
         return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_SYNTAX,
                                 "the values of a row are literals, like 7_i32, "
@@ -120,7 +129,7 @@ gboolean bosonoga_parse_val_array(BosonogaParser *parser,
   if (!bosonoga_parse_literal_rows(parser, &array, error)) {
     return FALSE;
   }
-  g_array_append_val(parser->functions, array);
+  bosonoga_append_function(parser, &array, name);
   return TRUE;
 }
 
@@ -186,7 +195,7 @@ gboolean bosonoga_parse_var_array(BosonogaParser *parser,
   array.slot = parser->slot_count;
   parser->slot_count += array.row_count * array.result_count;
   const guint index = parser->functions->len;
-  g_array_append_val(parser->functions, array);
+  bosonoga_append_function(parser, &array, name);
   bosonoga_emit(parser, BOSONOGA_OP_ARRAY_INIT, name)->function = index;
   bosonoga_declare_variable(parser, name, BOSONOGA_VALUE_I32, array.slot);
   BosonogaVariable *variable = &g_array_index(
@@ -294,8 +303,12 @@ gboolean bosonoga_parse_len(BosonogaParser *parser, BosonogaValue *value,
   if (found < 0 ||
       !g_array_index(parser->functions, BosonogaFunction, (guint)found)
            .is_array) {
+    if (!bosonoga_check_not_hidden(parser, name, error)) {
+      return FALSE;
+    }
     return bosonoga_parse_error(parser, "the name of an array", error);
   }
+  bosonoga_use_function(parser, name, (guint)found);
   const BosonogaFunction *array =
       &g_array_index(parser->functions, BosonogaFunction, (guint)found);
   memset(value, 0, sizeof(*value));

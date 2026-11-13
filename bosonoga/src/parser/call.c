@@ -7,6 +7,9 @@ gboolean bosonoga_parse_call(BosonogaParser *parser, guint *function,
   const BosonogaToken name = parser->tokenizer.token;
   const gint found = bosonoga_find_function(parser, &name);
   if (found < 0) {
+    if (!bosonoga_check_not_hidden(parser, &name, error)) {
+      return FALSE;
+    }
     if (name.kind == BOSONOGA_TOKEN_WORD &&
         !bosonoga_token_is_reserved(parser, &name)) {
       g_autofree gchar *shown = bosonoga_token_shown(&name);
@@ -19,6 +22,7 @@ gboolean bosonoga_parse_call(BosonogaParser *parser, guint *function,
   }
   const BosonogaFunction called =
       g_array_index(parser->functions, BosonogaFunction, (guint)found);
+  bosonoga_use_function(parser, &name, (guint)found);
   if (!bosonoga_advance(parser, error)) {
     return FALSE;
   }
@@ -252,7 +256,8 @@ gboolean bosonoga_parse_call_statement(BosonogaParser *parser,
   // Copied out first, as calls in the block replace the results.
   const guint visible_count = parser->variables->len;
   if (!bosonoga_parse_bindings(parser, &name, index, error) ||
-      !bosonoga_parse_block(parser, error)) {
+      !bosonoga_parse_block(parser, error) ||
+      !bosonoga_check_variables_used(parser, visible_count, error)) {
     return FALSE;
   }
   g_array_set_size(parser->variables, visible_count);

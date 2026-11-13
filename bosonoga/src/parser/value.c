@@ -4,8 +4,8 @@
 
 #define BOSONOGA_SHIFT_BIT_MAX 31
 
-const BosonogaVariable *bosonoga_find_variable(const BosonogaParser *parser,
-                                               const BosonogaToken *token) {
+const BosonogaVariable *bosonoga_find_variable_any(const BosonogaParser *parser,
+                                                   const BosonogaToken *token) {
   for (guint i = 0; i < parser->variables->len; ++i) {
     const BosonogaVariable *variable =
         &g_array_index(parser->variables, BosonogaVariable, i);
@@ -17,10 +17,18 @@ const BosonogaVariable *bosonoga_find_variable(const BosonogaParser *parser,
   return NULL;
 }
 
+const BosonogaVariable *bosonoga_find_variable(const BosonogaParser *parser,
+                                               const BosonogaToken *token) {
+  const BosonogaVariable *variable = bosonoga_find_variable_any(parser, token);
+  return variable != NULL && bosonoga_is_visible(parser, &variable->declaration)
+             ? variable
+             : NULL;
+}
+
 void bosonoga_declare_variable(BosonogaParser *parser,
                                const BosonogaToken *name,
                                BosonogaValueKind kind, guint slot) {
-  const BosonogaVariable variable = {
+  BosonogaVariable variable = {
       .name = name->text,
       .length = name->length,
       .kind = kind,
@@ -28,6 +36,7 @@ void bosonoga_declare_variable(BosonogaParser *parser,
       .block_depth = parser->block_depth,
       .loop_depth = parser->loops->len,
   };
+  bosonoga_declare_name(parser, &variable.declaration, name);
   g_array_append_val(parser->variables, variable);
 }
 
@@ -47,6 +56,9 @@ const BosonogaVariable *bosonoga_find_new(const BosonogaParser *parser,
 gboolean bosonoga_fail_unknown_variable(const BosonogaParser *parser,
                                         const BosonogaToken *name,
                                         GError **error) {
+  if (!bosonoga_check_not_hidden(parser, name, error)) {
+    return FALSE;
+  }
   g_autofree gchar *shown = bosonoga_token_shown(name);
   const gint found = bosonoga_find_function(parser, name);
   if (found >= 0) {
@@ -74,11 +86,11 @@ gboolean bosonoga_parse_new_name(BosonogaParser *parser, BosonogaToken *name,
       bosonoga_token_is_reserved(parser, name)) {
     return bosonoga_parse_error(parser, "a variable name", error);
   }
-  if (bosonoga_find_constant(parser, name) != NULL) {
+  if (bosonoga_find_constant_any(parser, name) != NULL) {
     return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
                             "a constant with this name already exists");
   }
-  if (bosonoga_find_variable(parser, name) != NULL) {
+  if (bosonoga_find_variable_any(parser, name) != NULL) {
     g_autofree gchar *shown = bosonoga_token_shown(name);
     return bosonoga_fail_at(parser, name, error, BOSONOGA_ERROR_NAME,
                             "variable '%s' already exists", shown);
@@ -90,7 +102,7 @@ gboolean bosonoga_parse_new_name(BosonogaParser *parser, BosonogaToken *name,
                             ", which only the name of a function does",
                             shown);
   }
-  const gint found = bosonoga_find_function(parser, name);
+  const gint found = bosonoga_find_function_any(parser, name);
   if (found >= 0) {
     g_autofree gchar *shown = bosonoga_token_shown(name);
     return bosonoga_fail_at(
@@ -171,7 +183,9 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
     operand->is_variable = TRUE;
     operand->slot = parser->key_slot;
   } else if (bosonoga_find_constant(parser, token) != NULL) {
-    operand->literal = bosonoga_find_constant(parser, token)->value;
+    const BosonogaConstant *constant = bosonoga_find_constant(parser, token);
+    bosonoga_use_constant(parser, constant);
+    operand->literal = constant->value;
   } else if (bosonoga_token_setting(parser, token, &operand->literal)) {
     // The value of a setting is known now, so it is a literal.
     if (operand->literal.kind == BOSONOGA_VALUE_FONT ||
@@ -191,6 +205,7 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
                               "comparison or new str of, and is not copied",
                               shown);
     }
+    bosonoga_use_variable(parser, variable);
     operand->literal.kind = variable->kind;
     operand->is_variable = TRUE;
     operand->slot = variable->slot;

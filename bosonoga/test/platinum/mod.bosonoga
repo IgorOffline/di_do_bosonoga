@@ -1,0 +1,18 @@
+const offset is 100_i32
+
+mod "mod_global.bosonoga"_str
+mod "mod_numbers.bosonoga"_str
+
+bosonoga_main
+di
+  val doubled is doubled_fn of base with ret 0_i32
+  info "doubled "_str doubled
+  call squares at 2_i32 with ret
+    0_i32 as number
+    1_i32 as square
+  di
+    info number " squared is "_str square
+  do
+  info "rounds "_str rounds
+  return exit_success
+do

@@ -116,8 +116,8 @@ gboolean bosonoga_test_passes(const gchar *path,
   return TRUE;
 }
 
-// Adds the names that the file imports. A file that cannot be read or lexed
-// adds nothing, and fails as a test.
+// Adds the names that the file reads with io_raw_import or mod. A file that
+// cannot be read or lexed adds nothing, and fails as a test.
 static void bosonoga_add_imports(const gchar *path, GHashTable *imported) {
   g_autofree gchar *source = NULL;
   gsize source_length = 0;
@@ -128,10 +128,12 @@ static void bosonoga_add_imports(const gchar *path, GHashTable *imported) {
   bosonoga_tokenizer_init(&tokenizer, "", source, source_length);
   while (bosonoga_tokenizer_advance(&tokenizer, NULL) &&
          tokenizer.token.kind != BOSONOGA_TOKEN_END) {
-    if (tokenizer.token.kind == BOSONOGA_TOKEN_WORD &&
-        tokenizer.token.length == strlen("io_raw_import") &&
-        memcmp(tokenizer.token.text, "io_raw_import", tokenizer.token.length) ==
-            0) {
+    const BosonogaToken *token = &tokenizer.token;
+    if (token->kind == BOSONOGA_TOKEN_WORD &&
+        ((token->length == strlen("io_raw_import") &&
+          memcmp(token->text, "io_raw_import", token->length) == 0) ||
+         (token->length == strlen("mod") &&
+          memcmp(token->text, "mod", token->length) == 0))) {
       if (!bosonoga_tokenizer_advance(&tokenizer, NULL)) {
         return;
       }

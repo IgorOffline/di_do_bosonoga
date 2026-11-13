@@ -88,31 +88,35 @@ static gboolean bosonoga_is_import_name(const gchar *text, gsize length) {
   return TRUE;
 }
 
-// After io_raw_import, reads the tokens of the file until its end, and then
-// those after the file name.
-static gboolean bosonoga_parse_import(BosonogaParser *parser, GError **error) {
+// After io_raw_import or mod, reads the tokens of the file until its end. Those
+// after the file name follow those of a raw import, as if it were written
+// there, and are read again after the items of a module.
+static gboolean bosonoga_parse_file(BosonogaParser *parser, gboolean is_module,
+                                    GError **error) {
+  const gchar *keyword = is_module ? "mod" : "io_raw_import";
   if (!bosonoga_advance(parser, error)) {
     return FALSE;
   }
   const BosonogaToken name = parser->tokenizer.token;
   if (name.kind != BOSONOGA_TOKEN_LITERAL ||
       name.value.kind != BOSONOGA_VALUE_STR) {
-    return bosonoga_parse_error(
-        parser, "a file name, as in io_raw_import \"lorem.bosonoga\"_str",
-        error);
+    g_autofree gchar *expected = g_strdup_printf(
+        "a file name, as in %s \"lorem.bosonoga\"_str", keyword);
+    return bosonoga_parse_error(parser, expected, error);
   }
   if (!bosonoga_is_import_name(name.value.str.text, name.value.str.length)) {
     return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_SYNTAX,
-                            "io_raw_import takes the name of a .bosonoga file "
-                            "in the directory of the program, as in "
-                            "io_raw_import \"lorem.bosonoga\"_str");
+                            "%s takes the name of a .bosonoga file in the "
+                            "directory of the program, as in %s "
+                            "\"lorem.bosonoga\"_str",
+                            keyword, keyword);
   }
   g_autofree gchar *file_name =
       g_strndup(name.value.str.text, name.value.str.length);
   g_autofree gchar *program_name = g_path_get_basename(parser->program->path);
   if (g_str_equal(file_name, program_name)) {
     return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_SYNTAX,
-                            "a program cannot import itself");
+                            "a program cannot read itself with %s", keyword);
   }
   GArray *imports = parser->program->imports;
   for (guint i = 0; i < imports->len; ++i) {
@@ -120,7 +124,8 @@ static gboolean bosonoga_parse_import(BosonogaParser *parser, GError **error) {
         g_array_index(imports, BosonogaProgramImport, i).path);
     if (g_str_equal(file_name, imported)) {
       return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_SYNTAX,
-                              "%s is already imported", file_name);
+                              "%s is already read, with mod or io_raw_import",
+                              file_name);
     }
   }
 
@@ -136,15 +141,109 @@ static gboolean bosonoga_parse_import(BosonogaParser *parser, GError **error) {
   if (system_path == NULL ||
       !g_file_get_contents(system_path, &source, &source_length, &read_error)) {
     return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_SYNTAX,
-                            "cannot import %s: %s", path, read_error->message);
+                            "cannot read %s: %s", path, read_error->message);
   }
   const BosonogaProgramImport import = {g_steal_pointer(&path), source};
   g_array_append_val(imports, import);
 
-  g_array_append_val(parser->outer_tokenizers, parser->tokenizer);
+  const BosonogaOuterFile outer = {parser->tokenizer, is_module, parser->scope};
+  g_array_append_val(parser->outer_files, outer);
+  if (is_module) {
+    const BosonogaScope scope = {import.path, parser->scope};
+    parser->scope = parser->scopes->len;
+    g_array_append_val(parser->scopes, scope);
+  }
   bosonoga_tokenizer_init(&parser->tokenizer, import.path, import.source,
                           source_length);
+  if (!bosonoga_advance(parser, error)) {
+    return FALSE;
+  }
+  if (is_module && parser->tokenizer.token.kind == BOSONOGA_TOKEN_END) {
+    return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_SYNTAX,
+                            "%s has no items, and a module has at least one",
+                            file_name);
+  }
+  return TRUE;
+}
+
+// At the end of the items of a module, goes on after its mod.
+static gboolean bosonoga_end_module(BosonogaParser *parser, GError **error) {
+  const guint last = parser->outer_files->len - 1;
+  const BosonogaOuterFile outer =
+      g_array_index(parser->outer_files, BosonogaOuterFile, last);
+  g_array_set_size(parser->outer_files, last);
+  parser->tokenizer = outer.tokenizer;
+  parser->scope = outer.scope;
   return bosonoga_advance(parser, error);
+}
+
+static gboolean bosonoga_parse_top_val(BosonogaParser *parser, GError **error) {
+  BosonogaToken name;
+  return bosonoga_advance(parser, error) &&
+         bosonoga_parse_new_name(parser, &name, error) &&
+         bosonoga_expect_word(parser, "is", error) &&
+         bosonoga_parse_val_array(parser, &name, error);
+}
+
+static gboolean bosonoga_parse_pub_item(BosonogaParser *parser,
+                                        GError **error) {
+  if (parser->scope == 0) {
+    return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                            BOSONOGA_ERROR_SYNTAX,
+                            "pub is only in a module, a file read with mod");
+  }
+  if (!bosonoga_advance(parser, error)) {
+    return FALSE;
+  }
+  const guint function = parser->functions->len;
+  if (bosonoga_at_word(parser, "const")) {
+    if (!bosonoga_parse_constant(parser, error)) {
+      return FALSE;
+    }
+    g_array_index(parser->constants, BosonogaConstant,
+                  parser->constants->len - 1)
+        .declaration.is_pub = TRUE;
+    return TRUE;
+  }
+  if (bosonoga_at_word(parser, "def")) {
+    if (!bosonoga_parse_function(parser, error)) {
+      return FALSE;
+    }
+  } else if (bosonoga_at_word(parser, "val")) {
+    if (!bosonoga_parse_top_val(parser, error)) {
+      return FALSE;
+    }
+  } else {
+    return bosonoga_parse_error(parser, "const, def or val after pub", error);
+  }
+  g_array_index(parser->function_declarations, BosonogaDeclaration, function)
+      .is_pub = TRUE;
+  return TRUE;
+}
+
+// Of all that is declared, as only the variables of a block are checked at its
+// end.
+static gboolean bosonoga_check_all_used(const BosonogaParser *parser,
+                                        GError **error) {
+  for (guint i = 0; i < parser->constants->len; ++i) {
+    const BosonogaConstant *constant =
+        &g_array_index(parser->constants, BosonogaConstant, i);
+    if (!constant->declaration.is_used) {
+      return bosonoga_fail_unused(parser, &constant->declaration, "used",
+                                  error);
+    }
+  }
+  for (guint i = 0; i < parser->functions->len; ++i) {
+    const BosonogaFunction *function =
+        &g_array_index(parser->functions, BosonogaFunction, i);
+    const BosonogaDeclaration *declaration =
+        &g_array_index(parser->function_declarations, BosonogaDeclaration, i);
+    if (!function->is_var && !declaration->is_used) {
+      return bosonoga_fail_unused(
+          parser, declaration, function->is_array ? "read" : "called", error);
+    }
+  }
+  return bosonoga_check_variables_used(parser, 0, error);
 }
 
 static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
@@ -154,8 +253,19 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
   gboolean has_main = FALSE;
   gboolean has_gfx_section = FALSE;
   do {
-    if (bosonoga_at_word(parser, "io_raw_import")) {
-      if (!bosonoga_parse_import(parser, error)) {
+    if (parser->tokenizer.token.kind == BOSONOGA_TOKEN_END &&
+        parser->outer_files->len > 0) {
+      if (!bosonoga_end_module(parser, error)) {
+        return FALSE;
+      }
+    } else if (bosonoga_at_word(parser, "io_raw_import") ||
+               bosonoga_at_word(parser, "mod")) {
+      if (!bosonoga_parse_file(parser, bosonoga_at_word(parser, "mod"),
+                               error)) {
+        return FALSE;
+      }
+    } else if (bosonoga_at_word(parser, "pub")) {
+      if (!bosonoga_parse_pub_item(parser, error)) {
         return FALSE;
       }
     } else if (bosonoga_at_word(parser, "const")) {
@@ -167,11 +277,7 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
         return FALSE;
       }
     } else if (bosonoga_at_word(parser, "val")) {
-      BosonogaToken name;
-      if (!bosonoga_advance(parser, error) ||
-          !bosonoga_parse_new_name(parser, &name, error) ||
-          !bosonoga_expect_word(parser, "is", error) ||
-          !bosonoga_parse_val_array(parser, &name, error)) {
+      if (!bosonoga_parse_top_val(parser, error)) {
         return FALSE;
       }
     } else if (bosonoga_at_word(parser, "array")) {
@@ -219,13 +325,18 @@ static gboolean bosonoga_parse_program(BosonogaParser *parser, GError **error) {
       }
       has_gfx_section = TRUE;
     }
-  } while (parser->tokenizer.token.kind != BOSONOGA_TOKEN_END);
+  } while (parser->tokenizer.token.kind != BOSONOGA_TOKEN_END ||
+           parser->outer_files->len > 0);
 
   if (!parser->has_section[BOSONOGA_SECTION_MAIN]) {
     return bosonoga_fail_at(
         parser, &parser->tokenizer.token, error, BOSONOGA_ERROR_SYNTAX,
         has_gfx_section ? "a gfx program needs a gfx_main block"
                         : "a program needs a bosonoga_main block");
+  }
+
+  if (!bosonoga_check_all_used(parser, error)) {
+    return FALSE;
   }
 
   for (guint section = 0; section < BOSONOGA_SECTION_COUNT; ++section) {
@@ -282,12 +393,19 @@ BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
   program->icons = g_array_new(FALSE, FALSE, sizeof(BosonogaProgramAsset));
   g_array_set_clear_func(program->icons, bosonoga_program_asset_clear);
 
-  g_autoptr(GArray) outer_tokenizers =
-      g_array_new(FALSE, FALSE, sizeof(BosonogaTokenizer));
+  g_autoptr(GArray) outer_files =
+      g_array_new(FALSE, FALSE, sizeof(BosonogaOuterFile));
+  g_autoptr(GArray) scopes = g_array_new(FALSE, FALSE, sizeof(BosonogaScope));
+  const BosonogaScope program_scope = {path, 0};
+  g_array_append_val(scopes, program_scope);
+  g_autoptr(GArray) function_declarations =
+      g_array_new(FALSE, FALSE, sizeof(BosonogaDeclaration));
   BosonogaParser parser;
   memset(&parser, 0, sizeof(parser));
   bosonoga_tokenizer_init(&parser.tokenizer, path, source, length);
-  parser.outer_tokenizers = outer_tokenizers;
+  parser.outer_files = outer_files;
+  parser.scopes = scopes;
+  parser.function_declarations = function_declarations;
   parser.ops = program->ops;
   parser.variables = variables;
   parser.constants = constants;

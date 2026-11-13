@@ -24,10 +24,33 @@
 #define BOSONOGA_FUNCTION_SUFFIX "_fn"
 #define BOSONOGA_VOID_WORD "ret_void"
 
+// Of a name that the program declares, for who sees it and whether it is used.
+typedef struct {
+  BosonogaToken token;  // The name where it is declared.
+  guint scope;          // In scopes.
+  gboolean is_pub;
+  gboolean is_used;
+} BosonogaDeclaration;
+
+// The program is scope 0, and each file read with mod has its own, inside the
+// scope that read it.
+typedef struct {
+  const gchar *path;  // Of its file, as error messages show it.
+  guint parent;       // Not of scope 0.
+} BosonogaScope;
+
+// Of the files that read the one being read, the innermost last.
+typedef struct {
+  BosonogaTokenizer tokenizer;  // After the name of the file it reads.
+  gboolean is_module;           // Read with mod, rather than io_raw_import.
+  guint scope;                  // Of the code around the file it reads.
+} BosonogaOuterFile;
+
 typedef struct {
   const gchar *name;
   gsize length;
   BosonogaValue value;
+  BosonogaDeclaration declaration;
 } BosonogaConstant;
 
 typedef struct {
@@ -42,6 +65,7 @@ typedef struct {
   guint function;  // Of an array, in functions.
   guint block_depth;
   guint loop_depth;
+  BosonogaDeclaration declaration;
 } BosonogaVariable;
 
 // Indices in ops of jumps, patched at the end of the loop.
@@ -52,9 +76,9 @@ typedef struct {
 
 typedef struct {
   BosonogaTokenizer tokenizer;
-  // Of the files that import the one being read, the innermost last, each
-  // after its io_raw_import.
-  GArray *outer_tokenizers;
+  GArray *outer_files;  // Of BosonogaOuterFile.
+  GArray *scopes;       // Of BosonogaScope.
+  guint scope;          // Of the code being read.
   GArray *ops;
   GArray *variables;
   GArray *constants;
@@ -63,6 +87,7 @@ typedef struct {
   GArray *loops;  // Of BosonogaLoop, innermost last.
   BosonogaSection section;
   GArray *functions;
+  GArray *function_declarations;  // Of BosonogaDeclaration, as functions.
   gboolean in_function;
   guint function;  // In functions, while in_function.
   guint delta_time_slot;
@@ -128,8 +153,48 @@ void bosonoga_patch_jumps(BosonogaParser *parser, const GArray *jumps,
 
 void bosonoga_patch_jumps_to_here(BosonogaParser *parser, const GArray *jumps);
 
+// The find functions find only what the code being read sees, and the
+// _any ones also what it does not, so that no two names are the same.
 const BosonogaVariable *bosonoga_find_variable(const BosonogaParser *parser,
                                                const BosonogaToken *token);
+const BosonogaVariable *bosonoga_find_variable_any(const BosonogaParser *parser,
+                                                   const BosonogaToken *token);
+
+// After the declarations of the scope and of scopes inside it, and the pub
+// ones also after those of the scope around it.
+gboolean bosonoga_is_visible(const BosonogaParser *parser,
+                             const BosonogaDeclaration *declaration);
+
+// TRUE, unless the token names something that the code does not see, which
+// then fails.
+gboolean bosonoga_check_not_hidden(const BosonogaParser *parser,
+                                   const BosonogaToken *token, GError **error);
+
+// Fails if what is declared from first on is never used.
+gboolean bosonoga_check_variables_used(const BosonogaParser *parser,
+                                       guint first, GError **error);
+
+gboolean bosonoga_fail_unused(const BosonogaParser *parser,
+                              const BosonogaDeclaration *declaration,
+                              const gchar *what, GError **error);
+
+void bosonoga_use_variable(BosonogaParser *parser,
+                           const BosonogaVariable *variable);
+
+void bosonoga_use_constant(BosonogaParser *parser,
+                           const BosonogaConstant *constant);
+
+// Of a call or a len, of a function or an array, which may be a variable.
+void bosonoga_use_function(BosonogaParser *parser, const BosonogaToken *token,
+                           guint function);
+
+void bosonoga_declare_name(BosonogaParser *parser,
+                           BosonogaDeclaration *declaration,
+                           const BosonogaToken *name);
+
+void bosonoga_append_function(BosonogaParser *parser,
+                              const BosonogaFunction *function,
+                              const BosonogaToken *name);
 
 // The first variable that is new, or only of those in the innermost loop.
 const BosonogaVariable *bosonoga_find_new(const BosonogaParser *parser,
@@ -160,6 +225,8 @@ gboolean bosonoga_parse_value_of_kind(BosonogaParser *parser,
 
 const BosonogaConstant *bosonoga_find_constant(const BosonogaParser *parser,
                                                const BosonogaToken *token);
+const BosonogaConstant *bosonoga_find_constant_any(const BosonogaParser *parser,
+                                                   const BosonogaToken *token);
 gboolean bosonoga_parse_constant(BosonogaParser *parser, GError **error);
 
 gboolean bosonoga_parse_var(BosonogaParser *parser, gboolean is_val,
@@ -175,6 +242,8 @@ gboolean bosonoga_parse_condition(BosonogaParser *parser, GArray *false_jumps,
 // An index in functions, or -1. Functions and arrays share one list.
 gint bosonoga_find_function(const BosonogaParser *parser,
                             const BosonogaToken *token);
+gint bosonoga_find_function_any(const BosonogaParser *parser,
+                                const BosonogaToken *token);
 
 const gchar *bosonoga_function_noun(const BosonogaFunction *function);
 
