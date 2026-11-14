@@ -1,8 +1,0 @@
-// The variables at the top of bosonoga_global are shared, and only the pub
-// ones outside this module.
-bosonoga_global
-di
-  pub var rounds is 3_i32
-  val started is "started"_str
-  info started
-do
