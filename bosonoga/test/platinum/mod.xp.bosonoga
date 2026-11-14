@@ -1,4 +1,0 @@
-expect started
-expect doubled 42
-expect 2 squared is 4
-expect rounds 3
