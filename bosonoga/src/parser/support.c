@@ -89,6 +89,13 @@ static const gchar *const bosonoga_reserved_words[] = {
     "break",
     "continue",
     "to_mod",
+    "to_join",
+    "io_read",
+    "io_write",
+    "io_modified",
+    "xml_child",
+    "xml_attribute",
+    "str_parse",
     "ge",
     "le",
     "not",
@@ -165,6 +172,11 @@ gboolean bosonoga_token_setting(const BosonogaParser *parser,
     value->kind = BOSONOGA_VALUE_ICON;
     return bosonoga_settings_icon(parser->settings, icon_key) != NULL;
   }
+  g_autofree gchar *dir_key = bosonoga_token_key(token, BOSONOGA_DIR_PREFIX);
+  if (dir_key != NULL) {
+    value->kind = BOSONOGA_VALUE_DIR;
+    return bosonoga_settings_dir(parser->settings, dir_key) != NULL;
+  }
   g_autofree gchar *global_key =
       bosonoga_token_key(token, BOSONOGA_GLOBAL_PREFIX);
   return global_key != NULL &&
@@ -173,10 +185,20 @@ gboolean bosonoga_token_setting(const BosonogaParser *parser,
 
 void bosonoga_name_asset(BosonogaParser *parser, const BosonogaToken *token,
                          BosonogaValue *value) {
-  const gboolean is_font = value->kind == BOSONOGA_VALUE_FONT;
-  g_autofree gchar *key = bosonoga_token_key(
-      token, is_font ? BOSONOGA_FONT_PREFIX : BOSONOGA_ICON_PREFIX);
-  GArray *assets = is_font ? parser->program->fonts : parser->program->icons;
+  const gchar *prefix = BOSONOGA_ICON_PREFIX;
+  GArray *assets = parser->program->icons;
+  const BosonogaSettingsAsset *(*find)(const BosonogaSettings *,
+                                       const gchar *) = bosonoga_settings_icon;
+  if (value->kind == BOSONOGA_VALUE_FONT) {
+    prefix = BOSONOGA_FONT_PREFIX;
+    assets = parser->program->fonts;
+    find = bosonoga_settings_font;
+  } else if (value->kind == BOSONOGA_VALUE_DIR) {
+    prefix = BOSONOGA_DIR_PREFIX;
+    assets = parser->program->dirs;
+    find = bosonoga_settings_dir;
+  }
+  g_autofree gchar *key = bosonoga_token_key(token, prefix);
   guint index = 0;
   while (index < assets->len &&
          g_strcmp0(g_array_index(assets, BosonogaProgramAsset, index).key,
@@ -184,9 +206,7 @@ void bosonoga_name_asset(BosonogaParser *parser, const BosonogaToken *token,
     ++index;
   }
   if (index == assets->len) {
-    const BosonogaSettingsAsset *setting =
-        is_font ? bosonoga_settings_font(parser->settings, key)
-                : bosonoga_settings_icon(parser->settings, key);
+    const BosonogaSettingsAsset *setting = find(parser->settings, key);
     const BosonogaProgramAsset asset = {
         .key = g_steal_pointer(&key),
         .text = g_strdup(setting->text),

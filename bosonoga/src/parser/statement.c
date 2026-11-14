@@ -132,6 +132,12 @@ static gboolean bosonoga_parse_unset(BosonogaParser *parser, GError **error) {
                             "'%s' is not new, and only what new made is unset",
                             shown);
   }
+  if (variable->freed_by != NULL) {
+    return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_TYPE,
+                            "'%s' is freed after the block that %s gives it, "
+                            "and is not unset",
+                            shown, variable->freed_by);
+  }
   // A visible variable of the same depth is of this block.
   if (variable->block_depth != parser->block_depth) {
     return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_SYNTAX,
@@ -426,7 +432,8 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
       !bosonoga_token_is_word(&start, "gfx_draw_hex") &&
       !bosonoga_token_is_word(&start, "gfx_draw_circle") &&
       !bosonoga_token_is_word(&start, "gfx_draw_text") &&
-      !bosonoga_token_is_word(&start, "gfx_draw_icon")) {
+      !bosonoga_token_is_word(&start, "gfx_draw_icon") &&
+      !bosonoga_is_given_statement(&start)) {
     return bosonoga_parse_error(parser, "a statement", error);
   }
   if (!bosonoga_advance(parser, error)) {
@@ -471,6 +478,13 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   }
   if (bosonoga_token_is_word(&start, "return")) {
     const BosonogaVariable *owner = bosonoga_find_new(parser, FALSE);
+    if (owner != NULL && owner->freed_by != NULL) {
+      return bosonoga_fail_at(parser, &start, error, BOSONOGA_ERROR_SYNTAX,
+                              "return cannot leave the block that %s gives "
+                              "'%.*s'",
+                              owner->freed_by, (gint)owner->length,
+                              owner->name);
+    }
     if (owner != NULL) {
       return bosonoga_fail_at(parser, &start, error, BOSONOGA_ERROR_SYNTAX,
                               "unset '%.*s' before return", (gint)owner->length,
@@ -497,6 +511,9 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   }
   if (bosonoga_token_is_word(&start, "gfx_draw_icon")) {
     return bosonoga_parse_gfx_draw_icon(parser, &start, error);
+  }
+  if (bosonoga_is_given_statement(&start)) {
+    return bosonoga_parse_given_statement(parser, &start, error);
   }
   return TRUE;  // nihil
 }

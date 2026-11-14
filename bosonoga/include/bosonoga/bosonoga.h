@@ -30,6 +30,8 @@ typedef enum {
   BOSONOGA_VALUE_INPUT_KEY,
   BOSONOGA_VALUE_FONT,
   BOSONOGA_VALUE_ICON,
+  BOSONOGA_VALUE_XML_STR,  // A str that is well-formed XML, see parser.h.
+  BOSONOGA_VALUE_DIR,
 } BosonogaValueKind;
 
 typedef struct {
@@ -45,14 +47,16 @@ typedef struct {
     guint32 color;  // 0xRRGGBB
     gboolean boolean;
     guint32 input_key;  // As sokol_app numbers keys.
-    // Of a font or icon, numbered in the program.
+    // Of a font, icon or dir, numbered in the program.
     struct {
       guint index;
-      const gchar *text;  // As [font] or [icon] has it, which the program owns.
+      // As [font], [icon] or [dir] has it, which the program owns.
+      const gchar *text;
     } asset;
+    // Of a str or an xml_str.
     struct {
-      // Not NUL-terminated. Of the source, or of what new made, which the
-      // execution owns.
+      // Not NUL-terminated. Of the source, or of what new, io_read or an xml_
+      // statement made, which the execution owns.
       const gchar *text;
       gsize length;
     } str;

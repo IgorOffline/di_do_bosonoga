@@ -189,7 +189,8 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
   } else if (bosonoga_token_setting(parser, token, &operand->literal)) {
     // The value of a setting is known now, so it is a literal.
     if (operand->literal.kind == BOSONOGA_VALUE_FONT ||
-        operand->literal.kind == BOSONOGA_VALUE_ICON) {
+        operand->literal.kind == BOSONOGA_VALUE_ICON ||
+        operand->literal.kind == BOSONOGA_VALUE_DIR) {
       bosonoga_name_asset(parser, token, &operand->literal);
     }
   } else {
@@ -200,10 +201,12 @@ gboolean bosonoga_parse_value(BosonogaParser *parser, BosonogaOperand *operand,
     // A copy would outlive the unset of what it points into.
     if (variable->is_new && !parser->reads_new) {
       g_autofree gchar *shown = bosonoga_token_shown(token);
-      return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
-                              "'%s' is new, so it is only read by info, a "
-                              "comparison or new str of, and is not copied",
-                              shown);
+      return bosonoga_fail_at(
+          parser, token, error, BOSONOGA_ERROR_TYPE,
+          "'%s' is %s, so it is only read by info, a "
+          "comparison, new, to_join, io_write, an xml_ "
+          "statement or str_parse, and is not copied",
+          shown, variable->freed_by != NULL ? "taken from a block" : "new");
     }
     bosonoga_use_variable(parser, variable);
     operand->literal.kind = variable->kind;

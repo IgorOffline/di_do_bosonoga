@@ -368,6 +368,7 @@ void bosonoga_program_free(BosonogaProgram *program) {
   g_array_unref(program->rows);
   g_array_unref(program->fonts);
   g_array_unref(program->icons);
+  g_array_unref(program->dirs);
   g_free(program);
 }
 
@@ -392,6 +393,8 @@ BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
   g_array_set_clear_func(program->fonts, bosonoga_program_asset_clear);
   program->icons = g_array_new(FALSE, FALSE, sizeof(BosonogaProgramAsset));
   g_array_set_clear_func(program->icons, bosonoga_program_asset_clear);
+  program->dirs = g_array_new(FALSE, FALSE, sizeof(BosonogaProgramAsset));
+  g_array_set_clear_func(program->dirs, bosonoga_program_asset_clear);
 
   g_autoptr(GArray) outer_files =
       g_array_new(FALSE, FALSE, sizeof(BosonogaOuterFile));

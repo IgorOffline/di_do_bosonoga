@@ -66,6 +66,13 @@ gboolean bosonoga_parse_loop_jump(BosonogaParser *parser,
                             "%s can only be in a loop", shown);
   }
   const BosonogaVariable *owner = bosonoga_find_new(parser, TRUE);
+  if (owner != NULL && owner->freed_by != NULL) {
+    g_autofree gchar *shown = bosonoga_token_shown(start);
+    return bosonoga_fail_at(parser, start, error, BOSONOGA_ERROR_SYNTAX,
+                            "%s cannot leave the block that %s gives '%.*s'",
+                            shown, owner->freed_by, (gint)owner->length,
+                            owner->name);
+  }
   if (owner != NULL) {
     g_autofree gchar *shown = bosonoga_token_shown(start);
     return bosonoga_fail_at(parser, start, error, BOSONOGA_ERROR_SYNTAX,

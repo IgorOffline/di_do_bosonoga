@@ -151,13 +151,14 @@ gboolean bosonoga_parse_types(BosonogaParser *parser, BosonogaValueKind *kinds,
 }
 
 // The type is after an underscore, as in count_i32, and a type can have one
-// of its own, as in pressed_input_key.
+// of its own, as in pressed_input_key, so the longest type is taken, as
+// xml_str in reply_xml_str.
 static gboolean bosonoga_parameter_kind(const BosonogaToken *token,
                                         BosonogaValueKind *kind) {
   if (token->kind != BOSONOGA_TOKEN_WORD) {
     return FALSE;
   }
-  for (gsize start = token->length; start > 1; --start) {
+  for (gsize start = 2; start < token->length; ++start) {
     if (token->text[start - 1] == '_' &&
         bosonoga_value_kind_named(token->text + start, token->length - start,
                                   kind)) {

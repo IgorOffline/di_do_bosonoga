@@ -1,0 +1,17 @@
+expect <a x='1' y='&lt;2'><b>one</b><b>two</b><c/></a>
+expect second b: <b>two</b>
+expect no d
+expect y is <2
+expect no z
+expect has b true
+expect <list><item n="0" label="&lt;&amp;&apos;&gt;"/><item n="1" label="&lt;&amp;&apos;&gt;"/><item n="2" label="&lt;&amp;&apos;&gt;"/>a &amp; b</list>
+expect <empty/>
+expect label <&'>
+expect doc <x/>
+expect 42 true 42
+expect -0 true 0
+expect 4294967295 true 4294967295
+expect 4294967296 false 0
+expect -1 as u64 false 0
+expect 007 false 0
+expect +5 false 0

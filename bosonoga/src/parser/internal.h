@@ -18,6 +18,7 @@
 #define BOSONOGA_KEY_PREFIX "key_"
 #define BOSONOGA_FONT_PREFIX "font_"
 #define BOSONOGA_ICON_PREFIX "icon_"
+#define BOSONOGA_DIR_PREFIX "dir_"
 #define BOSONOGA_DELTA_TIME_WORD "gfx_delta_time"
 #define BOSONOGA_KEY_WORD "gfx_key"
 #define BOSONOGA_RESULT_PREFIX "ret_"
@@ -59,8 +60,10 @@ typedef struct {
   BosonogaValueKind kind;
   guint slot;
   gboolean is_val;
-  // Owns a str that new made, which is unset in the block it is declared in.
+  // Owns a str that new made, which is unset in the block it is declared in,
+  // or that a statement like io_read gave its block, which frees it after.
   gboolean is_new;
+  const gchar *freed_by;  // The word of that statement, or NULL.
   gboolean is_array;
   guint function;  // Of an array, in functions.
   guint block_depth;
@@ -275,6 +278,46 @@ gboolean bosonoga_check_single_result(const BosonogaParser *parser,
 
 gboolean bosonoga_parse_taken_result(BosonogaParser *parser, guint index,
                                      GError **error);
+
+// What a statement gives to the block after its with ret, as a function does.
+typedef struct {
+  const gchar *name;
+  const gchar *gives;  // As in "'f_fn' returns", or "io_read gives".
+  guint count;
+  BosonogaValueKind kinds[BOSONOGA_FUNCTION_VALUES_MAX];
+  // Others that may stand for kinds[i], as str for the xml_str of io_read.
+  guint32 also[BOSONOGA_FUNCTION_VALUES_MAX];  // Bits of BosonogaValueKind.
+  gboolean is_owned[BOSONOGA_FUNCTION_VALUES_MAX];  // Of a str it makes.
+} BosonogaResults;
+
+// The values that a block takes, by increasing index.
+typedef struct {
+  guint count;
+  guint indices[BOSONOGA_FUNCTION_VALUES_MAX];
+  BosonogaValueKind kinds[BOSONOGA_FUNCTION_VALUES_MAX];
+  guint slots[BOSONOGA_FUNCTION_VALUES_MAX];
+} BosonogaTaken;
+
+// After with ret, up to the di of the block, as call ... with ret.
+gboolean bosonoga_parse_results(BosonogaParser *parser,
+                                const BosonogaToken *start,
+                                const BosonogaResults *results,
+                                BosonogaTaken *taken, GError **error);
+
+gboolean bosonoga_parse_new_xml(BosonogaParser *parser,
+                                const BosonogaToken *name, gboolean is_val,
+                                GError **error);
+
+gboolean bosonoga_parse_join(BosonogaParser *parser, const BosonogaToken *name,
+                             const BosonogaVariable *target, GError **error);
+
+// Of the word that starts io_read, io_write, io_modified, xml_child,
+// xml_attribute or str_parse.
+gboolean bosonoga_is_given_statement(const BosonogaToken *token);
+
+gboolean bosonoga_parse_given_statement(BosonogaParser *parser,
+                                        const BosonogaToken *start,
+                                        GError **error);
 
 gboolean bosonoga_parse_call_statement(BosonogaParser *parser,
                                        const BosonogaToken *start,
