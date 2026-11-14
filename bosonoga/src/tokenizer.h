@@ -6,6 +6,7 @@
 #include "bosonoga/bosonoga.h"
 
 #define BOSONOGA_STRING_SUFFIX "_str"
+#define BOSONOGA_XML_STRING_SUFFIX "_xml_str"
 #define BOSONOGA_TRUE_WORD "true_bool"
 #define BOSONOGA_FALSE_WORD "false_bool"
 

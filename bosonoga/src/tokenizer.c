@@ -4,6 +4,7 @@
 
 #include "bosonoga/bosonoga.h"
 #include "value.h"
+#include "xml.h"
 
 static gboolean bosonoga_lex_error(const BosonogaTokenizer *tokenizer,
                                    gsize line, gsize column,
@@ -173,11 +174,24 @@ static gboolean bosonoga_lex_string(BosonogaTokenizer *tokenizer,
     bosonoga_consume_char(tokenizer);
   }
   const gsize suffix_length = (gsize)(tokenizer->cursor - suffix);
-  if (suffix_length != strlen(BOSONOGA_STRING_SUFFIX) ||
-      memcmp(suffix, BOSONOGA_STRING_SUFFIX, suffix_length) != 0) {
+  if (suffix_length == strlen(BOSONOGA_XML_STRING_SUFFIX) &&
+      memcmp(suffix, BOSONOGA_XML_STRING_SUFFIX, suffix_length) == 0) {
+    GError *xml_error = NULL;
+    if (!bosonoga_xml_check_fragment(token->value.str.text,
+                                     token->value.str.length, &xml_error)) {
+      g_autofree gchar *message = g_strdup_printf(
+          "an xml_str is well-formed XML, but %s", xml_error->message);
+      g_error_free(xml_error);
+      return bosonoga_lex_error(tokenizer, token->line, token->column, message,
+                                error);
+    }
+    token->value.kind = BOSONOGA_VALUE_XML_STR;
+  } else if (suffix_length != strlen(BOSONOGA_STRING_SUFFIX) ||
+             memcmp(suffix, BOSONOGA_STRING_SUFFIX, suffix_length) != 0) {
     return bosonoga_lex_error(
         tokenizer, token->line, token->column,
         "a string must have the suffix " BOSONOGA_STRING_SUFFIX
+        " or " BOSONOGA_XML_STRING_SUFFIX
         ", as in \"text\"" BOSONOGA_STRING_SUFFIX,
         error);
   }

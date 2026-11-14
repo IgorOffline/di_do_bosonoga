@@ -8,7 +8,7 @@ static const BosonogaValueKind bosonoga_kinds[] = {
     BOSONOGA_VALUE_U64,   BOSONOGA_VALUE_F32,       BOSONOGA_VALUE_F64,
     BOSONOGA_VALUE_FLAGS, BOSONOGA_VALUE_COLOR,     BOSONOGA_VALUE_STR,
     BOSONOGA_VALUE_BOOL,  BOSONOGA_VALUE_INPUT_KEY, BOSONOGA_VALUE_FONT,
-    BOSONOGA_VALUE_ICON,
+    BOSONOGA_VALUE_ICON,  BOSONOGA_VALUE_XML_STR,   BOSONOGA_VALUE_DIR,
 };
 
 const gchar *bosonoga_value_kind_name(BosonogaValueKind kind) {
@@ -39,6 +39,10 @@ const gchar *bosonoga_value_kind_name(BosonogaValueKind kind) {
       return "font";
     case BOSONOGA_VALUE_ICON:
       return "icon";
+    case BOSONOGA_VALUE_XML_STR:
+      return "xml_str";
+    case BOSONOGA_VALUE_DIR:
+      return "dir";
   }
   g_return_val_if_reached("unknown");
 }
@@ -87,6 +91,8 @@ BosonogaWide bosonoga_whole(const BosonogaValue *value) {
     case BOSONOGA_VALUE_INPUT_KEY:
     case BOSONOGA_VALUE_FONT:
     case BOSONOGA_VALUE_ICON:
+    case BOSONOGA_VALUE_XML_STR:
+    case BOSONOGA_VALUE_DIR:
       break;
   }
   g_return_val_if_reached(0);
@@ -138,6 +144,8 @@ gboolean bosonoga_set_whole(BosonogaValue *value, BosonogaValueKind kind,
     case BOSONOGA_VALUE_INPUT_KEY:
     case BOSONOGA_VALUE_FONT:
     case BOSONOGA_VALUE_ICON:
+    case BOSONOGA_VALUE_XML_STR:
+    case BOSONOGA_VALUE_DIR:
       g_return_val_if_reached(FALSE);
   }
   value->kind = kind;

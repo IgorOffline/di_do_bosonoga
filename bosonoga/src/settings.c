@@ -14,6 +14,7 @@
 #define BOSONOGA_SETTINGS_GROUP_KEY "key"
 #define BOSONOGA_SETTINGS_GROUP_FONT "font"
 #define BOSONOGA_SETTINGS_GROUP_ICON "icon"
+#define BOSONOGA_SETTINGS_GROUP_DIR "dir"
 #define BOSONOGA_SETTINGS_KEY_BACKGROUND "background"
 #define BOSONOGA_COLOR_HEX_LENGTH 6
 
@@ -41,6 +42,9 @@ void bosonoga_settings_clear(BosonogaSettings *settings) {
   if (settings->icons != NULL) {
     g_hash_table_unref(settings->icons);
   }
+  if (settings->dirs != NULL) {
+    g_hash_table_unref(settings->dirs);
+  }
 }
 
 static void bosonoga_settings_asset_free(gpointer data) {
@@ -63,6 +67,11 @@ const BosonogaSettingsAsset *bosonoga_settings_font(
 const BosonogaSettingsAsset *bosonoga_settings_icon(
     const BosonogaSettings *settings, const gchar *key) {
   return bosonoga_settings_asset(settings->icons, key);
+}
+
+const BosonogaSettingsAsset *bosonoga_settings_dir(
+    const BosonogaSettings *settings, const gchar *key) {
+  return bosonoga_settings_asset(settings->dirs, key);
 }
 
 gboolean bosonoga_settings_key(const BosonogaSettings *settings,
@@ -268,7 +277,8 @@ static gboolean bosonoga_read_key_settings(const BosonogaSettingsFile *file,
 }
 
 // The files are not opened here, so that a program without a window runs
-// without them. What and example say what the group names, for the error.
+// without them, and a directory is made when io_write first writes to it. What
+// and example say what the group names, for the error.
 static gboolean bosonoga_read_asset_settings(
     const BosonogaSettingsFile *file, const gchar *group, const gchar *what,
     const gchar *example, GHashTable **assets, GError **error) {
@@ -337,5 +347,8 @@ gboolean bosonoga_read_settings(const gchar *path, BosonogaSettings *settings,
              "asset/font/IntelOneMono-Medium.ttf", &settings->fonts, error) &&
          bosonoga_read_asset_settings(&file, BOSONOGA_SETTINGS_GROUP_ICON,
                                       "an icon file", "asset/icon/chevron.png",
-                                      &settings->icons, error);
+                                      &settings->icons, error) &&
+         bosonoga_read_asset_settings(&file, BOSONOGA_SETTINGS_GROUP_DIR,
+                                      "a directory", "replay", &settings->dirs,
+                                      error);
 }

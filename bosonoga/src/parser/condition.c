@@ -46,7 +46,11 @@ static gboolean bosonoga_check_compare(const BosonogaParser *parser,
                             bosonoga_value_kind_name(left),
                             bosonoga_value_kind_name(right));
   }
-  if (left != right) {
+  // A str and an xml_str compare by their text.
+  const gboolean is_text =
+      (left == BOSONOGA_VALUE_STR || left == BOSONOGA_VALUE_XML_STR) &&
+      (right == BOSONOGA_VALUE_STR || right == BOSONOGA_VALUE_XML_STR);
+  if (left != right && !is_text) {
     return bosonoga_fail_at(
         parser, token, error, BOSONOGA_ERROR_TYPE, "cannot compare %s with %s",
         bosonoga_value_kind_name(left), bosonoga_value_kind_name(right));
@@ -61,7 +65,8 @@ static gboolean bosonoga_check_compare(const BosonogaParser *parser,
   }
   if ((left == BOSONOGA_VALUE_STR || left == BOSONOGA_VALUE_BOOL ||
        left == BOSONOGA_VALUE_INPUT_KEY || left == BOSONOGA_VALUE_FONT ||
-       left == BOSONOGA_VALUE_ICON) &&
+       left == BOSONOGA_VALUE_ICON || left == BOSONOGA_VALUE_XML_STR ||
+       left == BOSONOGA_VALUE_DIR) &&
       compare != BOSONOGA_COMPARE_EQ && compare != BOSONOGA_COMPARE_NOT_EQ) {
     return bosonoga_fail_at(parser, token, error, BOSONOGA_ERROR_TYPE,
                             "%s can only be compared with eq or not_eq",

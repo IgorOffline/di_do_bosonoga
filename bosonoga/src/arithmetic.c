@@ -39,6 +39,7 @@ void bosonoga_print_value(GString *output, const BosonogaValue *value) {
       g_string_append_printf(output, "%06" G_GINT32_MODIFIER "X", value->color);
       break;
     case BOSONOGA_VALUE_STR:
+    case BOSONOGA_VALUE_XML_STR:
       g_string_append_len(output, value->str.text, (gssize)value->str.length);
       break;
     case BOSONOGA_VALUE_BOOL:
@@ -49,6 +50,7 @@ void bosonoga_print_value(GString *output, const BosonogaValue *value) {
       break;
     case BOSONOGA_VALUE_FONT:
     case BOSONOGA_VALUE_ICON:
+    case BOSONOGA_VALUE_DIR:
       g_string_append(output, value->asset.text);
       break;
   }
@@ -80,7 +82,9 @@ static gint bosonoga_order(const BosonogaValue *left,
 
 static gboolean bosonoga_equal(const BosonogaValue *left,
                                const BosonogaValue *right) {
-  if (left->kind == BOSONOGA_VALUE_STR) {
+  // A str and an xml_str compare by their text.
+  if (left->kind == BOSONOGA_VALUE_STR ||
+      left->kind == BOSONOGA_VALUE_XML_STR) {
     return left->str.length == right->str.length &&
            memcmp(left->str.text, right->str.text, left->str.length) == 0;
   }
@@ -90,7 +94,8 @@ static gboolean bosonoga_equal(const BosonogaValue *left,
   if (left->kind == BOSONOGA_VALUE_INPUT_KEY) {
     return left->input_key == right->input_key;
   }
-  if (left->kind == BOSONOGA_VALUE_FONT || left->kind == BOSONOGA_VALUE_ICON) {
+  if (left->kind == BOSONOGA_VALUE_FONT || left->kind == BOSONOGA_VALUE_ICON ||
+      left->kind == BOSONOGA_VALUE_DIR) {
     return left->asset.index == right->asset.index;
   }
   return bosonoga_order(left, right) == 0;

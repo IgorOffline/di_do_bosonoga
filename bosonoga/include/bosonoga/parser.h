@@ -28,7 +28,9 @@
 //               | "set" NAME update
 //               | "set" NAME "to" (value | len | call "with" "ret" INDEXED)
 //               | "set" NAME "at" value "to" value+
+//               | "set" NAME "to_join" value+
 //               | "call" call ("with" "ret" taken+ block)?
+//               | given "with" "ret" taken+ block
 //               | "if" condition block ("else" "if" condition block)*
 //                 ("else" block)?
 //               | LOOP ("with" NAME)? block
@@ -47,6 +49,11 @@
 //   initial    := conversion | len | value ("shift_or" value)*
 //   len        := ("len_col" | "len_row") NAME
 //   new        := "new" "str" "of" value+
+//               | "new" "xml_str" ("of" value+ | "element" STRING
+//                 (STRING value)* ("of" value+)?)
+//   given      := "io_read" value value | "io_write" value value value
+//               | "io_modified" value value | "xml_child" value STRING value
+//               | "xml_attribute" value STRING | "str_parse" value
 //   update     := conversion
 //               | ("to_add" | "to_subtract" | "to_multiply" | "to_divide"
 //                 | "to_mod") value+
@@ -68,18 +75,19 @@
 //   compare    := "gt" | "lt" | "ge" | "le" | "eq" | "not_eq" | "eq_3" | "eq_6"
 //               | "not_eq_3" | "not_eq_6" | "shift_has"
 //   value      := INTEGER | REAL | STRING | BOOL | SHIFT | COLOR | GLOBAL
-//               | KEY_VALUE | FONT | ICON | "gfx_delta_time" | "gfx_key"
-//               | NAME
+//               | KEY_VALUE | FONT | ICON | DIR | "gfx_delta_time"
+//               | "gfx_key" | NAME
 //   HALIGN     := "left" | "center" | "right"
 //   VALIGN     := "top" | "middle" | "baseline" | "bottom"
 //   TYPE       := "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "flags"
 //               | "color" | "str" | "bool" | "input_key" | "font" | "icon"
+//               | "xml_str" | "dir"
 //   FUNCTION   := NAME "_fn", like divide_fn, which no other name is
 //   PARAMETER  := NAME, which ends with "_" TYPE, like count_i32
 //   INDEXED    := digit+ "_" TYPE, like 0_i32 and 1_str
 //   INTEGER    := "-"? digit+ ("_i32" | "_i64" | "_u32" | "_u64")
 //   REAL       := "-"? digit+ ("d" digit+)? ("_f32" | "_f64")
-//   STRING     := '"' character* '"' "_str"
+//   STRING     := '"' character* '"' ("_str" | "_xml_str")
 //   BOOL       := "true_bool" | "false_bool"
 //   SHIFT      := "shift_" digit+
 //   COLOR      := "color_" KEY
@@ -87,6 +95,7 @@
 //   KEY_VALUE  := "key_" KEY
 //   FONT       := "font_" KEY
 //   ICON       := "icon_" KEY
+//   DIR        := "dir_" KEY
 //   LOOP       := "to_" digit+
 //
 // - "and" binds tighter than "or", and "not" negates only the comparison after
@@ -132,6 +141,57 @@
 //   a return, break or continue that leaves it. So that nothing points into it
 //   after that, it cannot be set, and is only read by info, a comparison or
 //   new str of.
+// - An xml_str is a str that is well-formed XML: elements, text, the five
+//   entities and character references, without comments, CDATA, processing
+//   instructions or a doctype, an attribute given twice or a < in an attribute.
+//   It may have text and any number of elements at its top, so two xml_str
+//   joined are one, and "" is one. A STRING with _xml_str is checked before the
+//   program runs, and writes its attributes with ', as in "<a b='1'/>"_xml_str.
+//   An xml_str is printed, and compared with eq and not_eq, also with a str,
+//   and a parameter like doc_xml_str takes one.
+// - new xml_str makes an xml_str of at most BOSONOGA_XML_STR_LENGTH_MAX bytes,
+//   which is new as for new str. element writes one element, named by the
+//   STRING after it, with an attribute for each STRING and value after that,
+//   as in new xml_str element "node"_str "q"_str q "type"_str "start"_str.
+//   Its values are escaped, with & < > " and ' as &amp; &lt; &gt; &quot; and
+//   &apos;, and with of it holds the values after of, or else it is written as
+//   <node .../>. After of, an xml_str joins as it is, and any other value as
+//   info prints it, escaped. A name starts with an ASCII letter or _, and has
+//   letters, digits, _, - and . set ... to_join joins such values to a var of
+//   new xml_str, which is not reading it.
+// - io_read, io_write, io_modified, xml_child, xml_attribute and str_parse
+//   give values to their block, which takes them as call ... with ret does.
+//   Those that are a str or an xml_str are new, and are freed after the block,
+//   which so cannot unset them, nor leave by a return, break or continue.
+//   - io_read DIR NAME gives 0_bool, whether it read the file, 1_xml_str, its
+//     text, which is 1_str if it takes a str, and 2_str, why it did not, or
+//     "". A file is at most BOSONOGA_XML_STR_LENGTH_MAX bytes. A str is UTF-8
+//     without NUL, and an xml_str a document: at most one <?xml ...?>, one
+//     root element, which is the xml_str, and whitespace around it. Only a
+//     text that the block takes is checked.
+//   - io_write DIR NAME VALUE gives 0_bool, whether it wrote the file, 1_bool,
+//     whether it was there already, as it only makes a new file, and 2_str,
+//     why it did not write it, or "". It makes DIR if it is missing. It writes
+//     a str as it is, and an xml_str of one element as a document, with <?xml
+//     version="1.0" encoding="UTF-8"?> and a line break before it, and a line
+//     break after it.
+//   - io_modified DIR NAME gives 0_bool, whether the file is there, and 1_i64,
+//     when it was last written, in nanoseconds since 1970, or 0.
+//   - xml_child XML STRING INDEX, of an xml_str of one element, gives 0_bool,
+//     whether it has a child element so named after INDEX others, an i32 from
+//     0, and 1_xml_str, that element, as in xml_child replay "action"_str
+//     0_i32.
+//   - xml_attribute XML STRING, of an xml_str of one element, gives 0_bool,
+//     whether it has the attribute, and 1_str, its value, with the entities
+//     and references replaced and tabs and line breaks as spaces.
+//   - str_parse STR gives 0_bool, whether it is an integer, and 1_i32, the
+//     integer, which is 1_i64, 1_u32 or 1_u64 if the block takes that, and
+//     which the block takes. It is an INTEGER without its suffix and without
+//     leading zeros, and fits its type, or the number is 0.
+//   A NAME of a file is a str of 1 to 255 ASCII letters, digits, _, - and .,
+//   which does not start with ., and is in the directory of DIR. A NAME that
+//   is not one, an INDEX below 0, and an XML that is not one element are
+//   runtime errors.
 // - A program has either one bosonoga_main or the sections of a gfx program,
 //   after at most one bosonoga_global, and any number of functions and arrays.
 //   Each can only be used after its definition, so a function can call itself
@@ -200,15 +260,17 @@
 // - gfx_await_next_frame waits for the next frame, so that a loop in gfx_main
 //   steps once per frame, at most 60 times a second, and does not use up the
 //   ops of a frame. It is only in gfx_main, and not in a function.
-// - A KEY is a key of the [color], [global], [key], [font] or [icon] group of
-//   the settings, see settings.h. A color prints as RRGGBB, and a global is one
-//   INTEGER or REAL. A key of [key] names a keyboard key by its sokol_app name,
-//   like SAPP_KEYCODE_ESCAPE, and is an input_key, which prints by that name.
-//   A key of [font] names a TrueType file and a key of [icon] a PNG file,
-//   relative to the settings, and is a font or an icon, which prints as the
-//   settings have it. Only a window reads the files, before gfx_init. An
-//   input_key, font or icon compares only with eq or not_eq.
-//   gfx_key is the input_key pressed, and is only in gfx_key_down.
+// - A KEY is a key of the [color], [global], [key], [font], [icon] or [dir]
+//   group of the settings, see settings.h. A color prints as RRGGBB, and a
+//   global is one INTEGER or REAL. A key of [key] names a keyboard key by its
+//   sokol_app name, like SAPP_KEYCODE_ESCAPE, and is an input_key, which prints
+//   by that name. A key of [font] names a TrueType file and a key of [icon] a
+//   PNG file, relative to the settings, and is a font or an icon, which prints
+//   as the settings have it. Only a window reads the files, before gfx_init. A
+//   key of [dir] names a directory, relative to the settings, and is a dir,
+//   which prints as the settings have it. An input_key, font, icon or dir
+//   compares only with eq or not_eq. gfx_key is the input_key pressed, and is
+//   only in gfx_key_down.
 // - gfx_clear, the gfx_draw statements and gfx_delta_time (seconds since the
 //   previous frame) are only in gfx_frame. Shapes, with y growing down, are
 //   drawn in the order of their statements, each over the ones before it. A
@@ -334,9 +396,30 @@ typedef enum {
   BOSONOGA_OP_ARRAY_INIT,
   BOSONOGA_OP_ARRAY_WRITE,
   BOSONOGA_OP_NEW_STR_PART,
-  BOSONOGA_OP_NEW_STR,
+  BOSONOGA_OP_NEW_STR,  // Of the kind made, a str or an xml_str.
   BOSONOGA_OP_UNSET,
+  BOSONOGA_OP_XML_PART,    // Joins a BosonogaXmlPart, which integer is.
+  BOSONOGA_OP_JOIN_STORE,  // The joined xml_str replaces the one in slot.
+  BOSONOGA_OP_IO_READ,     // With integer the results taken, as of the rest.
+  BOSONOGA_OP_IO_WRITE,
+  BOSONOGA_OP_IO_MODIFIED,
+  BOSONOGA_OP_XML_CHILD,
+  BOSONOGA_OP_XML_ATTRIBUTE,
+  BOSONOGA_OP_STR_PARSE,
 } BosonogaOpKind;
+
+// What an op of BOSONOGA_OP_XML_PART joins of left, which is a str literal for
+// a name.
+typedef enum {
+  BOSONOGA_XML_PART_RAW,    // An xml_str as it is.
+  BOSONOGA_XML_PART_TEXT,   // A value as info prints it, escaped.
+  BOSONOGA_XML_PART_OPEN,   // < and the name of an element.
+  BOSONOGA_XML_PART_NAME,   // A space, the name of an attribute, = and ".
+  BOSONOGA_XML_PART_VALUE,  // As TEXT, and then ".
+  BOSONOGA_XML_PART_START,  // > after the attributes.
+  BOSONOGA_XML_PART_EMPTY,  // /> after the attributes.
+  BOSONOGA_XML_PART_CLOSE,  // </, the name and >.
+} BosonogaXmlPart;
 
 typedef struct {
   BosonogaOpKind kind;
@@ -350,6 +433,8 @@ typedef struct {
   guint function;
   guint index;
   gint32 integer;  // Also the BosonogaGfxAlign of gfx_draw_text.
+  // Of what new, to_join, io_read or str_parse makes.
+  BosonogaValueKind made;
   BosonogaOperand left;
   BosonogaOperand right;
   // Of the gfx_draw statements.
@@ -363,14 +448,18 @@ typedef struct {
 // The smallest most that OpenGL 3.3 guarantees for a texture.
 #define BOSONOGA_ICON_SIDE_MAX 1024
 
-// A font or icon that the program names, which a window loads before gfx_init.
+// A font or icon that the program names, which a window loads before gfx_init,
+// or a dir.
 typedef struct {
-  gchar *key;   // Of [font] or [icon].
+  gchar *key;   // Of [font], [icon] or [dir].
   gchar *text;  // As the settings have it, printed for its value.
   gchar *path;
 } BosonogaProgramAsset;
 
 #define BOSONOGA_NEW_STR_LENGTH_MAX 1024
+
+// The longest xml_str that new or to_join make, and file that io_read reads.
+#define BOSONOGA_XML_STR_LENGTH_MAX 1048576
 
 // The most values that a function takes or returns, and of a row.
 #define BOSONOGA_FUNCTION_VALUES_MAX 16
@@ -412,6 +501,7 @@ typedef struct {
   // Of BosonogaProgramAsset, numbered by a font or icon value.
   GArray *fonts;
   GArray *icons;
+  GArray *dirs;  // Of BosonogaProgramAsset, numbered by a dir value.
   gboolean is_gfx;
   // A missing section starts at a BOSONOGA_OP_SECTION_END, so it can still run.
   guint entries[BOSONOGA_SECTION_COUNT];

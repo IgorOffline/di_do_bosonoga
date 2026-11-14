@@ -2,6 +2,8 @@
 #include <string.h>
 
 #include "execution.h"
+#include "io.h"
+#include "xml.h"
 
 static gboolean bosonoga_runtime_error(const BosonogaOp *op, GError **error,
                                        const gchar *format, ...)
@@ -136,6 +138,316 @@ static gboolean bosonoga_write_array(const BosonogaExecution *execution,
   memcpy(&frame[array->slot + (guint)index->i32 * array->result_count],
          execution->arguments, array->result_count * sizeof(BosonogaValue));
   return TRUE;
+}
+
+// What new, io_read or an xml_ statement made, if it did.
+static void bosonoga_free_owned(BosonogaExecution *execution,
+                                const gchar *text) {
+  GPtrArray *owned = execution->owned;
+  for (guint i = 0; i < owned->len; ++i) {
+    if (g_ptr_array_index(owned, i) == text) {
+      g_ptr_array_remove_index_fast(owned, i);
+      return;
+    }
+  }
+}
+
+static const gchar *bosonoga_own(BosonogaExecution *execution,
+                                 const gchar *text, gsize length) {
+  gchar *copy = g_strndup(text, length);
+  g_ptr_array_add(execution->owned, copy);
+  return copy;
+}
+
+static void bosonoga_give_bool(BosonogaExecution *execution, guint index,
+                               gboolean value) {
+  BosonogaValue *result = &execution->results[index];
+  memset(result, 0, sizeof(*result));
+  result->kind = BOSONOGA_VALUE_BOOL;
+  result->boolean = value;
+}
+
+// A copy that the execution owns, if the block takes it, or else nothing.
+static void bosonoga_give_text(BosonogaExecution *execution,
+                               const BosonogaOp *op, guint index,
+                               BosonogaValueKind kind, const gchar *text,
+                               gsize length) {
+  BosonogaValue *result = &execution->results[index];
+  memset(result, 0, sizeof(*result));
+  result->kind = kind;
+  result->str.text = "";
+  if ((op->integer & (1 << index)) != 0 && length > 0) {
+    result->str.text = bosonoga_own(execution, text, length);
+    result->str.length = length;
+  }
+}
+
+// Gives the reason as the str at index, and frees it.
+static void bosonoga_give_reason(BosonogaExecution *execution,
+                                 const BosonogaOp *op, guint index,
+                                 gchar *reason) {
+  bosonoga_give_text(execution, op, index, BOSONOGA_VALUE_STR,
+                     reason != NULL ? reason : "",
+                     reason != NULL ? strlen(reason) : 0);
+  g_free(reason);
+}
+
+// The file that a dir and a name of io_read, io_write or io_modified name.
+static gchar *bosonoga_io_path(const BosonogaExecution *execution,
+                               const BosonogaOp *op, const BosonogaValue *dir,
+                               const BosonogaValue *name, GError **error) {
+  if (!bosonoga_io_is_file_name(name->str.text, name->str.length)) {
+    g_autofree gchar *shown =
+        g_utf8_make_valid(name->str.text, (gssize)MIN(name->str.length, 64));
+    bosonoga_runtime_error(op, error,
+                           "'%s' is not a file name, which is 1 to %d ASCII "
+                           "letters, digits, _, - and ., and does not start "
+                           "with .",
+                           shown, BOSONOGA_IO_FILE_NAME_MAX);
+    return NULL;
+  }
+  g_autofree gchar *file = g_strndup(name->str.text, name->str.length);
+  return g_build_filename(g_array_index(execution->program->dirs,
+                                        BosonogaProgramAsset, dir->asset.index)
+                              .path,
+                          file, NULL);
+}
+
+static gboolean bosonoga_xml_part(BosonogaExecution *execution,
+                                  const BosonogaOp *op,
+                                  const BosonogaValue *value, GError **error) {
+  GString *join = execution->join;
+  switch ((BosonogaXmlPart)op->integer) {
+    case BOSONOGA_XML_PART_RAW:
+      g_string_append_len(join, value->str.text, (gssize)value->str.length);
+      break;
+    case BOSONOGA_XML_PART_TEXT:
+    case BOSONOGA_XML_PART_VALUE: {
+      g_autoptr(GString) printed = g_string_new(NULL);
+      bosonoga_print_value(printed, value);
+      if (!g_utf8_validate_len(printed->str, printed->len, NULL) ||
+          memchr(printed->str, '\0', printed->len) != NULL) {
+        return bosonoga_runtime_error(
+            op, error, "an xml_str holds UTF-8 text without NUL bytes");
+      }
+      bosonoga_xml_escape(join, printed->str, printed->len);
+      if (op->integer == BOSONOGA_XML_PART_VALUE) {
+        g_string_append_c(join, '"');
+      }
+      break;
+    }
+    case BOSONOGA_XML_PART_OPEN:
+      g_string_append_c(join, '<');
+      g_string_append_len(join, value->str.text, (gssize)value->str.length);
+      break;
+    case BOSONOGA_XML_PART_NAME:
+      g_string_append_c(join, ' ');
+      g_string_append_len(join, value->str.text, (gssize)value->str.length);
+      g_string_append(join, "=\"");
+      break;
+    case BOSONOGA_XML_PART_START:
+      g_string_append_c(join, '>');
+      break;
+    case BOSONOGA_XML_PART_EMPTY:
+      g_string_append(join, "/>");
+      break;
+    case BOSONOGA_XML_PART_CLOSE:
+      g_string_append(join, "</");
+      g_string_append_len(join, value->str.text, (gssize)value->str.length);
+      g_string_append_c(join, '>');
+      break;
+  }
+  if (join->len > BOSONOGA_XML_STR_LENGTH_MAX) {
+    return bosonoga_runtime_error(op, error,
+                                  "an xml_str is longer than %d bytes",
+                                  BOSONOGA_XML_STR_LENGTH_MAX);
+  }
+  return TRUE;
+}
+
+static void bosonoga_join_store(BosonogaExecution *execution,
+                                const BosonogaOp *op, BosonogaValue *frame) {
+  GString *join = execution->join;
+  BosonogaValue *slot = &frame[op->slot];
+  const gchar *previous = slot->str.text;
+  slot->kind = op->made;
+  slot->str.text = bosonoga_own(execution, join->str, join->len);
+  slot->str.length = join->len;
+  bosonoga_free_owned(execution, previous);
+  g_string_truncate(join, 0);
+}
+
+static gboolean bosonoga_io_read_op(BosonogaExecution *execution,
+                                    const BosonogaOp *op,
+                                    const BosonogaValue *frame,
+                                    GError **error) {
+  g_autofree gchar *path =
+      bosonoga_io_path(execution, op, bosonoga_operand_value(&op->left, frame),
+                       bosonoga_operand_value(&op->right, frame), error);
+  if (path == NULL) {
+    return FALSE;
+  }
+  g_autofree gchar *contents = NULL;
+  gsize length = 0;
+  gchar *reason = NULL;
+  gboolean is_read = bosonoga_io_read(path, BOSONOGA_XML_STR_LENGTH_MAX,
+                                      &contents, &length, &reason);
+  gsize start = 0;
+  // Only a text that the block takes is checked.
+  if (is_read && (op->integer & 2) != 0) {
+    g_autofree gchar *shown = g_filename_display_name(path);
+    if (op->made == BOSONOGA_VALUE_STR) {
+      if (!g_utf8_validate_len(contents, length, NULL) ||
+          memchr(contents, '\0', length) != NULL) {
+        is_read = FALSE;
+        reason =
+            g_strdup_printf("%s: is not UTF-8 text without NUL bytes", shown);
+      }
+    } else {
+      GError *xml_error = NULL;
+      if (!bosonoga_xml_check_document(contents, length, &start, &length,
+                                       &xml_error)) {
+        is_read = FALSE;
+        reason = g_strdup_printf("%s: is not an XML document: %s", shown,
+                                 xml_error->message);
+        g_error_free(xml_error);
+      }
+    }
+  }
+  bosonoga_give_bool(execution, 0, is_read);
+  bosonoga_give_text(execution, op, 1, op->made,
+                     is_read ? contents + start : "", is_read ? length : 0);
+  bosonoga_give_reason(execution, op, 2, reason);
+  return TRUE;
+}
+
+static gboolean bosonoga_io_write_op(BosonogaExecution *execution,
+                                     const BosonogaOp *op,
+                                     const BosonogaValue *frame,
+                                     GError **error) {
+  const BosonogaValue *dir = bosonoga_operand_value(&op->left, frame);
+  const BosonogaValue *value = bosonoga_operand_value(&op->third, frame);
+  g_autofree gchar *path = bosonoga_io_path(
+      execution, op, dir, bosonoga_operand_value(&op->right, frame), error);
+  if (path == NULL) {
+    return FALSE;
+  }
+  g_autoptr(GString) text = g_string_new(NULL);
+  if (value->kind == BOSONOGA_VALUE_XML_STR) {
+    if (!bosonoga_xml_is_element(value->str.text, value->str.length)) {
+      return bosonoga_runtime_error(op, error,
+                                    "io_write writes an xml_str of one "
+                                    "element, the root of its document");
+    }
+    g_string_append(text, BOSONOGA_XML_DECLARATION "\n");
+    g_string_append_len(text, value->str.text, (gssize)value->str.length);
+    g_string_append_c(text, '\n');
+  } else {
+    g_string_append_len(text, value->str.text, (gssize)value->str.length);
+  }
+  gboolean is_taken = FALSE;
+  gchar *reason = NULL;
+  const gboolean is_saved =
+      bosonoga_io_write(g_array_index(execution->program->dirs,
+                                      BosonogaProgramAsset, dir->asset.index)
+                            .path,
+                        path, text->str, text->len, &is_taken, &reason);
+  bosonoga_give_bool(execution, 0, is_saved);
+  bosonoga_give_bool(execution, 1, is_taken);
+  bosonoga_give_reason(execution, op, 2, reason);
+  return TRUE;
+}
+
+static gboolean bosonoga_io_modified_op(BosonogaExecution *execution,
+                                        const BosonogaOp *op,
+                                        const BosonogaValue *frame,
+                                        GError **error) {
+  g_autofree gchar *path =
+      bosonoga_io_path(execution, op, bosonoga_operand_value(&op->left, frame),
+                       bosonoga_operand_value(&op->right, frame), error);
+  if (path == NULL) {
+    return FALSE;
+  }
+  gint64 modified = 0;
+  bosonoga_give_bool(execution, 0, bosonoga_io_modified(path, &modified));
+  BosonogaValue *result = &execution->results[1];
+  memset(result, 0, sizeof(*result));
+  result->kind = BOSONOGA_VALUE_I64;
+  result->i64 = modified;
+  return TRUE;
+}
+
+static gboolean bosonoga_xml_read_op(BosonogaExecution *execution,
+                                     const BosonogaOp *op,
+                                     const BosonogaValue *frame,
+                                     GError **error) {
+  const BosonogaValue *xml = bosonoga_operand_value(&op->left, frame);
+  const BosonogaValue *name = bosonoga_operand_value(&op->right, frame);
+  const gboolean is_child = op->kind == BOSONOGA_OP_XML_CHILD;
+  if (!bosonoga_xml_is_element(xml->str.text, xml->str.length)) {
+    return bosonoga_runtime_error(op, error,
+                                  "%s reads an xml_str of one element",
+                                  is_child ? "xml_child" : "xml_attribute");
+  }
+  if (is_child) {
+    const gint32 index = bosonoga_operand_value(&op->third, frame)->i32;
+    if (index < 0) {
+      return bosonoga_runtime_error(
+          op, error, "xml_child takes an index from 0, not %" G_GINT32_FORMAT,
+          index);
+    }
+    gsize child = 0;
+    gsize child_length = 0;
+    const gboolean is_found = bosonoga_xml_child(
+        xml->str.text, xml->str.length, name->str.text, name->str.length,
+        (guint)index, &child, &child_length);
+    bosonoga_give_bool(execution, 0, is_found);
+    bosonoga_give_text(execution, op, 1, BOSONOGA_VALUE_XML_STR,
+                       xml->str.text + child, child_length);
+    return TRUE;
+  }
+  g_autoptr(GString) value = g_string_new(NULL);
+  bosonoga_give_bool(
+      execution, 0,
+      bosonoga_xml_attribute(xml->str.text, xml->str.length, name->str.text,
+                             name->str.length, value));
+  bosonoga_give_text(execution, op, 1, BOSONOGA_VALUE_STR, value->str,
+                     value->len);
+  return TRUE;
+}
+
+// Decimal digits after an optional -, without a + or a leading 0, as an
+// INTEGER is written without its suffix.
+static void bosonoga_str_parse_op(BosonogaExecution *execution,
+                                  const BosonogaOp *op,
+                                  const BosonogaValue *frame) {
+  const BosonogaValue *text = bosonoga_operand_value(&op->left, frame);
+  BosonogaValue *number = &execution->results[1];
+  memset(number, 0, sizeof(*number));
+  number->kind = op->made;
+  const gsize sign = text->str.length > 0 && text->str.text[0] == '-';
+  const gsize digits = text->str.length - sign;
+  gboolean is_parsed = digits > 0 && digits <= BOSONOGA_WIDE_TEXT_SIZE &&
+                       !(digits > 1 && text->str.text[sign] == '0');
+  for (gsize i = sign; is_parsed && i < text->str.length; ++i) {
+    is_parsed = g_ascii_isdigit(text->str.text[i]);
+  }
+  if (is_parsed) {
+    g_autofree gchar *copy = g_strndup(text->str.text, text->str.length);
+    gint64 negative = 0;
+    guint64 positive = 0;
+    BosonogaValue parsed;
+    is_parsed = sign ? g_ascii_string_to_signed(copy, 10, G_MININT64, 0,
+                                                &negative, NULL) &&
+                           bosonoga_set_whole(&parsed, op->made, negative)
+                     : g_ascii_string_to_unsigned(copy, 10, 0, G_MAXUINT64,
+                                                  &positive, NULL) &&
+                           bosonoga_set_whole(&parsed, op->made, positive);
+    if (is_parsed) {
+      *number = parsed;
+    }
+  }
+  bosonoga_give_bool(execution, 0, is_parsed);
 }
 
 BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
@@ -390,25 +702,49 @@ BosonogaExecutionState bosonoga_execute(BosonogaExecution *execution,
         break;
       case BOSONOGA_OP_NEW_STR: {
         GString *join = execution->join;
-        gchar *text = g_strndup(join->str, join->len);
-        g_ptr_array_add(execution->owned, text);
-        frame[op->slot].kind = BOSONOGA_VALUE_STR;
-        frame[op->slot].str.text = text;
+        frame[op->slot].kind = op->made;
+        frame[op->slot].str.text =
+            bosonoga_own(execution, join->str, join->len);
         frame[op->slot].str.length = join->len;
         g_string_truncate(join, 0);
         break;
       }
-      case BOSONOGA_OP_UNSET: {
-        GPtrArray *owned = execution->owned;
-        for (guint j = 0; j < owned->len; ++j) {
-          if (g_ptr_array_index(owned, j) == frame[op->slot].str.text) {
-            g_ptr_array_remove_index_fast(owned, j);
-            break;
-          }
-        }
+      case BOSONOGA_OP_UNSET:
+        bosonoga_free_owned(execution, frame[op->slot].str.text);
         memset(&frame[op->slot], 0, sizeof(frame[op->slot]));
         break;
-      }
+      case BOSONOGA_OP_XML_PART:
+        if (!bosonoga_xml_part(execution, op, left, error)) {
+          return BOSONOGA_EXECUTION_FAILED;
+        }
+        break;
+      case BOSONOGA_OP_JOIN_STORE:
+        bosonoga_join_store(execution, op, frame);
+        break;
+      case BOSONOGA_OP_IO_READ:
+        if (!bosonoga_io_read_op(execution, op, frame, error)) {
+          return BOSONOGA_EXECUTION_FAILED;
+        }
+        break;
+      case BOSONOGA_OP_IO_WRITE:
+        if (!bosonoga_io_write_op(execution, op, frame, error)) {
+          return BOSONOGA_EXECUTION_FAILED;
+        }
+        break;
+      case BOSONOGA_OP_IO_MODIFIED:
+        if (!bosonoga_io_modified_op(execution, op, frame, error)) {
+          return BOSONOGA_EXECUTION_FAILED;
+        }
+        break;
+      case BOSONOGA_OP_XML_CHILD:
+      case BOSONOGA_OP_XML_ATTRIBUTE:
+        if (!bosonoga_xml_read_op(execution, op, frame, error)) {
+          return BOSONOGA_EXECUTION_FAILED;
+        }
+        break;
+      case BOSONOGA_OP_STR_PARSE:
+        bosonoga_str_parse_op(execution, op, frame);
+        break;
       case BOSONOGA_OP_GFX_DELTA_TIME:
         frame[op->slot].kind = BOSONOGA_VALUE_F32;
         frame[op->slot].f32 = scene->delta_time;

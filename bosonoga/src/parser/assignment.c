@@ -28,10 +28,14 @@ static gboolean bosonoga_parse_new(BosonogaParser *parser,
       !bosonoga_value_kind_named(type.text, type.length, &kind)) {
     return bosonoga_parse_error(parser, "a type, as in new str of", error);
   }
+  if (kind == BOSONOGA_VALUE_XML_STR) {
+    return bosonoga_advance(parser, error) &&
+           bosonoga_parse_new_xml(parser, name, is_val, error);
+  }
   if (kind != BOSONOGA_VALUE_STR) {
     return bosonoga_fail_at(parser, &type, error, BOSONOGA_ERROR_TYPE,
-                            "new makes only a str, as in new str of "
-                            "\"A\"_str 1_i32");
+                            "new makes only a str or an xml_str, as in new str "
+                            "of \"A\"_str 1_i32");
   }
   if (!bosonoga_advance(parser, error) ||
       !bosonoga_expect_word(parser, "of", error)) {
@@ -51,7 +55,9 @@ static gboolean bosonoga_parse_new(BosonogaParser *parser,
   }
   parser->reads_new = FALSE;
   const guint slot = parser->slot_count++;
-  bosonoga_emit(parser, BOSONOGA_OP_NEW_STR, name)->slot = slot;
+  BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_NEW_STR, name);
+  op->slot = slot;
+  op->made = BOSONOGA_VALUE_STR;
   bosonoga_declare(parser, name, BOSONOGA_VALUE_STR, slot, is_val)->is_new =
       TRUE;
   return TRUE;
@@ -290,11 +296,34 @@ gboolean bosonoga_parse_set(BosonogaParser *parser, GError **error) {
     }
     return bosonoga_parse_array_write(parser, &name, &array, error);
   }
-  if (found->is_new) {
+  if (found->is_new && found->kind == BOSONOGA_VALUE_XML_STR &&
+      found->freed_by == NULL && !found->is_val) {
+    const BosonogaVariable joined = *found;
+    if (!bosonoga_advance(parser, error)) {
+      return FALSE;
+    }
+    if (!bosonoga_at_word(parser, "to_join")) {
+      return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
+                              BOSONOGA_ERROR_TYPE,
+                              "'%s' is new, so it is only joined to, as in set "
+                              "%s to_join",
+                              shown, shown);
+    }
+    return bosonoga_parse_join(parser, &name, &joined, error);
+  }
+  if (found->is_new && found->kind == BOSONOGA_VALUE_XML_STR &&
+      found->freed_by == NULL) {
     return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_TYPE,
-                            "'%s' is new and cannot be set, but it can be "
-                            "unset and declared again",
+                            "'%s' is a val, and only a var of new xml_str is "
+                            "joined to",
                             shown);
+  }
+  if (found->is_new) {
+    return bosonoga_fail_at(
+        parser, &name, error, BOSONOGA_ERROR_TYPE,
+        "'%s' is %s and cannot be set, but it can be "
+        "unset and declared again",
+        shown, found->freed_by != NULL ? "taken from a block" : "new");
   }
   if (found->is_val) {
     return bosonoga_fail_at(parser, &name, error, BOSONOGA_ERROR_TYPE,
@@ -329,6 +358,12 @@ gboolean bosonoga_parse_set(BosonogaParser *parser, GError **error) {
     return TRUE;
   }
 
+  if (bosonoga_at_word(parser, "to_join")) {
+    return bosonoga_fail_at(parser, &operation, error, BOSONOGA_ERROR_TYPE,
+                            "'%s' is %s, but only a var of new xml_str is "
+                            "joined to",
+                            shown, bosonoga_value_kind_name(target.kind));
+  }
   static const struct {
     const gchar *word;
     BosonogaOpKind step;

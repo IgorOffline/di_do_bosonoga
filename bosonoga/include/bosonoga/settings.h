@@ -6,7 +6,8 @@
 
 #define BOSONOGA_SETTINGS_FILE "regina.ini"
 
-// A file of [font] or [icon], which only a window reads.
+// A file of [font] or [icon], which only a window reads, or a directory of
+// [dir], where io_read and io_write work.
 typedef struct {
   gchar *text;
   gchar *path;  // Of text, relative to the directory of the settings.
@@ -23,6 +24,7 @@ typedef struct {
   GHashTable *keys;  // Key to a code of a key name, see parser.h.
   GHashTable *fonts;
   GHashTable *icons;
+  GHashTable *dirs;
 } BosonogaSettings;
 
 void bosonoga_settings_clear(BosonogaSettings *settings);
@@ -39,6 +41,9 @@ const BosonogaSettingsAsset *bosonoga_settings_font(
     const BosonogaSettings *settings, const gchar *key);
 
 const BosonogaSettingsAsset *bosonoga_settings_icon(
+    const BosonogaSettings *settings, const gchar *key);
+
+const BosonogaSettingsAsset *bosonoga_settings_dir(
     const BosonogaSettings *settings, const gchar *key);
 
 gboolean bosonoga_settings_global(const BosonogaSettings *settings,

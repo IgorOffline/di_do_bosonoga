@@ -1,0 +1,129 @@
+// xml_str.bosonoga
+
+const sample is "<a x='1' y='&lt;2'><b>one</b><b>two</b><c/></a>"_xml_str
+
+def has_b_fn doc_xml_str ret 0_bool
+di
+  var has is false_bool
+  xml_child doc_xml_str "b"_str 0_i32 with ret
+    0_bool as found
+  di
+    set has to found
+  do
+  return has
+do
+
+bosonoga_main
+di
+  info sample
+  xml_child sample "b"_str 1_i32 with ret
+    0_bool as found
+    1_xml_str as second
+  di
+    if found and second eq "<b>two</b>"_str
+    di
+      info "second b: "_str second
+    do
+  do
+  xml_child sample "d"_str 0_i32 with ret
+    0_bool as found
+  di
+    if not found
+    di
+      info "no d"_str
+    do
+  do
+  xml_attribute sample "y"_str with ret
+    0_bool as found
+    1_str as text
+  di
+    if found
+    di
+      info "y is "_str text
+    do
+  do
+  xml_attribute sample "z"_str with ret
+    0_bool as found
+  di
+    if not found
+    di
+      info "no z"_str
+    do
+  do
+  val has_b is has_b_fn of sample with ret 0_bool
+  info "has b "_str has_b
+
+  // An element escapes its attributes and text, and joins an xml_str as it is.
+  var items is new xml_str of ""_xml_str
+  to_3 with i
+  di
+    var item is new xml_str element "item"_str "n"_str i "label"_str "<&'>"_str
+    set items to_join item
+    unset item
+  do
+  var list is new xml_str element "list"_str of items "a & b"_str
+  info list
+  unset items
+  var empty is new xml_str element "empty"_str
+  info empty
+  unset empty
+  xml_child list "item"_str 2_i32 with ret
+    1_xml_str as third
+  di
+    xml_attribute third "label"_str with ret
+      1_str as label
+    di
+      info "label "_str label
+    do
+  do
+  unset list
+
+  var docs is array 0_xml_str rows 2_i32
+  set docs at 1_i32 to "<x/>"_xml_str
+  val doc is docs at 1_i32 with ret 0_xml_str
+  info "doc "_str doc
+
+  str_parse "42"_str with ret
+    0_bool as parsed
+    1_i32 as number
+  di
+    info "42 "_str parsed " "_str number
+  do
+  str_parse "-0"_str with ret
+    0_bool as parsed
+    1_i64 as number
+  di
+    info "-0 "_str parsed " "_str number
+  do
+  str_parse "4294967295"_str with ret
+    0_bool as parsed
+    1_u32 as number
+  di
+    info "4294967295 "_str parsed " "_str number
+  do
+  str_parse "4294967296"_str with ret
+    0_bool as parsed
+    1_u32 as number
+  di
+    info "4294967296 "_str parsed " "_str number
+  do
+  str_parse "-1"_str with ret
+    0_bool as parsed
+    1_u64 as number
+  di
+    info "-1 as u64 "_str parsed " "_str number
+  do
+  str_parse "007"_str with ret
+    0_bool as parsed
+    1_i32 as number
+  di
+    info "007 "_str parsed " "_str number
+  do
+  str_parse "+5"_str with ret
+    0_bool as parsed
+    1_i32 as number
+  di
+    info "+5 "_str parsed " "_str number
+  do
+  return exit_success
+do

@@ -84,13 +84,18 @@ gboolean bosonoga_parse_call(BosonogaParser *parser, guint *function,
   return TRUE;
 }
 
-static gchar *bosonoga_results_named(const BosonogaFunction *called) {
+static gchar *bosonoga_kinds_named(const BosonogaValueKind *kinds,
+                                   guint count) {
   GString *named = g_string_new(NULL);
-  for (guint i = 0; i < called->result_count; ++i) {
+  for (guint i = 0; i < count; ++i) {
     g_string_append_printf(named, "%s%u_%s", i == 0 ? "" : ", ", i,
-                           bosonoga_value_kind_name(called->results[i]));
+                           bosonoga_value_kind_name(kinds[i]));
   }
   return g_string_free(named, FALSE);
+}
+
+static gchar *bosonoga_results_named(const BosonogaFunction *called) {
+  return bosonoga_kinds_named(called->results, called->result_count);
 }
 
 static gboolean bosonoga_fail_needs_block(const BosonogaParser *parser,
@@ -158,12 +163,25 @@ gboolean bosonoga_parse_taken_result(BosonogaParser *parser, guint index,
   return bosonoga_advance(parser, error);
 }
 
-static gboolean bosonoga_parse_bindings(BosonogaParser *parser,
-                                        const BosonogaToken *call_name,
-                                        guint index, GError **error) {
-  const BosonogaFunction called =
-      g_array_index(parser->functions, BosonogaFunction, index);
-  g_autofree gchar *name = g_strndup(called.name, called.name_length);
+static gboolean bosonoga_fail_no_result(const BosonogaParser *parser,
+                                        const BosonogaToken *token,
+                                        const BosonogaResults *results,
+                                        GError **error) {
+  g_autofree gchar *named =
+      bosonoga_kinds_named(results->kinds, results->count);
+  return bosonoga_fail_at(
+      parser, token, error, BOSONOGA_ERROR_TYPE,
+      "'%s' %s %s, which its with ret takes for its block, each named, as "
+      "in with ret 0_%s as value",
+      results->name, results->gives, named,
+      bosonoga_value_kind_name(results->kinds[0]));
+}
+
+gboolean bosonoga_parse_results(BosonogaParser *parser,
+                                const BosonogaToken *start,
+                                const BosonogaResults *results,
+                                BosonogaTaken *taken, GError **error) {
+  taken->count = 0;
   gboolean has_previous = FALSE;
   guint64 previous = 0;
   BosonogaValueKind previous_kind = BOSONOGA_VALUE_I32;
@@ -176,15 +194,18 @@ static gboolean bosonoga_parse_bindings(BosonogaParser *parser,
         return bosonoga_parse_error(
             parser, "another value to take, like 1_i32 as count, or di", error);
       }
-      return bosonoga_fail_needs_block(parser, &position_token, &called, error);
+      return bosonoga_fail_no_result(parser, &position_token, results, error);
     }
     g_autofree gchar *shown = bosonoga_token_shown(&position_token);
-    if (position >= called.result_count || kind != called.results[position]) {
-      g_autofree gchar *named = bosonoga_results_named(&called);
+    if (position >= results->count ||
+        (kind != results->kinds[position] &&
+         (results->also[position] & (1U << kind)) == 0)) {
+      g_autofree gchar *named =
+          bosonoga_kinds_named(results->kinds, results->count);
       return bosonoga_fail_at(parser, &position_token, error,
                               BOSONOGA_ERROR_TYPE,
-                              "'%s' %s %s, so it has no %s", name,
-                              bosonoga_function_gives(&called), named, shown);
+                              "'%s' %s %s, so it has no %s", results->name,
+                              results->gives, named, shown);
     }
     if (has_previous && position <= previous) {
       return bosonoga_fail_at(
@@ -212,15 +233,48 @@ static gboolean bosonoga_parse_bindings(BosonogaParser *parser,
       return FALSE;
     }
     const guint slot = parser->slot_count++;
-    BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_TAKE_RESULT, call_name);
+    BosonogaOp *op = bosonoga_emit(parser, BOSONOGA_OP_TAKE_RESULT, start);
     op->slot = slot;
     op->index = (guint)position;
     bosonoga_declare_variable(parser, &binding, kind, slot);
+    if (results->is_owned[position]) {
+      BosonogaVariable *variable = &g_array_index(
+          parser->variables, BosonogaVariable, parser->variables->len - 1);
+      variable->is_new = TRUE;
+      variable->freed_by = results->name;
+    }
+    taken->indices[taken->count] = (guint)position;
+    taken->kinds[taken->count] = kind;
+    taken->slots[taken->count] = slot;
+    ++taken->count;
     has_previous = TRUE;
     previous = position;
     previous_kind = kind;
   } while (!bosonoga_at_word(parser, "di"));
   return TRUE;
+}
+
+static gboolean bosonoga_parse_bindings(BosonogaParser *parser,
+                                        const BosonogaToken *call_name,
+                                        guint index, GError **error) {
+  const BosonogaFunction *called =
+      &g_array_index(parser->functions, BosonogaFunction, index);
+  guint64 position = 0;
+  BosonogaValueKind kind = BOSONOGA_VALUE_I32;
+  if (!bosonoga_token_indexed(&parser->tokenizer.token, &position, &kind)) {
+    return bosonoga_fail_needs_block(parser, &parser->tokenizer.token, called,
+                                     error);
+  }
+  g_autofree gchar *name = g_strndup(called->name, called->name_length);
+  BosonogaResults results;
+  memset(&results, 0, sizeof(results));
+  results.name = name;
+  results.gives = bosonoga_function_gives(called);
+  results.count = called->result_count;
+  memcpy(results.kinds, called->results,
+         called->result_count * sizeof(BosonogaValueKind));
+  BosonogaTaken taken;
+  return bosonoga_parse_results(parser, call_name, &results, &taken, error);
 }
 
 gboolean bosonoga_parse_call_statement(BosonogaParser *parser,
