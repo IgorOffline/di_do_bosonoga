@@ -17,9 +17,12 @@ int boolean();
 int branch();
 int compare();
 int convert();
+int function();
 int info();
 int loop();
 int print();
+int recursion();
+int results();
 int shift();
 int text();
 }  // namespace bosonoga::program
@@ -107,6 +110,7 @@ int main() {
            {"boolean", program::boolean},
            {"branch", program::branch},
            {"compare", program::compare},
+           {"function", program::function},
            {"info", program::info},
            {"loop", program::loop},
            {"print", program::print},
@@ -116,6 +120,8 @@ int main() {
        {
            {"accumulate", program::accumulate},
            {"convert", program::convert},
+           {"recursion", program::recursion},
+           {"results", program::results},
            {"shift", program::shift},
        }},
       {"platinum", {}},

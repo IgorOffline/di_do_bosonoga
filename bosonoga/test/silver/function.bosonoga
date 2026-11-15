@@ -1,0 +1,35 @@
+// function.bosonoga
+
+const offset is 10_i32
+
+def double_fn value_i32 ret 0_i32
+di
+  var doubled is 0_i32
+  set doubled to_add value_i32 value_i32
+  return doubled
+do
+
+def greet_fn name_str ret_void
+di
+  info "Dobar dan, "_str name_str
+do
+
+def answer_fn ret 0_i32
+di
+  return 42_i32
+do
+
+bosonoga_main
+di
+  var result is double_fn of 21_i32 with ret 0_i32
+  call greet_fn of "Bosonoga"_str
+  var sum is 0_i32
+  set sum to answer_fn with ret 0_i32
+  set sum to_add sum offset
+  if result eq 42_i32
+  and sum eq 52_i32
+  di
+    return exit_success
+  do
+  return exit_failure
+do

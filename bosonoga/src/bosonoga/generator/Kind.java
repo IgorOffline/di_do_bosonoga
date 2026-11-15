@@ -35,6 +35,10 @@ enum Kind {
         return isInteger() || isReal();
     }
 
+    static Optional<Kind> named(String shown) {
+        return Arrays.stream(values()).filter(kind -> kind.shown.equals(shown)).findFirst();
+    }
+
     static Optional<Kind> number(String shown) {
         return Arrays.stream(values()).filter(kind -> kind.isNumber() && kind.shown.equals(shown))
                 .findFirst();

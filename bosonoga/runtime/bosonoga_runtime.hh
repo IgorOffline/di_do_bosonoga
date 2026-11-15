@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <type_traits>
 
 namespace bosonoga::runtime {
@@ -38,6 +39,29 @@ struct Where {
   throw Error(std::string(where.source) + ':' + std::to_string(where.line) +
               ':' + std::to_string(where.column) + ": " + message);
 }
+
+constexpr int call_depth_max = 10000;
+
+inline int &call_depth() {
+  static int depth = 0;
+  return depth;
+}
+
+// Each generated function holds one while it runs, as the C bosonoga bounds how
+// deep calls are nested.
+class Call {
+ public:
+  explicit Call(const Where &where) {
+    if (call_depth() == call_depth_max) {
+      fail(where, "calls are nested more than " +
+                      std::to_string(call_depth_max) + " deep");
+    }
+    ++call_depth();
+  }
+  ~Call() { --call_depth(); }
+  Call(const Call &) = delete;
+  Call &operator=(const Call &) = delete;
+};
 
 template <typename T>
 constexpr const char *kind_name() {

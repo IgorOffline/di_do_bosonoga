@@ -4,6 +4,7 @@ import static java.util.stream.Collectors.joining;
 
 import java.math.BigInteger;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.TokenStream;
+import org.antlr.v4.runtime.tree.TerminalNode;
 
 final class CppEmitter extends BosonogaBaseVisitor<String> {
     private static final Pattern NUMBER =
@@ -21,6 +23,13 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     private static final String LOOP_PREFIX = "to_";
     private static final String STRING_SUFFIX = "_str";
     private static final String XML_STRING_SUFFIX = "_xml_str";
+    private static final String FUNCTION_SUFFIX = "_fn";
+    private static final int FUNCTION_VALUES_MAX = 16;
+    // A type with its index, as in 0_i32, which names a value of a function.
+    private static final Pattern INDEXED = Pattern.compile("(0|[1-9][0-9]{0,8})_([A-Za-z0-9_]+)");
+    // The types of the C bosonoga that are for later slices.
+    private static final List<String> LATER_KINDS =
+            List.of("color", "input_key", "font", "icon", "xml_str", "dir");
     private static final String INDENT = "  ";
 
     private record Expression(String cpp, Kind kind) {
@@ -51,10 +60,24 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         }
     }
 
+    private record Function(Token name, List<Kind> parameters, List<Kind> results,
+                            boolean[] isCalled) {
+    }
+
+    private record Indexed(int index, Kind kind) {
+    }
+
+    // A variable that a block starts with, as the variable of a loop.
+    private record Declared(Token name, Kind kind, String cpp) {
+    }
+
     private final String sourceName;
     private final String functionName;
     private final TokenStream tokens;
     private final Map<String, Constant> constants = new LinkedHashMap<>();
+    private final Map<String, Function> functions = new LinkedHashMap<>();
+    private Function currentFunction;
+    private int resultCount;
     private final Deque<Map<String, Variable>> scopes = new ArrayDeque<>();
     private int depth;
     private int loopDepth;
@@ -72,9 +95,12 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     public String visitProgram(BosonogaParser.ProgramContext context) {
         BosonogaParser.BlockContext main = null;
         String body = null;
+        var definitions = new StringBuilder();
         for (var item : context.children) {
             if (item instanceof BosonogaParser.ConstantDeclarationContext constant) {
                 declareConstant(constant);
+            } else if (item instanceof BosonogaParser.FunctionDefinitionContext function) {
+                definitions.append(defineFunction(function)).append('\n');
             } else if (item instanceof BosonogaParser.MainSectionContext section) {
                 if (main != null) {
                     throw error(section.BOSONOGA_MAIN().getSymbol(),
@@ -82,6 +108,12 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
                 }
                 main = section.block();
                 body = visit(main);
+                // As in the C bosonoga, reaching the end of bosonoga_main fails when
+                // it runs, at what follows its block.
+                if (!(main.statement().getLast() instanceof BosonogaParser.ReturnStatementContext)) {
+                    body += INDENT + "runtime::fail(" + where(next(main.getStop()))
+                            + ", \"the program ended without a return\");\n";
+                }
             }
         }
         if (main == null) {
@@ -91,6 +123,11 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             if (!constant.isUsed) {
                 throw error(constant.declaration,
                         "'%s' is never used".formatted(constant.declaration.getText()));
+            }
+        }
+        for (var function : functions.values()) {
+            if (!function.isCalled()[0]) {
+                throw error(function.name(), "'%s' is never called".formatted(function.name().getText()));
             }
         }
         var cpp = new StringBuilder("""
@@ -106,13 +143,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             cpp.append("constexpr const char *source = \"").append(cppStringText(sourceName))
                     .append("\";\n\n");
         }
-        cpp.append("int bosonoga_main() {\n").append(body);
-        // Like the C bosonoga, reaching the end of bosonoga_main fails when it runs.
-        if (!(main.statement().getLast() instanceof BosonogaParser.ReturnStatementContext)) {
-            cpp.append(INDENT).append("std::cerr << \"").append(cppStringText(sourceName))
-                    .append(": bosonoga_main ended without a return\\n\";\n")
-                    .append(INDENT).append("return EXIT_FAILURE;\n");
-        }
+        cpp.append(definitions).append("int bosonoga_main() {\n").append(body);
         return cpp.append("""
                 }
 
@@ -141,17 +172,22 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
 
     @Override
     public String visitBlock(BosonogaParser.BlockContext context) {
-        return block(context, null, null);
+        return block(context, List.of(), List.of());
     }
 
-    // A block of a loop can start with the variable that the loop declares.
-    private String block(BosonogaParser.BlockContext context, Token name, String declaration) {
+    // A block can start with lines of its own, and with the variables that a loop
+    // or a call declares for it.
+    private String block(BosonogaParser.BlockContext context, List<String> prelude,
+                         List<Declared> declared) {
         scopes.push(new LinkedHashMap<>());
         depth++;
         var lines = new StringBuilder();
-        if (name != null) {
-            declare(name, Kind.I32, false);
-            lines.append(INDENT.repeat(depth)).append(declaration).append('\n');
+        for (var line : prelude) {
+            lines.append(INDENT.repeat(depth)).append(line).append('\n');
+        }
+        for (var variable : declared) {
+            declare(variable.name(), variable.kind(), false);
+            lines.append(INDENT.repeat(depth)).append(variable.cpp()).append('\n');
         }
         for (var statement : context.statement()) {
             lines.append(INDENT.repeat(depth)).append(visit(statement)).append('\n');
@@ -178,6 +214,8 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         var isVal = context.declaration.getType() == BosonogaParser.VAL;
         var initial = switch (context.initializer()) {
             case BosonogaParser.OperationInitializerContext operation -> operation(operation.operation());
+            case BosonogaParser.CallInitializerContext call -> takenResult(context.NAME().getSymbol(),
+                    call.callee, call.OF(), call.value(), call.result);
             case BosonogaParser.ValueInitializerContext value -> flags(value);
             default -> throw new IllegalStateException("no C++ for " + context.getText());
         };
@@ -214,6 +252,14 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             throw error(name, "'%s' is a val and cannot be set".formatted(shown));
         }
         var assigned = switch (context.setter()) {
+            case BosonogaParser.CallSetterContext call -> {
+                var result = takenResult(name, call.callee, call.OF(), call.value(), call.result);
+                if (result.kind() != target.kind) {
+                    throw error(name, "'%s' is %s, but '%s' returns %s".formatted(shown,
+                            target.kind.shown, call.callee.getText(), result.kind().shown));
+                }
+                yield result.cpp();
+            }
             case BosonogaParser.ToSetterContext to -> {
                 var values = to.value();
                 if (values.size() > 1) {
@@ -323,8 +369,10 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         var counter = "loop_" + ++loopCount;
         var name = context.NAME() == null ? null : context.NAME().getSymbol();
         loopDepth++;
-        var block = block(context.block(), name,
-                name == null ? null : "std::int32_t " + cppName(name.getText()) + " = " + counter + ";");
+        var block = block(context.block(), List.of(), name == null
+                ? List.of()
+                : List.of(new Declared(name, Kind.I32,
+                        "std::int32_t " + cppName(name.getText()) + " = " + counter + ";")));
         loopDepth--;
         return "for (std::int32_t " + counter + " = 0; " + counter + " < " + limit + "; ++" + counter
                 + ") {\n" + block + INDENT.repeat(depth) + "}";
@@ -359,9 +407,279 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
 
     @Override
     public String visitReturnStatement(BosonogaParser.ReturnStatementContext context) {
-        return context.status.getType() == BosonogaParser.EXIT_SUCCESS
-                ? "return EXIT_SUCCESS;"
-                : "return EXIT_FAILURE;";
+        var start = context.RETURN().getSymbol();
+        var values = context.value();
+        if (currentFunction == null) {
+            if (context.status == null) {
+                var got = values.isEmpty() ? next(start) : values.getFirst().getStart();
+                throw error(got, "expected exit_success or exit_failure, got %s".formatted(shown(got)));
+            }
+            return context.status.getType() == BosonogaParser.EXIT_SUCCESS
+                    ? "return EXIT_SUCCESS;"
+                    : "return EXIT_FAILURE;";
+        }
+        if (context.status != null) {
+            throw error(context.status, "only bosonoga_main and gfx_main return an exit status, "
+                    + "a function returns its values");
+        }
+        var name = currentFunction.name().getText();
+        var results = currentFunction.results();
+        if (values.size() < results.size()) {
+            throw error(start, "'%s' returns %s, but this return has %d"
+                    .formatted(name, valuesShown(results), values.size()));
+        }
+        if (values.size() > results.size()) {
+            throw error(start, "'%s' returns %s, but this return has more"
+                    .formatted(name, valuesShown(results)));
+        }
+        var cpp = new ArrayList<String>();
+        for (int i = 0; i < results.size(); i++) {
+            cpp.add(expect(values.get(i), results.get(i), "return").cpp());
+        }
+        return switch (cpp.size()) {
+            case 0 -> "return;";
+            case 1 -> "return " + cpp.getFirst() + ";";
+            default -> "return {" + String.join(", ", cpp) + "};";
+        };
+    }
+
+    // As in the C bosonoga, a function is known before its block, so that it can
+    // call itself, and it sees the constants but no variables of other blocks.
+    private String defineFunction(BosonogaParser.FunctionDefinitionContext context) {
+        var name = context.name;
+        var text = name.getText();
+        if (!isFunctionName(text)) {
+            if (text.equals(FUNCTION_SUFFIX)) {
+                throw error(name, "the name of a function has more before _fn, as in double_fn");
+            }
+            // The old fn_ prefix, without it in the suggestion.
+            var suggested = text.startsWith("fn_") && text.length() > 3 ? text.substring(3) : text;
+            throw error(name, "the name of a function ends with _fn, as in %s_fn".formatted(suggested));
+        }
+        if (functions.containsKey(text)) {
+            throw error(name, "function '%s' already exists".formatted(text));
+        }
+        if (constants.containsKey(text)) {
+            throw error(name, "'%s' is already a constant".formatted(text));
+        }
+        scopes.push(new LinkedHashMap<>());
+        var parameters = new ArrayList<Kind>();
+        var cppParameters = new StringBuilder("const runtime::Where &called_at");
+        for (var parameter : context.parameters) {
+            var kind = parameterKind(parameter);
+            if (parameters.size() == FUNCTION_VALUES_MAX) {
+                throw error(parameter, "a function takes at most %d values".formatted(FUNCTION_VALUES_MAX));
+            }
+            declare(parameter, kind, false);
+            parameters.add(kind);
+            cppParameters.append(", ").append(kind.cpp).append(' ').append(cppName(parameter.getText()));
+        }
+        var results = new ArrayList<Kind>();
+        if (context.RET() != null) {
+            for (var result : context.results) {
+                var indexed = indexed(result).orElseThrow(() -> error(result, ("expected a type with its "
+                        + "index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bool, "
+                        + "got '%s'").formatted(result.getText())));
+                if (results.size() == FUNCTION_VALUES_MAX) {
+                    throw error(result, "a function returns at most %d values".formatted(FUNCTION_VALUES_MAX));
+                }
+                if (indexed.index() != results.size()) {
+                    throw error(result, "the values are numbered from 0 in order, so '%s' is %d_%s"
+                            .formatted(result.getText(), results.size(), indexed.kind().shown));
+                }
+                results.add(indexed.kind());
+            }
+        } else if (context.RET_VOID() == null) {
+            throw error(context.block().getStart(), ("'%s' must say what it returns: ret and its types, "
+                    + "or ret_void for nothing").formatted(text));
+        }
+        var function = new Function(name, List.copyOf(parameters), List.copyOf(results), new boolean[1]);
+        functions.put(text, function);
+        currentFunction = function;
+        var body = block(context.block(), List.of("const runtime::Call call(called_at);"), List.of());
+        if (!results.isEmpty()
+                && !(context.block().statement().getLast() instanceof BosonogaParser.ReturnStatementContext)) {
+            body += INDENT + "runtime::fail(" + where(name) + ", \"the function '" + text
+                    + "' ended without a return\");\n";
+        }
+        currentFunction = null;
+        for (var parameter : scopes.pop().values()) {
+            if (!parameter.isRead) {
+                throw error(parameter.declaration,
+                        "'%s' is never read".formatted(parameter.declaration.getText()));
+            }
+        }
+        var returned = switch (results.size()) {
+            case 0 -> "void";
+            case 1 -> results.getFirst().cpp;
+            default -> "std::tuple<" + results.stream().map(kind -> kind.cpp).collect(joining(", ")) + ">";
+        };
+        return returned + " " + cppFunctionName(text) + "(" + cppParameters + ") {\n" + body + "}\n";
+    }
+
+    // The type is after an underscore, as in count_i32, and the longest type is
+    // taken, as in the C bosonoga.
+    private Kind parameterKind(Token parameter) {
+        var text = parameter.getText();
+        for (int start = 2; start < text.length(); start++) {
+            if (text.charAt(start - 1) != '_') {
+                continue;
+            }
+            var suffix = text.substring(start);
+            if (LATER_KINDS.contains(suffix)) {
+                throw error(parameter, "a parameter of %s is not supported yet".formatted(suffix));
+            }
+            var kind = Kind.named(suffix);
+            if (kind.isPresent()) {
+                return kind.get();
+            }
+        }
+        throw error(parameter, "expected a parameter whose name ends with its type, like count_i32, got '%s'"
+                .formatted(text));
+    }
+
+    private Optional<Indexed> indexed(Token token) {
+        var matcher = INDEXED.matcher(token.getText());
+        if (!matcher.matches()) {
+            return Optional.empty();
+        }
+        if (LATER_KINDS.contains(matcher.group(2))) {
+            throw error(token, "a value of %s is not supported yet".formatted(matcher.group(2)));
+        }
+        return Kind.named(matcher.group(2)).map(kind -> new Indexed(Integer.parseInt(matcher.group(1)), kind));
+    }
+
+    @Override
+    public String visitCallStatement(BosonogaParser.CallStatementContext context) {
+        var function = callable(context.callee);
+        var name = context.callee.getText();
+        var call = call(function, context.callee, context.OF(), context.value());
+        var results = function.results();
+        if (results.isEmpty()) {
+            if (context.WITH() != null) {
+                throw error(context.WITH().getSymbol(),
+                        "'%s' returns no values, so its call has neither with ret nor a block".formatted(name));
+            }
+            return call + ";";
+        }
+        if (context.WITH() == null) {
+            throw needsBlock(context.CALL().getSymbol(), function);
+        }
+        // Copied out first, as in the C bosonoga.
+        var result = "result_" + ++resultCount;
+        var declared = new ArrayList<Declared>();
+        Indexed previous = null;
+        for (var binding : context.binding()) {
+            var position = binding.NUMBER().getSymbol();
+            var shownPosition = position.getText();
+            var taken = indexed(position)
+                    .filter(indexed -> indexed.index() < results.size()
+                            && indexed.kind() == results.get(indexed.index()))
+                    .orElseThrow(() -> error(position, "'%s' returns %s, so it has no %s"
+                            .formatted(name, kindsNamed(results), shownPosition)));
+            if (previous != null && taken.index() <= previous.index()) {
+                throw error(position, ("the values are taken once each, by increasing index, so %s cannot "
+                        + "follow %d_%s").formatted(shownPosition, previous.index(), previous.kind().shown));
+            }
+            previous = taken;
+            var value = results.size() == 1 ? result : "std::get<" + taken.index() + ">(" + result + ")";
+            declared.add(new Declared(binding.NAME().getSymbol(), taken.kind(),
+                    taken.kind().cpp + " " + cppName(binding.NAME().getText()) + " = " + value + ";"));
+        }
+        var block = block(context.block(), List.of("const auto " + result + " = " + call + ";"), declared);
+        return "{\n" + block + INDENT.repeat(depth) + "}";
+    }
+
+    // The one value of a call that var and set ... to take, as with ret 0_i32.
+    private Expression takenResult(Token target, Token callee, TerminalNode of,
+                                   List<BosonogaParser.ValueContext> values, Token result) {
+        var function = callable(callee);
+        var name = callee.getText();
+        var call = call(function, callee, of, values);
+        var results = function.results();
+        if (results.isEmpty()) {
+            throw error(target, "'%s' returns no values, so it is called with call".formatted(name));
+        }
+        if (results.size() > 1) {
+            throw needsBlock(target, function);
+        }
+        var kind = results.getFirst();
+        var taken = indexed(result);
+        if (taken.isEmpty() || taken.get().index() != 0 || taken.get().kind() != kind) {
+            throw error(result, "'%s' returns %s, so its call ends with ret 0_%s, not '%s'"
+                    .formatted(name, kind.shown, kind.shown, result.getText()));
+        }
+        return new Expression(call, kind);
+    }
+
+    private BosonogaException needsBlock(Token token, Function function) {
+        var results = function.results();
+        return error(token, ("'%s' returns %s, which %scall ... with ret takes for its block, each named, "
+                + "as in with ret 0_%s as value").formatted(function.name().getText(), kindsNamed(results),
+                results.size() == 1 ? "var, set ... to or " : "", results.getFirst().shown));
+    }
+
+    // A function that only calls itself is not used, as in the C bosonoga.
+    private Function callable(Token callee) {
+        var function = functions.get(callee.getText());
+        if (function == null) {
+            throw error(callee, "unknown function '%s'".formatted(callee.getText()));
+        }
+        if (function != currentFunction) {
+            function.isCalled()[0] = true;
+        }
+        return function;
+    }
+
+    private String call(Function function, Token callee, TerminalNode of,
+                        List<BosonogaParser.ValueContext> values) {
+        var name = callee.getText();
+        var parameters = function.parameters();
+        var shownParameters = valuesShown(parameters);
+        if (parameters.isEmpty() && of != null) {
+            throw error(of.getSymbol(), "'%s' takes no values, so its call has no of".formatted(name));
+        }
+        if (!parameters.isEmpty() && of == null) {
+            throw error(next(callee), "'%s' takes %s, which follow of, as in %s of ..."
+                    .formatted(name, shownParameters, name));
+        }
+        var arguments = new StringBuilder(where(callee));
+        for (int i = 0; i < parameters.size(); i++) {
+            if (i == values.size()) {
+                throw error(next(values.getLast().getStop()), "'%s' takes %s, but is given %d"
+                        .formatted(name, shownParameters, i));
+            }
+            arguments.append(", ").append(expect(values.get(i), parameters.get(i), name).cpp());
+        }
+        if (values.size() > parameters.size()) {
+            throw error(values.get(parameters.size()).getStart(), "'%s' takes %s, but is given more"
+                    .formatted(name, shownParameters));
+        }
+        return cppFunctionName(name) + "(" + arguments + ")";
+    }
+
+    private static String valuesShown(List<Kind> kinds) {
+        if (kinds.isEmpty()) {
+            return "no values";
+        }
+        return kinds.size() + (kinds.size() == 1 ? " value," : " values,")
+                + kinds.stream().map(kind -> " " + kind.shown).collect(joining());
+    }
+
+    private static String kindsNamed(List<Kind> kinds) {
+        var named = new ArrayList<String>();
+        for (int i = 0; i < kinds.size(); i++) {
+            named.add(i + "_" + kinds.get(i).shown);
+        }
+        return String.join(", ", named);
+    }
+
+    private static boolean isFunctionName(String name) {
+        return name.length() > FUNCTION_SUFFIX.length() && name.endsWith(FUNCTION_SUFFIX);
+    }
+
+    private static String cppFunctionName(String name) {
+        return "f_" + name;
     }
 
     // A comparison is in parentheses only when it is joined to others, as clang
@@ -589,6 +907,13 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         if (find(name).isPresent()) {
             throw error(name, "variable '%s' already exists".formatted(name.getText()));
         }
+        if (isFunctionName(name.getText())) {
+            throw error(name, "'%s' ends with _fn, which only the name of a function does"
+                    .formatted(name.getText()));
+        }
+        if (functions.containsKey(name.getText())) {
+            throw error(name, "'%s' is already a function".formatted(name.getText()));
+        }
     }
 
     private Optional<Variable> find(Token name) {
@@ -606,6 +931,10 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         if (constant != null) {
             constant.isUsed = true;
             return constant.value;
+        }
+        if (functions.containsKey(name.getText())) {
+            throw error(name, "'%s' is a function, which is called with var, set ... to or call"
+                    .formatted(name.getText()));
         }
         var variable = find(name).orElseThrow(() -> unknownVariable(name));
         variable.isRead = true;

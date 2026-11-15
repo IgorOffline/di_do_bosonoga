@@ -3,7 +3,13 @@ grammar Bosonoga;
 // The generator checks that there is one bosonoga_main, as its errors name what
 // a program needs.
 program
-    : (constantDeclaration | mainSection)* EOF
+    : (constantDeclaration | functionDefinition | mainSection)* EOF
+    ;
+
+// The generator checks what follows, as in the C bosonoga, a parameter has its
+// type at the end of its name, and a function must say what it returns.
+functionDefinition
+    : DEF name=NAME parameters+=NAME* (RET results+=NUMBER+ | RET_VOID)? block
     ;
 
 constantDeclaration
@@ -28,17 +34,25 @@ statement
     | BREAK                                                        # breakStatement
     | CONTINUE                                                     # continueStatement
     | SLEEP_MS value                                               # sleepStatement
+    | CALL callee=NAME (OF value+)? (WITH RET binding+ block)?     # callStatement
     | NIHIL                                                        # nihilStatement
-    | RETURN status=(EXIT_SUCCESS | EXIT_FAILURE)                  # returnStatement
+    | RETURN (status=(EXIT_SUCCESS | EXIT_FAILURE) | value*)       # returnStatement
+    ;
+
+// A value that a call returns, taken for the block of the call.
+binding
+    : NUMBER AS NAME
     ;
 
 initializer
-    : operation                # operationInitializer
-    | value (SHIFT_OR value)*  # valueInitializer
+    : operation                                          # operationInitializer
+    | callee=NAME (OF value+)? WITH RET result=NUMBER    # callInitializer
+    | value (SHIFT_OR value)*                            # valueInitializer
     ;
 
 setter
-    : TO value+                                                                    # toSetter
+    : TO callee=NAME (OF value+)? WITH RET result=NUMBER                             # callSetter
+    | TO value+                                                                    # toSetter
     | accumulation=(TO_ADD | TO_SUBTRACT | TO_MULTIPLY | TO_DIVIDE | TO_MOD) value+  # accumulationSetter
     | operation                                                                    # operationSetter
     ;
@@ -102,6 +116,12 @@ CONTINUE      : 'continue' ;
 SLEEP_MS      : 'sleep_ms' ;
 TRUE_BOOL     : 'true_bool' ;
 FALSE_BOOL    : 'false_bool' ;
+DEF           : 'def' ;
+RET           : 'ret' ;
+RET_VOID      : 'ret_void' ;
+CALL          : 'call' ;
+OF            : 'of' ;
+AS            : 'as' ;
 EXIT_SUCCESS  : 'exit_success' ;
 EXIT_FAILURE  : 'exit_failure' ;
 

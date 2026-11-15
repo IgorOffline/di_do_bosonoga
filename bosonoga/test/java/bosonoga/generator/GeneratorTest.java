@@ -3,6 +3,9 @@ package bosonoga.generator;
 import java.util.function.Supplier;
 
 public final class GeneratorTest {
+    private static final String DOUBLE_FN =
+            "def double_fn value_i32 ret 0_i32\ndi\n  return value_i32\ndo\n";
+    private static final String PAIR_FN = "def pair_fn ret 0_i32 1_f32\ndi\n  return 1_i32 2d0_f32\ndo\n";
     private static final String BODY_START = "int bosonoga_main() {\n";
     private static final String BODY_END = "}\n\n}  // namespace\n";
 
@@ -64,6 +67,23 @@ public final class GeneratorTest {
         programNeedsMain();
         programHasOneMain();
         sleepTakesU32();
+        functionBecomesACppFunction();
+        resultsAreTakenForABlock();
+        functionNameEndsWithFn();
+        functionMustBeCalled();
+        functionMustSayWhatItReturns();
+        parameterNameEndsWithItsType();
+        resultsAreNumberedInOrder();
+        callTakesTheTypesOfItsParameters();
+        callGivesItsValuesAfterOf();
+        returnHasEachResult();
+        functionReturnsNoExitStatus();
+        mainReturnsAnExitStatus();
+        varTakesOneResult();
+        resultIsTakenByItsIndexAndType();
+        functionMustBeKnown();
+        functionIsNotAValue();
+        functionWithoutReturnFails();
         if (failures > 0) {
             System.err.println(failures + " test(s) failed");
             System.exit(1);
@@ -376,8 +396,7 @@ public final class GeneratorTest {
     private static void endWithoutReturnFails() {
         expectBody("endWithoutReturnFails", """
                   runtime::info(std::cout, std::int32_t{1});
-                  std::cerr << "t.bosonoga: bosonoga_main ended without a return\\n";
-                  return EXIT_FAILURE;
+                  runtime::fail({source, 5, 1}, "the program ended without a return");
                 """, program("info 1_i32"));
     }
 
@@ -523,6 +542,141 @@ public final class GeneratorTest {
     private static void sleepTakesU32() {
         expectError("sleepTakesU32", "t.bosonoga:3:12: sleep_ms needs u32, but '1_i32' is i32",
                 program("sleep_ms 1_i32", "return exit_success"));
+    }
+
+    private static void functionBecomesACppFunction() {
+        var source = DOUBLE_FN + program(
+                "var result is double_fn of 2_i32 with ret 0_i32",
+                "info result",
+                "return exit_success");
+        expectBody("functionBecomesACppFunction", """
+                  std::int32_t v_result = f_double_fn({source, 7, 17}, std::int32_t{2});
+                  runtime::info(std::cout, v_result);
+                  return EXIT_SUCCESS;
+                """, source);
+        expect("functionBecomesACppFunction has the function", Generator.generate(source, "t.bosonoga", "t")
+                .contains("""
+                        std::int32_t f_double_fn(const runtime::Where &called_at, std::int32_t v_value_i32) {
+                          const runtime::Call call(called_at);
+                          return v_value_i32;
+                        }
+                        """));
+    }
+
+    private static void resultsAreTakenForABlock() {
+        var source = PAIR_FN + program(
+                "call pair_fn with ret 1_f32 as second",
+                "di",
+                "  info second",
+                "do",
+                "return exit_success");
+        expectBody("resultsAreTakenForABlock", """
+                  {
+                    const auto result_1 = f_pair_fn({source, 7, 8});
+                    float v_second = std::get<1>(result_1);
+                    runtime::info(std::cout, v_second);
+                  }
+                  return EXIT_SUCCESS;
+                """, source);
+        expect("resultsAreTakenForABlock has the function", Generator.generate(source, "t.bosonoga", "t")
+                .contains("""
+                        std::tuple<std::int32_t, float> f_pair_fn(const runtime::Where &called_at) {
+                          const runtime::Call call(called_at);
+                          return {std::int32_t{1}, 0x1.0p1F};
+                        }
+                        """));
+    }
+
+    private static void functionNameEndsWithFn() {
+        expectError("functionNameEndsWithFn", "t.bosonoga:1:5: the name of a function ends with _fn, as in double_fn",
+                "def double value_i32 ret 0_i32\ndi\n  return value_i32\ndo\n" + program("return exit_success"));
+    }
+
+    private static void functionMustBeCalled() {
+        expectError("functionMustBeCalled", "t.bosonoga:1:5: 'double_fn' is never called",
+                DOUBLE_FN + program("return exit_success"));
+    }
+
+    private static void functionMustSayWhatItReturns() {
+        expectError("functionMustSayWhatItReturns",
+                "t.bosonoga:2:1: 'answer_fn' must say what it returns: ret and its types, or ret_void for nothing",
+                "def answer_fn\ndi\n  nihil\ndo\n" + program("return exit_success"));
+    }
+
+    private static void parameterNameEndsWithItsType() {
+        expectError("parameterNameEndsWithItsType",
+                "t.bosonoga:1:15: expected a parameter whose name ends with its type, like count_i32, got 'value'",
+                "def double_fn value ret 0_i32\ndi\n  return 1_i32\ndo\n" + program("return exit_success"));
+    }
+
+    private static void resultsAreNumberedInOrder() {
+        expectError("resultsAreNumberedInOrder",
+                "t.bosonoga:1:17: the values are numbered from 0 in order, so '1_i32' is 0_i32",
+                "def pair_fn ret 1_i32\ndi\n  return 1_i32\ndo\n" + program("return exit_success"));
+    }
+
+    private static void callTakesTheTypesOfItsParameters() {
+        expectError("callTakesTheTypesOfItsParameters",
+                "t.bosonoga:7:30: double_fn needs i32, but '2_i64' is i64",
+                DOUBLE_FN + program("var result is double_fn of 2_i64 with ret 0_i32", "info result",
+                        "return exit_success"));
+    }
+
+    private static void callGivesItsValuesAfterOf() {
+        expectError("callGivesItsValuesAfterOf",
+                "t.bosonoga:7:27: 'double_fn' takes 1 value, i32, which follow of, as in double_fn of ...",
+                DOUBLE_FN + program("var result is double_fn with ret 0_i32", "info result",
+                        "return exit_success"));
+    }
+
+    private static void returnHasEachResult() {
+        expectError("returnHasEachResult",
+                "t.bosonoga:3:3: 'pair_fn' returns 2 values, i32 i32, but this return has 1",
+                "def pair_fn ret 0_i32 1_i32\ndi\n  return 1_i32\ndo\n" + program("return exit_success"));
+    }
+
+    private static void functionReturnsNoExitStatus() {
+        expectError("functionReturnsNoExitStatus",
+                "t.bosonoga:3:10: only bosonoga_main and gfx_main return an exit status, a function returns its values",
+                "def answer_fn ret 0_i32\ndi\n  return exit_success\ndo\n" + program("return exit_success"));
+    }
+
+    private static void mainReturnsAnExitStatus() {
+        expectError("mainReturnsAnExitStatus", "t.bosonoga:3:10: expected exit_success or exit_failure, got '1_i32'",
+                program("return 1_i32"));
+    }
+
+    private static void varTakesOneResult() {
+        expectError("varTakesOneResult",
+                "t.bosonoga:7:7: 'pair_fn' returns 0_i32, 1_f32, which call ... with ret takes for its block, "
+                        + "each named, as in with ret 0_i32 as value",
+                PAIR_FN + program("var both is pair_fn with ret 0_i32", "info both", "return exit_success"));
+    }
+
+    private static void resultIsTakenByItsIndexAndType() {
+        expectError("resultIsTakenByItsIndexAndType",
+                "t.bosonoga:7:45: 'double_fn' returns i32, so its call ends with ret 0_i32, not '0_i64'",
+                DOUBLE_FN + program("var result is double_fn of 2_i32 with ret 0_i64", "info result",
+                        "return exit_success"));
+    }
+
+    private static void functionMustBeKnown() {
+        expectError("functionMustBeKnown", "t.bosonoga:3:8: unknown function 'missing_fn'",
+                program("call missing_fn", "return exit_success"));
+    }
+
+    private static void functionIsNotAValue() {
+        expectError("functionIsNotAValue",
+                "t.bosonoga:7:8: 'double_fn' is a function, which is called with var, set ... to or call",
+                DOUBLE_FN + program("info double_fn", "return exit_success"));
+    }
+
+    private static void functionWithoutReturnFails() {
+        expect("functionWithoutReturnFails", Generator.generate(
+                "def answer_fn ret 0_i32\ndi\n  nihil\ndo\n" + program(
+                        "var answer is answer_fn with ret 0_i32", "info answer", "return exit_success"),
+                "t.bosonoga", "t")
+                .contains("  runtime::fail({source, 1, 5}, \"the function 'answer_fn' ended without a return\");\n}\n"));
     }
 
     // Lines start at line 3 and column 3, after "bosonoga_main", "di" and the indent.
