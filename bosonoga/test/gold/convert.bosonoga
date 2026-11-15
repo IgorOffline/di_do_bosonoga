@@ -1,0 +1,36 @@
+// convert.bosonoga
+
+bosonoga_main
+di
+  val real is -3d75_f32
+  var truncated is to_i32 real
+  val widened is to_f64 truncated
+  val counted is to_u64 7_i32
+  val smallest is math_to_min truncated 2_i32
+  val largest is math_to_max 18446744073709551615_u64 0_u64
+  val magnitude is math_to_abs -9223372036854775807_i64
+  val rounded is math_to_round real
+  val floored is math_to_floor 2d5_f64
+  val ceiled is math_to_ceil 2d5_f64
+  val root is math_to_sqrt 16d0_f64
+  val power is math_to_pow 2d0_f64 10d0_f64
+  val hypotenuse is math_to_hypot 3d0_f32 4d0_f32
+  set truncated to_i32 widened
+
+  if truncated eq -3_i32
+  and widened eq_6 -3d0_f64
+  and counted eq 7_u64
+  and smallest eq -3_i32
+  and largest eq 18446744073709551615_u64
+  and magnitude eq 9223372036854775807_i64
+  and rounded eq_6 -4d0_f32
+  and floored eq_6 2d0_f64
+  and ceiled eq_6 3d0_f64
+  and root eq_6 4d0_f64
+  and power eq_6 1024d0_f64
+  and hypotenuse eq_6 5d0_f32
+  di
+    return exit_success
+  do
+  return exit_failure
+do

@@ -124,10 +124,13 @@ mkdir -p build/bosonoga/generated build/bosonoga/classes build/bosonoga/test_cla
   bosonoga.generator.GeneratorTest
 
 # Each test/<tier>/NAME.bosonoga becomes build/bosonoga/cc/NAME.cc, which main.cc
-# runs as bosonoga::program::NAME.
+# runs as bosonoga::program::NAME, and checks against NAME.xp.bosonoga if there is one.
 # shellcheck disable=SC2046
 "$JAVA" -cp "build/bosonoga/classes:$RUNTIME" bosonoga.generator.Main build/bosonoga/cc \
-  $(find test -name '*.bosonoga' | sort)
+  $(find test -name '*.bosonoga' ! -name '*.xp.bosonoga' | sort)
+# bosonoga lets a variable be compared with, or set to, itself, which clang
+# would otherwise reject.
 # shellcheck disable=SC2086
-$CXX $CXXFLAGS main.cc build/bosonoga/cc/*.cc -o build/main
+$CXX $CXXFLAGS -Wno-tautological-compare -Wno-self-assign -I runtime \
+  main.cc build/bosonoga/cc/*.cc -o build/main
 ./build/main

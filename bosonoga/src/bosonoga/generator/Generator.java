@@ -14,10 +14,11 @@ public final class Generator {
         lexer.removeErrorListeners();
         lexer.addErrorListener(ThrowingErrorListener.INSTANCE);
 
-        var parser = new BosonogaParser(new CommonTokenStream(lexer));
+        var tokens = new CommonTokenStream(lexer);
+        var parser = new BosonogaParser(tokens);
         parser.removeErrorListeners();
         parser.addErrorListener(ThrowingErrorListener.INSTANCE);
 
-        return new CppEmitter(sourceName, functionName).visit(parser.program());
+        return new CppEmitter(sourceName, functionName, tokens).visit(parser.program());
     }
 }

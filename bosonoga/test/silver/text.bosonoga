@@ -1,0 +1,18 @@
+// text.bosonoga
+
+const greeting is "Dobar dan"_str
+const same_greeting is greeting
+
+bosonoga_main
+di
+  var name is "svijete"_str
+  info greeting ", "_str name "!"_str
+  set name to "Bosonoga"_str
+  info same_greeting ", "_str name 7_i32 true_bool
+  if name eq "Bosonoga"_str
+  and greeting not_eq name
+  di
+    return exit_success
+  do
+  return exit_failure
+do
