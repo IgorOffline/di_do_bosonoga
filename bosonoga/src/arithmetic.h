@@ -35,7 +35,6 @@ gboolean bosonoga_accumulator_store(const BosonogaAccumulator *accumulator,
 gboolean bosonoga_convert(BosonogaOpKind conversion, const BosonogaValue *value,
                           BosonogaValue *result, GError **error);
 
-// The result has the type of left.
 gboolean bosonoga_math(BosonogaOpKind function, const BosonogaValue *left,
                        const BosonogaValue *right, BosonogaValue *result,
                        GError **error);

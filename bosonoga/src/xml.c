@@ -10,9 +10,9 @@
 #define BOSONOGA_XML_MESSAGE_PREFIX "Error on line"
 
 typedef struct {
-  GPtrArray *open;  // The names of the elements that are open, innermost last.
+  GPtrArray *open;
   guint depth;
-  gboolean is_closed;  // The outermost element ended.
+  gboolean is_closed;
   gboolean is_document;
   gboolean has_declaration;
 } BosonogaXmlCheck;
@@ -247,7 +247,6 @@ gboolean bosonoga_xml_check_document(const gchar *text, gsize length,
   return TRUE;
 }
 
-// The offset after the element that starts at start.
 static gsize bosonoga_xml_element_end(const gchar *text, gsize length,
                                       gsize start) {
   gboolean is_empty = FALSE;

@@ -3,10 +3,6 @@
 #include "parser/internal.h"
 #include "xml.h"
 
-// new xml_str, to_join, and the statements that give values to a block after
-// with ret: io_read, io_write, io_modified, xml_child, xml_attribute and
-// str_parse.
-
 static gboolean bosonoga_parse_xml_name(BosonogaParser *parser,
                                         const gchar *what,
                                         BosonogaOperand *operand,
@@ -40,7 +36,6 @@ static void bosonoga_emit_xml_part(BosonogaParser *parser,
   op->left = *value;
 }
 
-// An xml_str joins as it is, and any other value as text.
 static gboolean bosonoga_parse_xml_content(BosonogaParser *parser,
                                            GError **error) {
   if (!bosonoga_at_value(parser)) {
@@ -214,7 +209,6 @@ static void bosonoga_add_result(BosonogaResults *results,
   ++results->count;
 }
 
-// The values before with ret, and what the statement gives.
 static gboolean bosonoga_parse_given_operands(BosonogaParser *parser,
                                               BosonogaGiven given,
                                               BosonogaOp *operands,

@@ -154,7 +154,6 @@ static gboolean bosonoga_parse_unset(BosonogaParser *parser, GError **error) {
   return bosonoga_advance(parser, error);
 }
 
-// After pub, of a variable that later sections share.
 static gboolean bosonoga_parse_pub_variable(BosonogaParser *parser,
                                             const BosonogaToken *start,
                                             GError **error) {
@@ -515,5 +514,5 @@ static gboolean bosonoga_parse_statement(BosonogaParser *parser,
   if (bosonoga_is_given_statement(&start)) {
     return bosonoga_parse_given_statement(parser, &start, error);
   }
-  return TRUE;  // nihil
+  return TRUE;
 }

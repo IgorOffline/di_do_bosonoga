@@ -14,30 +14,26 @@ typedef enum {
   BOSONOGA_GFX_ICON,
 } BosonogaGfxShapeKind;
 
-// In pixels, with y growing down.
 typedef struct {
   BosonogaGfxShapeKind kind;
-  // The left of a rectangle, the center of a hex, circle or icon, and of a
-  // text as its align says.
-  gfloat x;
-  gfloat y;  // The top of a rectangle, the center of a hex or circle.
+  gfloat x;  // The top left of a rectangle, the center of the others.
+  gfloat y;
   gfloat width;
   gfloat height;
   gfloat radius;
   guint32 color;
   gfloat size;
   guint font;
-  guint32 align;  // Of a text, BosonogaGfxAlign.
-  gsize text;     // Of a text, its offset in the text of the scene.
+  guint32 align;
+  gsize text;
   gsize text_length;
   guint icon;
-  gfloat angle;  // Of an icon, in radians clockwise.
+  gfloat angle;  // Radians clockwise.
 } BosonogaGfxShape;
 
-// What a gfx_frame records, for the owner of the window to draw in order.
 typedef struct {
   GArray *shapes;
-  GString *text;  // Of all texts, one after another.
+  GString *text;
   guint32 clear_color;
   gfloat delta_time;
   guint32 key;
@@ -78,7 +74,6 @@ gboolean bosonoga_run_section(const BosonogaProgram *program,
                               BosonogaGfxScene *scene, GString *output,
                               gint *exit_status, GError **error);
 
-// Runs bosonoga_global and bosonoga_main. Rejects window programs.
 gboolean bosonoga_run(const BosonogaProgram *program, GString *output,
                       gint *exit_status, GError **error);
 

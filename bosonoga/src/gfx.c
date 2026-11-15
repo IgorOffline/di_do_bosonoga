@@ -28,7 +28,6 @@
 #define BOSONOGA_GFX_HEX_CORNERS 6U
 // Enough that a circle of corela's size looks round.
 #define BOSONOGA_GFX_CIRCLE_CORNERS 48U
-// Of shapes and glyphs in one frame, which sokol_gl holds on the CPU and GPU.
 #define BOSONOGA_GFX_VERTICES_MAX (1 << 18)
 #define BOSONOGA_GFX_ICON_CHANNELS 4  // RGBA
 
@@ -48,13 +47,13 @@ typedef struct {
   FONScontext *fons;
   GArray *font_ids;
   GPtrArray *font_data;  // Which fontstash reads from, and does not free.
-  GArray *icons;         // Of BosonogaGfxIcon, numbered as in the program.
+  GArray *icons;
   sg_sampler icon_sampler;
   sgl_pipeline icon_pipeline;
   gint64 next_frame_time;
   gint64 last_frame_start;
   gint *exit_status;
-  GError *error;  // The first error, which sets ended.
+  GError *error;
   gboolean initialized;
   gboolean ended;
 } BosonogaGfxRun;

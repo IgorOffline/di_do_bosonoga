@@ -105,7 +105,7 @@ static const gchar *const bosonoga_reserved_words[] = {
     "to",
     "array",
     "row",
-    "rows",
+    "with_len_col",
     "len_col",
     "len_row",
     "expect",
@@ -135,7 +135,6 @@ gboolean bosonoga_token_is_numbered(const BosonogaToken *token,
   return TRUE;
 }
 
-// NULL unless the token is a word that starts with the prefix.
 static gchar *bosonoga_token_key(const BosonogaToken *token,
                                  const gchar *prefix) {
   const gsize prefix_length = strlen(prefix);
@@ -218,7 +217,6 @@ void bosonoga_name_asset(BosonogaParser *parser, const BosonogaToken *token,
   value->asset.text = g_array_index(assets, BosonogaProgramAsset, index).text;
 }
 
-// Like ret_0_i32, and also ret_0 and ret_0_x, which are then wrong values.
 gboolean bosonoga_token_is_result(const BosonogaToken *token) {
   const gsize prefix_length = strlen(BOSONOGA_RESULT_PREFIX);
   return token->kind == BOSONOGA_TOKEN_WORD && token->length > prefix_length &&

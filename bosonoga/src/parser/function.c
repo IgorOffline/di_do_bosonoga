@@ -146,7 +146,7 @@ gboolean bosonoga_parse_types(BosonogaParser *parser, BosonogaValueKind *kinds,
       return FALSE;
     }
   } while (!bosonoga_at_word(parser, "di") &&
-           !bosonoga_at_word(parser, "rows"));
+           !bosonoga_at_word(parser, "with_len_col"));
   return TRUE;
 }
 

@@ -14,14 +14,13 @@ typedef enum {
   BOSONOGA_TOKEN_END,
   BOSONOGA_TOKEN_WORD,
   BOSONOGA_TOKEN_LITERAL,
-  // Like 1_str, which numbers a value of a function or an array, as 0_i32 does.
   BOSONOGA_TOKEN_INDEXED_TYPE,
 } BosonogaTokenKind;
 
 typedef struct {
   BosonogaTokenKind kind;
-  const gchar *path;  // Of the file of the token, for error messages.
-  const gchar *text;  // Slice of the source, the whole token.
+  const gchar *path;
+  const gchar *text;
   gsize length;
   gsize line;
   gsize column;

@@ -120,7 +120,7 @@ gboolean bosonoga_parse_val_array(BosonogaParser *parser,
   if (!bosonoga_parse_array_types(parser, name, &array, error)) {
     return FALSE;
   }
-  if (bosonoga_at_word(parser, "rows")) {
+  if (bosonoga_at_word(parser, "with_len_col")) {
     return bosonoga_fail_at(parser, &parser->tokenizer.token, error,
                             BOSONOGA_ERROR_SYNTAX,
                             "a val array has literal rows, and only a var "
@@ -165,26 +165,26 @@ gboolean bosonoga_parse_var_array(BosonogaParser *parser,
     return FALSE;
   }
   array.is_var = TRUE;
-  if (bosonoga_at_word(parser, "rows")) {
-    const BosonogaToken rows = parser->tokenizer.token;
+  if (bosonoga_at_word(parser, "with_len_col")) {
+    const BosonogaToken keyword = parser->tokenizer.token;
     if (!bosonoga_advance(parser, error)) {
       return FALSE;
     }
     const BosonogaToken count_token = parser->tokenizer.token;
     BosonogaOperand count;
-    if (!bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_I32, "rows",
-                                      &count, error)) {
+    if (!bosonoga_parse_value_of_kind(parser, BOSONOGA_VALUE_I32,
+                                      "with_len_col", &count, error)) {
       return FALSE;
     }
     if (count.is_variable || count.literal.i32 < 1) {
       return bosonoga_fail_at(parser, &count_token, error, BOSONOGA_ERROR_TYPE,
-                              "rows needs an i32 literal or constant above "
-                              "zero, as the size of an array is known before "
-                              "the program runs");
+                              "with_len_col needs an i32 literal or constant "
+                              "above zero, as the size of an array is known "
+                              "before the program runs");
     }
     if (!bosonoga_check_array_size(parser, &count_token, &array,
                                    (guint64)count.literal.i32, error) ||
-        !bosonoga_append_zero_row(parser, &rows, &array, error)) {
+        !bosonoga_append_zero_row(parser, &keyword, &array, error)) {
       return FALSE;
     }
     array.row_count = (guint)count.literal.i32;
