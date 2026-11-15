@@ -36,7 +36,6 @@ static gboolean bosonoga_whole_math(BosonogaOpKind function,
   return TRUE;
 }
 
-// NULL if a is in the domain of the function.
 static const gchar *bosonoga_domain_error(BosonogaOpKind function, gdouble a,
                                           gdouble b) {
   switch ((gint)function) {

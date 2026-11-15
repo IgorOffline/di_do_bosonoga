@@ -23,7 +23,7 @@
 //               | "pub"? ("var" | "val") NAME "is"
 //                 (initial | call "with" "ret" INDEXED | new)
 //               | "pub"? "var" NAME "is"
-//                 (array | "array" INDEXED+ "rows" value)
+//                 (array | "array" INDEXED+ "with_len_col" value)
 //               | "unset" NAME
 //               | "set" NAME update
 //               | "set" NAME "to" (value | len | call "with" "ret" INDEXED)
@@ -99,113 +99,29 @@
 //   LOOP       := "to_" digit+
 //
 // - "and" binds tighter than "or", and "not" negates only the comparison after
-//   it. A comparison without compare is of a bool, so "if done" is "if done eq
-//   true_bool". A variable is visible to the end of its block and cannot hide
-//   another.
-// - A val is never set after its declaration, but unlike a const it can hold a
-//   runtime value, as in val half is to_f64 count.
+//   it. "if done" is "if done eq true_bool". A variable is visible to the end
+//   of its block and cannot hide another.
+// - A val is never set after its declaration, and a top-level const binds a
+//   literal, an earlier constant or a setting.
 // - to_subtract and to_divide apply the other values to the first, and a single
-//   value is negated or inverted. to_mod keeps the remainder with the sign of
-//   the dividend, as % and fmod in C, and needs at least two values. Integer
-//   division truncates toward zero. The values in between are exact in a signed
-//   128-bit integer, and only the stored result has to fit its type, so to_add
-//   9223372036854775807_i64 1_i64 -1_i64 is the largest i64. Dividing by zero,
-//   an input outside the domain of a math function and a result out of range
-//   are runtime errors.
-// - math_to_abs keeps the type, and of the smallest i32 or i64 is a runtime
-//   error. math_to_min and math_to_max take two numbers of one type. The real
-//   math functions keep f32 or f64, take and give radians, and reject nonfinite
-//   inputs and results. math_to_atan2 takes y, then x, and math_to_round rounds
-//   halves away from zero. math_to_log1p, math_to_expm1 and math_to_hypot avoid
-//   the rounding of 1+x and exp(x)-1, and the overflow of squaring.
-// - Conversions are explicit, as arithmetic, comparisons and binary math
-//   functions need matching types. A conversion to an integer truncates toward
-//   zero and then checks that it fits, so to_u32 of -0d9_f32 is 0_u32, but
-//   to_u32 of -1_i32 is a runtime error. f64 prints 17 significant digits and
-//   f32 6. eq_3 and eq_6 compare reals within an absolute-or-relative 1e-3 and
-//   1e-6, and reals have no exact eq or not_eq.
-// - A top-level const binds a literal, an earlier constant or a setting, is
-//   visible to all later code, including functions and array rows, and cannot
-//   be redeclared or shadowed.
-// - An INTEGER must fit in its type, with its minus sign, so -0_u32 is 0_u32,
-//   but -1_u32 is a syntax error.
-// - break and continue apply to the innermost LOOP or while. A LOOP counts
-//   with an i32, and sleep_ms waits a u32 number of milliseconds.
-// - A STRING has no escapes, and cannot hold a quote, a backslash, a newline or
-//   NUL. A str or a bool can be stored, printed, compared with eq and not_eq,
-//   and set with set ... to, but not computed with. A bool prints as true or
-//   false.
-// - new str of joins its values, as info prints them, into a str of at most
-//   BOSONOGA_NEW_STR_LENGTH_MAX bytes, which its var or val owns. unset frees
-//   it and the name, and is in the block of the new, before its end and before
-//   a return, break or continue that leaves it. So that nothing points into it
-//   after that, it cannot be set, and is only read by info, a comparison or
-//   new str of.
-// - An xml_str is a str that is well-formed XML: elements, text, the five
-//   entities and character references, without comments, CDATA, processing
-//   instructions or a doctype, an attribute given twice or a < in an attribute.
-//   It may have text and any number of elements at its top, so two xml_str
-//   joined are one, and "" is one. A STRING with _xml_str is checked before the
-//   program runs, and writes its attributes with ', as in "<a b='1'/>"_xml_str.
-//   An xml_str is printed, and compared with eq and not_eq, also with a str,
-//   and a parameter like doc_xml_str takes one.
-// - new xml_str makes an xml_str of at most BOSONOGA_XML_STR_LENGTH_MAX bytes,
-//   which is new as for new str. element writes one element, named by the
-//   STRING after it, with an attribute for each STRING and value after that,
-//   as in new xml_str element "node"_str "q"_str q "type"_str "start"_str.
-//   Its values are escaped, with & < > " and ' as &amp; &lt; &gt; &quot; and
-//   &apos;, and with of it holds the values after of, or else it is written as
-//   <node .../>. After of, an xml_str joins as it is, and any other value as
-//   info prints it, escaped. A name starts with an ASCII letter or _, and has
-//   letters, digits, _, - and . set ... to_join joins such values to a var of
-//   new xml_str, which is not reading it.
-// - io_read, io_write, io_modified, xml_child, xml_attribute and str_parse
-//   give values to their block, which takes them as call ... with ret does.
-//   Those that are a str or an xml_str are new, and are freed after the block,
-//   which so cannot unset them, nor leave by a return, break or continue.
-//   - io_read DIR NAME gives 0_bool, whether it read the file, 1_xml_str, its
-//     text, which is 1_str if it takes a str, and 2_str, why it did not, or
-//     "". A file is at most BOSONOGA_XML_STR_LENGTH_MAX bytes. A str is UTF-8
-//     without NUL, and an xml_str a document: at most one <?xml ...?>, one
-//     root element, which is the xml_str, and whitespace around it. Only a
-//     text that the block takes is checked.
-//   - io_write DIR NAME VALUE gives 0_bool, whether it wrote the file, 1_bool,
-//     whether it was there already, as it only makes a new file, and 2_str,
-//     why it did not write it, or "". It makes DIR if it is missing. It writes
-//     a str as it is, and an xml_str of one element as a document, with <?xml
-//     version="1.0" encoding="UTF-8"?> and a line break before it, and a line
-//     break after it.
-//   - io_modified DIR NAME gives 0_bool, whether the file is there, and 1_i64,
-//     when it was last written, in nanoseconds since 1970, or 0.
-//   - xml_child XML STRING INDEX, of an xml_str of one element, gives 0_bool,
-//     whether it has a child element so named after INDEX others, an i32 from
-//     0, and 1_xml_str, that element, as in xml_child replay "action"_str
-//     0_i32.
-//   - xml_attribute XML STRING, of an xml_str of one element, gives 0_bool,
-//     whether it has the attribute, and 1_str, its value, with the entities
-//     and references replaced and tabs and line breaks as spaces.
-//   - str_parse STR gives 0_bool, whether it is an integer, and 1_i32, the
-//     integer, which is 1_i64, 1_u32 or 1_u64 if the block takes that, and
-//     which the block takes. It is an INTEGER without its suffix and without
-//     leading zeros, and fits its type, or the number is 0.
-//   A NAME of a file is a str of 1 to 255 ASCII letters, digits, _, - and .,
-//   which does not start with ., and is in the directory of DIR. A NAME that
-//   is not one, an INDEX below 0, and an XML that is not one element are
-//   runtime errors.
+//   value is negated or inverted. The values in between are exact in 128 bits,
+//   and only the stored result has to fit its type. Overflow, dividing by zero
+//   and an input outside the domain of a math function are runtime errors.
+// - Conversions are explicit, as arithmetic and comparisons need matching
+//   types. Reals have no exact eq, and eq_3 and eq_6 compare within 1e-3 and
+//   1e-6.
+// - A STRING has no escapes. new str of joins its values, as info prints them,
+//   into a str that its var or val owns, and unset frees it in its block. An
+//   xml_str is a str that is well-formed XML, see xml.h.
+// - A given statement gives its block 0_bool, whether it could, and then its
+//   values, as call ... with ret does.
 // - A program has either one bosonoga_main or the sections of a gfx program,
-//   after at most one bosonoga_global, and any number of functions and arrays.
-//   Each can only be used after its definition, so a function can call itself
-//   but two cannot call each other.
+//   after at most one bosonoga_global, whose top variables they share. Each
+//   item is used after its definition, so two functions cannot call each
+//   other, and what is declared must be used.
 // - A function sees constants, its parameters and its own variables, and
-//   everything is passed and returned by value. The INDEXED types after ret,
-//   and those of an array, are numbered from 0. A return gives one value per
-//   type, and the end of the block of a function with ret is a runtime error.
-//   A function that returns nothing says ret_void.
-// - A caller names each value that it takes by its index and type. var and
-//   set ... to take a call of one value with "with ret 0_TYPE". Otherwise
-//   "call ... with ret" names values for its block, once each, by increasing
-//   index, in the same way for a function and an array. Words like ret_0_i32
-//   are reserved, and are not values:
+//   everything is passed by value. A caller names each value it takes by its
+//   index and type:
 //
 //     call task at index with ret
 //       0_f64 as distance
@@ -214,80 +130,22 @@
 //       ...
 //     do
 //
-//   Calls nest at most BOSONOGA_CALL_DEPTH_MAX deep, and a function cannot have
-//   the statements of gfx_frame.
-// - An array has rows of the INDEXED types, and "at" an i32 index from 0 reads
-//   one. An index without a row is a runtime error. A val array is top-level,
-//   with literal or constant rows, and is seen by all later code. A var array
-//   is a variable of a block, with such rows, or "rows" and an i32 literal or
-//   constant of zeroed ones (0, false, an empty str or 000000, but no input_key
-//   or font), made again each time its declaration runs. It holds at most
-//   BOSONOGA_ARRAY_VALUES_MAX values, and set ... at writes a whole row, but it
-//   is not set whole, passed, printed or compared. len_col is the length of a
-//   column, the number of rows, and len_row the length of a row, an i32 known
-//   before the program runs.
-// - io_raw_import reads the tokens of another file in its place, as if they
-//   were written there, and then goes on after it, as in io_raw_import
-//   "lorem.bosonoga"_str. The file is in the directory of the program, so its
-//   name has no directory, and it ends with .bosonoga. An error in an imported
-//   file names that file.
-// - mod reads a module, a file named as for io_raw_import, as in mod
-//   "lorem.bosonoga"_str. A module has the items of a program, sections too,
-//   at least one, and ends with its file, which no item runs past. Each file
-//   is read at most once, with mod or io_raw_import, and the program itself
-//   not at all. What io_raw_import reads into a module is of that module.
-// - A name that a module declares is private to it, and is seen there and in
-//   the modules that it reads with mod. pub also lets the program or module
-//   that read it with mod see the name, with the modules that one reads. So a
-//   module sees what is declared before its mod, but the program does not see
-//   the pub names of the modules that its modules read. pub is only in a
-//   module, before a top-level const, def or val, or a var or val at the top
-//   of bosonoga_global. The rows of an array are pub with it, and a row is not
-//   pub on its own. A name is still unique in the whole program, whether or
-//   not it is seen.
-// - What is declared is used, or it is an error before the program runs. A
-//   constant, a variable, a parameter and a value taken from a call are read,
-//   a function is called, other than by itself, and an array is read or has
-//   its len taken. Setting a variable or a row of an array, or unsetting it,
-//   is not reading it, and a pub name is used like any other.
-// - bosonoga_global runs first and cannot return. The variables at the top of
-//   its block are shared by bosonoga_main and all sections.
-// - A gfx program has one gfx_main and at most one of each other section, in
-//   any order. Only gfx_main can return. In a window, see gfx.h, gfx_init runs
-//   once, gfx_frame once per frame, gfx_main across frames until it returns,
-//   gfx_key_down once per press, not as the key repeats, and gfx_cleanup when
-//   the window closes. Without a window, gfx_frame and gfx_key_down never run.
-// - gfx_await_next_frame waits for the next frame, so that a loop in gfx_main
-//   steps once per frame, at most 60 times a second, and does not use up the
-//   ops of a frame. It is only in gfx_main, and not in a function.
-// - A KEY is a key of the [color], [global], [key], [font], [icon] or [dir]
-//   group of the settings, see settings.h. A color prints as RRGGBB, and a
-//   global is one INTEGER or REAL. A key of [key] names a keyboard key by its
-//   sokol_app name, like SAPP_KEYCODE_ESCAPE, and is an input_key, which prints
-//   by that name. A key of [font] names a TrueType file and a key of [icon] a
-//   PNG file, relative to the settings, and is a font or an icon, which prints
-//   as the settings have it. Only a window reads the files, before gfx_init. A
-//   key of [dir] names a directory, relative to the settings, and is a dir,
-//   which prints as the settings have it. An input_key, font, icon or dir
-//   compares only with eq or not_eq. gfx_key is the input_key pressed, and is
+// - An array is read like a function of an i32 index from 0 that returns a
+//   row. A val array is top-level, with literal rows, and a var array has
+//   literal rows or with_len_col zeroed ones, made again each time its
+//   declaration runs. set ... at writes a whole row. len_col is the number of
+//   rows and len_row the length of one.
+// - io_raw_import reads the tokens of a file next to the program in its place.
+//   mod reads a module, whose names are private to it unless pub, which shows
+//   them to the file that read it. Each file is read at most once, and a name
+//   is unique in the whole program.
+// - In a window, see gfx.h, gfx_init runs once, gfx_frame once per frame,
+//   gfx_main across frames until it returns, gfx_key_down once per press and
+//   gfx_cleanup when it closes. gfx_await_next_frame in gfx_main waits for the
+//   next frame. Drawing and gfx_delta_time are only in gfx_frame, and gfx_key
 //   only in gfx_key_down.
-// - gfx_clear, the gfx_draw statements and gfx_delta_time (seconds since the
-//   previous frame) are only in gfx_frame. Shapes, with y growing down, are
-//   drawn in the order of their statements, each over the ones before it. A
-//   rectangle is x, y, width, height and color, and a hex or circle center x,
-//   center y, radius and color. A hex is regular and flat-top, with a corner
-//   straight right of its center, which its radius reaches. A hex, circle or
-//   text whose radius or size is not above zero is not drawn.
-// - gfx_draw_text (align, x, y, font, size, color, then what it draws) joins
-//   its values as info prints them, into at most BOSONOGA_DRAW_TEXT_LENGTH_MAX
-//   bytes, and draws them in one line with fontstash. HALIGN and VALIGN say
-//   where x and y are on the text, from the ascender and descender of the font,
-//   and are not reserved words. Size is the f32 pixel height from the ascender
-//   to the descender, so 20 pixels per em of Intel One Mono is 27d6_f32.
-// - gfx_draw_icon (center x, center y, icon, angle, color) draws the alpha of
-//   the PNG in color, at its own size of at most BOSONOGA_ICON_SIDE_MAX pixels
-//   a side, turned clockwise by the f32 angle in radians. Unturned, its corner
-//   is on a whole pixel, so that it is sharp.
+// - A KEY names an entry of the settings, see settings.h. Shapes, with y
+//   growing down, are drawn in order.
 
 typedef enum {
   BOSONOGA_SECTION_MAIN,
@@ -299,7 +157,6 @@ typedef enum {
   BOSONOGA_SECTION_COUNT,
 } BosonogaSection;
 
-// Either way, literal.kind is the type.
 typedef struct {
   BosonogaValue literal;
   gboolean is_variable;
@@ -320,7 +177,6 @@ typedef enum {
   BOSONOGA_COMPARE_SHIFT_HAS,
 } BosonogaCompareKind;
 
-// The values of fontstash, one horizontal and one vertical for a text.
 typedef enum {
   BOSONOGA_GFX_ALIGN_LEFT = 1 << 0,
   BOSONOGA_GFX_ALIGN_CENTER = 1 << 1,
@@ -396,7 +252,7 @@ typedef enum {
   BOSONOGA_OP_ARRAY_INIT,
   BOSONOGA_OP_ARRAY_WRITE,
   BOSONOGA_OP_NEW_STR_PART,
-  BOSONOGA_OP_NEW_STR,  // Of the kind made, a str or an xml_str.
+  BOSONOGA_OP_NEW_STR,
   BOSONOGA_OP_UNSET,
   BOSONOGA_OP_XML_PART,    // Joins a BosonogaXmlPart, which integer is.
   BOSONOGA_OP_JOIN_STORE,  // The joined xml_str replaces the one in slot.
@@ -408,24 +264,22 @@ typedef enum {
   BOSONOGA_OP_STR_PARSE,
 } BosonogaOpKind;
 
-// What an op of BOSONOGA_OP_XML_PART joins of left, which is a str literal for
-// a name.
 typedef enum {
-  BOSONOGA_XML_PART_RAW,    // An xml_str as it is.
-  BOSONOGA_XML_PART_TEXT,   // A value as info prints it, escaped.
-  BOSONOGA_XML_PART_OPEN,   // < and the name of an element.
-  BOSONOGA_XML_PART_NAME,   // A space, the name of an attribute, = and ".
-  BOSONOGA_XML_PART_VALUE,  // As TEXT, and then ".
-  BOSONOGA_XML_PART_START,  // > after the attributes.
-  BOSONOGA_XML_PART_EMPTY,  // /> after the attributes.
-  BOSONOGA_XML_PART_CLOSE,  // </, the name and >.
+  BOSONOGA_XML_PART_RAW,
+  BOSONOGA_XML_PART_TEXT,  // A value as info prints it, escaped.
+  BOSONOGA_XML_PART_OPEN,
+  BOSONOGA_XML_PART_NAME,
+  BOSONOGA_XML_PART_VALUE,
+  BOSONOGA_XML_PART_START,
+  BOSONOGA_XML_PART_EMPTY,
+  BOSONOGA_XML_PART_CLOSE,
 } BosonogaXmlPart;
 
 typedef struct {
   BosonogaOpKind kind;
   BosonogaCompareKind compare;
   gboolean negate;
-  const gchar *path;  // Of the file of the op, the program's or an import's.
+  const gchar *path;
   gsize line;
   gsize column;
   guint slot;
@@ -433,11 +287,9 @@ typedef struct {
   guint function;
   guint index;
   gint32 integer;  // Also the BosonogaGfxAlign of gfx_draw_text.
-  // Of what new, to_join, io_read or str_parse makes.
   BosonogaValueKind made;
   BosonogaOperand left;
   BosonogaOperand right;
-  // Of the gfx_draw statements.
   BosonogaOperand third;
   BosonogaOperand fourth;
   BosonogaOperand fifth;
@@ -448,30 +300,25 @@ typedef struct {
 // The smallest most that OpenGL 3.3 guarantees for a texture.
 #define BOSONOGA_ICON_SIDE_MAX 1024
 
-// A font or icon that the program names, which a window loads before gfx_init,
-// or a dir.
 typedef struct {
-  gchar *key;   // Of [font], [icon] or [dir].
+  gchar *key;
   gchar *text;  // As the settings have it, printed for its value.
   gchar *path;
 } BosonogaProgramAsset;
 
 #define BOSONOGA_NEW_STR_LENGTH_MAX 1024
 
-// The longest xml_str that new or to_join make, and file that io_read reads.
 #define BOSONOGA_XML_STR_LENGTH_MAX 1048576
 
-// The most values that a function takes or returns, and of a row.
 #define BOSONOGA_FUNCTION_VALUES_MAX 16
 #define BOSONOGA_CALL_DEPTH_MAX 10000
 #define BOSONOGA_ARRAY_VALUES_MAX 65536
 
-// An array is read like a function of its index that returns a row.
 typedef struct {
-  const gchar *name;  // Slice of the source.
+  const gchar *name;
   gsize name_length;
   gboolean is_array;
-  gboolean is_var;     // Of an array that is a variable, in slots from slot.
+  gboolean is_var;     // In slots from slot.
   gboolean is_zeroed;  // Then its rows are copies of the row at first_value.
   guint slot;
   guint entry;
@@ -479,13 +326,11 @@ typedef struct {
   guint result_count;
   BosonogaValueKind parameters[BOSONOGA_FUNCTION_VALUES_MAX];
   BosonogaValueKind results[BOSONOGA_FUNCTION_VALUES_MAX];
-  // Of its own frame, parameters first. Not of an array.
-  guint slot_count;
-  guint row_count;    // Only of an array.
-  guint first_value;  // Only of an array, index in program->rows of row 0.
+  guint slot_count;  // Of its own frame, parameters first.
+  guint row_count;
+  guint first_value;  // Index in program->rows of row 0.
 } BosonogaFunction;
 
-// A file that io_raw_import read, which the program points into.
 typedef struct {
   gchar *path;  // UTF-8, as error messages show it.
   gchar *source;
@@ -493,24 +338,21 @@ typedef struct {
 
 typedef struct {
   const gchar *path;  // Not owned.
-  GArray *imports;    // Of BosonogaProgramImport, in the order of reading.
+  GArray *imports;
   GArray *ops;
   guint slot_count;  // Not of functions.
   GArray *functions;
   GArray *rows;  // Of all arrays, one row after another.
-  // Of BosonogaProgramAsset, numbered by a font or icon value.
   GArray *fonts;
   GArray *icons;
-  GArray *dirs;  // Of BosonogaProgramAsset, numbered by a dir value.
+  GArray *dirs;
   gboolean is_gfx;
   // A missing section starts at a BOSONOGA_OP_SECTION_END, so it can still run.
   guint entries[BOSONOGA_SECTION_COUNT];
 } BosonogaProgram;
 
 // The program points into path and source, which must outlive it. Path is
-// UTF-8, for error messages, and names the file of the source, as
-// io_raw_import reads the files next to it. The settings are not used after
-// this returns.
+// UTF-8, and io_raw_import reads the files next to it.
 BosonogaProgram *bosonoga_parse(const gchar *path, const gchar *source,
                                 gsize length, const BosonogaSettings *settings,
                                 GError **error);

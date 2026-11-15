@@ -72,7 +72,6 @@ static gboolean bosonoga_text_ends_with(const gchar *text, gsize length,
          memcmp(text + length - suffix_length, suffix, suffix_length) == 0;
 }
 
-// A file of the directory, named like lorem.bosonoga, and not expected output.
 static gboolean bosonoga_is_import_name(const gchar *text, gsize length) {
   if (length <= strlen(BOSONOGA_FILE_SUFFIX) || text[0] == '.' ||
       !g_utf8_validate(text, (gssize)length, NULL) ||
@@ -166,7 +165,6 @@ static gboolean bosonoga_parse_file(BosonogaParser *parser, gboolean is_module,
   return TRUE;
 }
 
-// At the end of the items of a module, goes on after its mod.
 static gboolean bosonoga_end_module(BosonogaParser *parser, GError **error) {
   const guint last = parser->outer_files->len - 1;
   const BosonogaOuterFile outer =
@@ -221,8 +219,6 @@ static gboolean bosonoga_parse_pub_item(BosonogaParser *parser,
   return TRUE;
 }
 
-// Of all that is declared, as only the variables of a block are checked at its
-// end.
 static gboolean bosonoga_check_all_used(const BosonogaParser *parser,
                                         GError **error) {
   for (guint i = 0; i < parser->constants->len; ++i) {

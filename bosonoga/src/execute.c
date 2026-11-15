@@ -140,7 +140,6 @@ static gboolean bosonoga_write_array(const BosonogaExecution *execution,
   return TRUE;
 }
 
-// What new, io_read or an xml_ statement made, if it did.
 static void bosonoga_free_owned(BosonogaExecution *execution,
                                 const gchar *text) {
   GPtrArray *owned = execution->owned;
@@ -167,7 +166,6 @@ static void bosonoga_give_bool(BosonogaExecution *execution, guint index,
   result->boolean = value;
 }
 
-// A copy that the execution owns, if the block takes it, or else nothing.
 static void bosonoga_give_text(BosonogaExecution *execution,
                                const BosonogaOp *op, guint index,
                                BosonogaValueKind kind, const gchar *text,
@@ -182,7 +180,6 @@ static void bosonoga_give_text(BosonogaExecution *execution,
   }
 }
 
-// Gives the reason as the str at index, and frees it.
 static void bosonoga_give_reason(BosonogaExecution *execution,
                                  const BosonogaOp *op, guint index,
                                  gchar *reason) {
@@ -192,7 +189,6 @@ static void bosonoga_give_reason(BosonogaExecution *execution,
   g_free(reason);
 }
 
-// The file that a dir and a name of io_read, io_write or io_modified name.
 static gchar *bosonoga_io_path(const BosonogaExecution *execution,
                                const BosonogaOp *op, const BosonogaValue *dir,
                                const BosonogaValue *name, GError **error) {
@@ -416,8 +412,6 @@ static gboolean bosonoga_xml_read_op(BosonogaExecution *execution,
   return TRUE;
 }
 
-// Decimal digits after an optional -, without a + or a leading 0, as an
-// INTEGER is written without its suffix.
 static void bosonoga_str_parse_op(BosonogaExecution *execution,
                                   const BosonogaOp *op,
                                   const BosonogaValue *frame) {

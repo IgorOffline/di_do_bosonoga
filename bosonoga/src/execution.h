@@ -9,7 +9,7 @@
 typedef struct {
   guint function;
   guint return_to;
-  guint base;  // Of its frame in the stack.
+  guint base;
 } BosonogaCall;
 
 struct _BosonogaExecution {
@@ -22,10 +22,10 @@ struct _BosonogaExecution {
   GString *output;
   gboolean to_stdout;  // Then output is an owned buffer for stdout.
   GArray *stack;
-  GArray *calls;  // Of BosonogaCall, innermost last.
+  GArray *calls;
   BosonogaValue arguments[BOSONOGA_FUNCTION_VALUES_MAX];
   BosonogaValue results[BOSONOGA_FUNCTION_VALUES_MAX];
-  GString *join;     // The str that new makes, until it is made.
+  GString *join;
   GPtrArray *owned;  // What new made and is not unset, freed with it.
 };
 

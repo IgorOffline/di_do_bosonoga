@@ -8,8 +8,8 @@
 #include "tokenizer.h"
 #include "value.h"
 
-// Shared by the files of the parser. Statement parsers are called after their
-// keyword is consumed, except for those that read it from the current token.
+// Statement parsers are called after their keyword is consumed, except for
+// those that read it from the current token.
 
 #define BOSONOGA_SHIFT_PREFIX "shift_"
 #define BOSONOGA_LOOP_PREFIX "to_"
@@ -25,10 +25,9 @@
 #define BOSONOGA_FUNCTION_SUFFIX "_fn"
 #define BOSONOGA_VOID_WORD "ret_void"
 
-// Of a name that the program declares, for who sees it and whether it is used.
 typedef struct {
-  BosonogaToken token;  // The name where it is declared.
-  guint scope;          // In scopes.
+  BosonogaToken token;
+  guint scope;
   gboolean is_pub;
   gboolean is_used;
 } BosonogaDeclaration;
@@ -36,15 +35,14 @@ typedef struct {
 // The program is scope 0, and each file read with mod has its own, inside the
 // scope that read it.
 typedef struct {
-  const gchar *path;  // Of its file, as error messages show it.
-  guint parent;       // Not of scope 0.
+  const gchar *path;
+  guint parent;
 } BosonogaScope;
 
-// Of the files that read the one being read, the innermost last.
 typedef struct {
-  BosonogaTokenizer tokenizer;  // After the name of the file it reads.
-  gboolean is_module;           // Read with mod, rather than io_raw_import.
-  guint scope;                  // Of the code around the file it reads.
+  BosonogaTokenizer tokenizer;
+  gboolean is_module;
+  guint scope;
 } BosonogaOuterFile;
 
 typedef struct {
@@ -55,7 +53,7 @@ typedef struct {
 } BosonogaConstant;
 
 typedef struct {
-  const gchar *name;  // Slice of the source.
+  const gchar *name;
   gsize length;
   BosonogaValueKind kind;
   guint slot;
@@ -63,15 +61,14 @@ typedef struct {
   // Owns a str that new made, which is unset in the block it is declared in,
   // or that a statement like io_read gave its block, which frees it after.
   gboolean is_new;
-  const gchar *freed_by;  // The word of that statement, or NULL.
+  const gchar *freed_by;
   gboolean is_array;
-  guint function;  // Of an array, in functions.
+  guint function;
   guint block_depth;
   guint loop_depth;
   BosonogaDeclaration declaration;
 } BosonogaVariable;
 
-// Indices in ops of jumps, patched at the end of the loop.
 typedef struct {
   GArray *break_jumps;
   GArray *continue_jumps;
@@ -79,20 +76,20 @@ typedef struct {
 
 typedef struct {
   BosonogaTokenizer tokenizer;
-  GArray *outer_files;  // Of BosonogaOuterFile.
-  GArray *scopes;       // Of BosonogaScope.
-  guint scope;          // Of the code being read.
+  GArray *outer_files;
+  GArray *scopes;
+  guint scope;
   GArray *ops;
   GArray *variables;
   GArray *constants;
   guint slot_count;
   guint block_depth;
-  GArray *loops;  // Of BosonogaLoop, innermost last.
+  GArray *loops;
   BosonogaSection section;
   GArray *functions;
-  GArray *function_declarations;  // Of BosonogaDeclaration, as functions.
+  GArray *function_declarations;
   gboolean in_function;
-  guint function;  // In functions, while in_function.
+  guint function;
   guint delta_time_slot;
   guint key_slot;
   gboolean has_section[BOSONOGA_SECTION_COUNT];
@@ -111,7 +108,6 @@ gboolean bosonoga_token_setting(const BosonogaParser *parser,
                                 const BosonogaToken *token,
                                 BosonogaValue *value);
 
-// Of a value that bosonoga_token_setting found to be a font or icon.
 void bosonoga_name_asset(BosonogaParser *parser, const BosonogaToken *token,
                          BosonogaValue *value);
 
@@ -119,7 +115,6 @@ void bosonoga_name_asset(BosonogaParser *parser, const BosonogaToken *token,
 // the values that it takes.
 gboolean bosonoga_token_is_result(const BosonogaToken *token);
 
-// A word that ends with _fn and has more before it.
 gboolean bosonoga_token_is_function_name(const BosonogaToken *token);
 
 gboolean bosonoga_token_is_reserved(const BosonogaParser *parser,
@@ -163,17 +158,12 @@ const BosonogaVariable *bosonoga_find_variable(const BosonogaParser *parser,
 const BosonogaVariable *bosonoga_find_variable_any(const BosonogaParser *parser,
                                                    const BosonogaToken *token);
 
-// After the declarations of the scope and of scopes inside it, and the pub
-// ones also after those of the scope around it.
 gboolean bosonoga_is_visible(const BosonogaParser *parser,
                              const BosonogaDeclaration *declaration);
 
-// TRUE, unless the token names something that the code does not see, which
-// then fails.
 gboolean bosonoga_check_not_hidden(const BosonogaParser *parser,
                                    const BosonogaToken *token, GError **error);
 
-// Fails if what is declared from first on is never used.
 gboolean bosonoga_check_variables_used(const BosonogaParser *parser,
                                        guint first, GError **error);
 
@@ -187,7 +177,6 @@ void bosonoga_use_variable(BosonogaParser *parser,
 void bosonoga_use_constant(BosonogaParser *parser,
                            const BosonogaConstant *constant);
 
-// Of a call or a len, of a function or an array, which may be a variable.
 void bosonoga_use_function(BosonogaParser *parser, const BosonogaToken *token,
                            guint function);
 
@@ -199,7 +188,6 @@ void bosonoga_append_function(BosonogaParser *parser,
                               const BosonogaFunction *function,
                               const BosonogaToken *name);
 
-// The first variable that is new, or only of those in the innermost loop.
 const BosonogaVariable *bosonoga_find_new(const BosonogaParser *parser,
                                           gboolean in_loop);
 
@@ -242,7 +230,6 @@ gboolean bosonoga_parse_set(BosonogaParser *parser, GError **error);
 gboolean bosonoga_parse_condition(BosonogaParser *parser, GArray *false_jumps,
                                   GError **error);
 
-// An index in functions, or -1. Functions and arrays share one list.
 gint bosonoga_find_function(const BosonogaParser *parser,
                             const BosonogaToken *token);
 gint bosonoga_find_function_any(const BosonogaParser *parser,
@@ -256,7 +243,6 @@ gboolean bosonoga_check_new_function_name(const BosonogaParser *parser,
                                           const BosonogaToken *name,
                                           const gchar *what, GError **error);
 
-// Like 1_str, an index from 0 without leading zeros, then _ and a type.
 gboolean bosonoga_split_indexed(const gchar *text, gsize length, guint64 *index,
                                 BosonogaValueKind *kind);
 
@@ -279,18 +265,16 @@ gboolean bosonoga_check_single_result(const BosonogaParser *parser,
 gboolean bosonoga_parse_taken_result(BosonogaParser *parser, guint index,
                                      GError **error);
 
-// What a statement gives to the block after its with ret, as a function does.
 typedef struct {
   const gchar *name;
-  const gchar *gives;  // As in "'f_fn' returns", or "io_read gives".
+  const gchar *gives;
   guint count;
   BosonogaValueKind kinds[BOSONOGA_FUNCTION_VALUES_MAX];
   // Others that may stand for kinds[i], as str for the xml_str of io_read.
-  guint32 also[BOSONOGA_FUNCTION_VALUES_MAX];  // Bits of BosonogaValueKind.
-  gboolean is_owned[BOSONOGA_FUNCTION_VALUES_MAX];  // Of a str it makes.
+  guint32 also[BOSONOGA_FUNCTION_VALUES_MAX];
+  gboolean is_owned[BOSONOGA_FUNCTION_VALUES_MAX];
 } BosonogaResults;
 
-// The values that a block takes, by increasing index.
 typedef struct {
   guint count;
   guint indices[BOSONOGA_FUNCTION_VALUES_MAX];
@@ -298,7 +282,6 @@ typedef struct {
   guint slots[BOSONOGA_FUNCTION_VALUES_MAX];
 } BosonogaTaken;
 
-// After with ret, up to the di of the block, as call ... with ret.
 gboolean bosonoga_parse_results(BosonogaParser *parser,
                                 const BosonogaToken *start,
                                 const BosonogaResults *results,
@@ -311,8 +294,6 @@ gboolean bosonoga_parse_new_xml(BosonogaParser *parser,
 gboolean bosonoga_parse_join(BosonogaParser *parser, const BosonogaToken *name,
                              const BosonogaVariable *target, GError **error);
 
-// Of the word that starts io_read, io_write, io_modified, xml_child,
-// xml_attribute or str_parse.
 gboolean bosonoga_is_given_statement(const BosonogaToken *token);
 
 gboolean bosonoga_parse_given_statement(BosonogaParser *parser,

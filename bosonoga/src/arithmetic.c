@@ -67,7 +67,6 @@ static gboolean bosonoga_real_close(const BosonogaValue *left,
           difference / MAX(ABS(a), ABS(b)) <= tolerance);
 }
 
-// -1, 0 or 1, of two integers or two reals, which are never NaN.
 static gint bosonoga_order(const BosonogaValue *left,
                            const BosonogaValue *right) {
   if (bosonoga_kind_is_integer(left->kind)) {

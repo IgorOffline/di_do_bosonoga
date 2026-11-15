@@ -8,7 +8,6 @@
 // Holds every integer type exactly, and the values in between up to 2^127.
 __extension__ typedef __int128 BosonogaWide;
 
-// Fits any BosonogaWide in decimal, with its sign and NUL.
 #define BOSONOGA_WIDE_TEXT_SIZE 41
 
 const gchar *bosonoga_value_kind_name(BosonogaValueKind kind);
@@ -24,7 +23,6 @@ gboolean bosonoga_kind_is_number(BosonogaValueKind kind);
 
 BosonogaWide bosonoga_whole(const BosonogaValue *value);
 
-// Of any number, rounded if it is an integer outside the precision of f64.
 gdouble bosonoga_real(const BosonogaValue *value);
 
 // FALSE, and the value is unchanged, if whole is outside the integer kind.

@@ -12,7 +12,6 @@
 #define BOSONOGA_EXPECT_WORD "expect"
 #define BOSONOGA_COMMENT_START "//"
 
-// NULL if a line is neither blank, a comment nor an expect line.
 static gchar *bosonoga_read_expected(const gchar *display_path,
                                      const gchar *text, GError **error) {
   g_autoptr(GString) expected = g_string_new(NULL);
@@ -116,8 +115,6 @@ gboolean bosonoga_test_passes(const gchar *path,
   return TRUE;
 }
 
-// Adds the names that the file reads with io_raw_import or mod. A file that
-// cannot be read or lexed adds nothing, and fails as a test.
 static void bosonoga_add_imports(const gchar *path, GHashTable *imported) {
   g_autofree gchar *source = NULL;
   gsize source_length = 0;

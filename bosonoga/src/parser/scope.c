@@ -7,7 +7,6 @@ static const BosonogaScope *bosonoga_scope(const BosonogaParser *parser,
   return &g_array_index(parser->scopes, BosonogaScope, scope);
 }
 
-// Where a declaration is seen, with the scopes inside it.
 static guint bosonoga_home(const BosonogaParser *parser,
                            const BosonogaDeclaration *declaration) {
   return declaration->is_pub

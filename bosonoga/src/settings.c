@@ -198,7 +198,6 @@ static gboolean bosonoga_read_color_settings(const BosonogaSettingsFile *file,
   return TRUE;
 }
 
-// One number, like 100d0_f32, read by the tokenizer of programs.
 static gboolean bosonoga_read_global_setting(const BosonogaSettingsFile *file,
                                              const gchar *key,
                                              BosonogaValue *value,
