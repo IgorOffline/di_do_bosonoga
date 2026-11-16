@@ -11,6 +11,8 @@ import java.util.TreeMap;
 // The registration of exactly the selected programs, so that a test that is
 // compiled also runs, as in the C bosonoga's directory-based test runner.
 final class TestRegistry {
+    private static final String SCRATCH = "scratch";
+
     private TestRegistry() {
     }
 
@@ -51,5 +53,24 @@ final class TestRegistry {
             rows.append("}},");
         }
         return header.append("}\n").append(rows).append("}\n").toString();
+    }
+
+    // The tier paths, regina.ini and its dirs are all relative to the directory
+    // the generator runs in, so the runner runs there too, wherever it is
+    // started from. It empties the dir scratch first, so that it can run again;
+    // that dir must be inside the root, so that nothing else is ever removed.
+    static String environment(Path root, Settings settings) {
+        var scratch = "";
+        var dir = settings.dirs.get(SCRATCH);
+        if (dir != null) {
+            var path = Path.of(dir.text()).normalize();
+            if (path.isAbsolute() || path.toString().isEmpty() || path.startsWith("..")) {
+                throw new BosonogaException("%s: the dir %s must be inside the directory of %s, not %s"
+                        .formatted(Settings.FILE, SCRATCH, Settings.FILE, dir.text()));
+            }
+            scratch = path.toString();
+        }
+        return "#define BOSONOGA_TEST_ROOT \"%s\"\n#define BOSONOGA_TEST_SCRATCH \"%s\"\n"
+                .formatted(CppText.escapedBytes(root.toString()), CppText.escapedBytes(scratch));
     }
 }

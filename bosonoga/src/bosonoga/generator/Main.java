@@ -38,7 +38,8 @@ public final class Main {
                 Files.writeString(outputDirectory.resolve(name + ".cc"), cpp);
             }
             if (args[1].equals("--sources-from")) {
-                Files.writeString(outputDirectory.resolve("programs.hh"), TestRegistry.header(selected));
+                Files.writeString(outputDirectory.resolve("programs.hh"), TestRegistry.header(selected)
+                        + TestRegistry.environment(Path.of("").toAbsolutePath(), settings));
             }
         } catch (BosonogaException exception) {
             System.err.println(exception.getMessage());

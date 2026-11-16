@@ -62,8 +62,11 @@ resumable `gfx_main` execution remain; their plan is in
    `30/30 (silver 18/18 gold 11/11 platinum 1/1)`.
 
 The generator reads `regina.ini` from the current directory, as archive_d does,
-and `build.sh` runs from `bosonoga/`. Programs write files under
-`build/scratch` (the `[dir] scratch` setting), which `build.sh` clears.
+and `build.sh` runs from `bosonoga/`. The test paths, `regina.ini` and its
+`[dir]` paths are all relative to that directory, so `build/main` changes to it
+first and can be run from anywhere. It also empties the `[dir] scratch`
+directory that the programs write to (`build/scratch`, which must be inside
+`bosonoga/`), so it can be run again without a rebuild.
 
 ### Test programs
 

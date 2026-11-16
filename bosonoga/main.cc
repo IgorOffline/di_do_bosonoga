@@ -1,12 +1,18 @@
 // Runs each test/<tier>/NAME.bosonoga, from the directory that holds test, as
 // the C bosonoga test runner did: a program passes when it returns
 // exit_success, and, when there is a NAME.xp.bosonoga, prints what it expects.
+#include <unistd.h>
+
+#include <cerrno>
 #include <cstddef>
 #include <cstdlib>
+#include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "programs.hh"
@@ -53,6 +59,23 @@ bool passes(const Tier &tier, const Program &program) {
 }  // namespace
 
 int main() {
+  // The paths of the programs and of their expectations are relative to the
+  // directory that the generator ran in, so a run from anywhere else would
+  // find no expectations to fail.
+  if (::chdir(BOSONOGA_TEST_ROOT) != 0) {
+    std::cerr << BOSONOGA_TEST_ROOT << ": " << std::strerror(errno) << '\n';
+    return EXIT_FAILURE;
+  }
+  // io_write only makes new files, so a second run needs it empty again.
+  if (*BOSONOGA_TEST_SCRATCH != '\0') {
+    std::error_code error;
+    std::filesystem::remove_all(BOSONOGA_TEST_SCRATCH, error);
+    if (error) {
+      std::cerr << BOSONOGA_TEST_SCRATCH << ": " << error.message() << '\n';
+      return EXIT_FAILURE;
+    }
+  }
+
   const std::vector<Tier> tiers = BOSONOGA_TEST_TIERS;
 
   std::size_t passed = 0;
