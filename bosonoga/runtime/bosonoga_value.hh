@@ -11,6 +11,7 @@
 #include <type_traits>
 
 #include "bosonoga_number.hh"
+#include "bosonoga_keys.hh"
 
 namespace bosonoga::runtime {
 
@@ -50,14 +51,16 @@ inline void print(std::ostream &out, Color value) {
 
 // A key of regina.ini, as its name of sokol_app.
 struct InputKey {
-  const char *name;
+  std::uint32_t code;
+  explicit InputKey(const char *name) : code(key_code(name)) {}
+  explicit InputKey(std::uint32_t value) : code(value) {}
 };
 
 inline bool operator==(InputKey a, InputKey b) {
-  return std::strcmp(a.name, b.name) == 0;
+  return a.code == b.code;
 }
 inline bool operator!=(InputKey a, InputKey b) { return !(a == b); }
-inline void print(std::ostream &out, InputKey value) { out << value.name; }
+inline void print(std::ostream &out, InputKey value) { out << key_name(value.code); }
 
 // A font, an icon or a directory of regina.ini, numbered by the program, as
 // the text of regina.ini names it and as its path from the directory of

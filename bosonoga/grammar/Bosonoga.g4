@@ -19,11 +19,12 @@ item
     | topValDeclaration
     | globalSection
     | mainSection
+    | gfxSection
     | fileItem
     | pubItem
     | CUT
     | other=~(CONST | DEF | VAL | BOSONOGA_GLOBAL | BOSONOGA_MAIN | MOD | IO_RAW_IMPORT | PUB
-        | FILE_START | FILE_END | CUT)
+        | GFX_INIT | GFX_FRAME | GFX_CLEANUP | GFX_KEY_DOWN | GFX_MAIN | FILE_START | FILE_END | CUT)
     ;
 
 // Without FILE_START or RAW_START, the file is not read; the generator says why.
@@ -59,6 +60,10 @@ mainSection
     : BOSONOGA_MAIN block
     ;
 
+gfxSection
+    : section=(GFX_INIT | GFX_FRAME | GFX_CLEANUP | GFX_KEY_DOWN | GFX_MAIN) block
+    ;
+
 block
 @init { BlockNesting.check(this); }
     : DI statement+ DO
@@ -67,6 +72,8 @@ block
 
 statement
     : INFO value+                                                  # infoStatement
+    | graphics=(GFX_CLEAR | GFX_DRAW_RECTANGLE | GFX_DRAW_HEX | GFX_DRAW_CIRCLE
+        | GFX_DRAW_TEXT | GFX_DRAW_ICON | GFX_AWAIT_NEXT_FRAME) value* # gfxStatement
     | declaration=(VAR | VAL) NAME (IS initializer | CUT)          # declareStatement
     | SET NAME (setter | CUT)                                      # setStatement
     | IF condition block (ELSE IF condition block)* (ELSE block)?  # ifStatement
@@ -179,6 +186,7 @@ comparison
 
 value
     : NUMBER                    # numberValue
+    | special=(GFX_DELTA_TIME | GFX_KEY) # gfxValue
     | SHIFT_BIT                 # shiftValue
     | (TRUE_BOOL | FALSE_BOOL)  # boolValue
     | STRING                    # stringValue
@@ -188,6 +196,20 @@ value
     ;
 
 BOSONOGA_MAIN   : 'bosonoga_main' ;
+GFX_INIT : 'gfx_init' ;
+GFX_FRAME : 'gfx_frame' ;
+GFX_CLEANUP : 'gfx_cleanup' ;
+GFX_KEY_DOWN : 'gfx_key_down' ;
+GFX_MAIN : 'gfx_main' ;
+GFX_CLEAR : 'gfx_clear' ;
+GFX_DRAW_RECTANGLE : 'gfx_draw_rectangle' ;
+GFX_DRAW_HEX : 'gfx_draw_hex' ;
+GFX_DRAW_CIRCLE : 'gfx_draw_circle' ;
+GFX_DRAW_TEXT : 'gfx_draw_text' ;
+GFX_DRAW_ICON : 'gfx_draw_icon' ;
+GFX_AWAIT_NEXT_FRAME : 'gfx_await_next_frame' ;
+GFX_DELTA_TIME : 'gfx_delta_time' ;
+GFX_KEY : 'gfx_key' ;
 MOD           : 'mod' ;
 IO_RAW_IMPORT : 'io_raw_import' ;
 PUB           : 'pub' ;

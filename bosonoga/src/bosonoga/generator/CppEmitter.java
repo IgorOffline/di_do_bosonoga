@@ -73,6 +73,11 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     private BosonogaParser.BlockContext main;
     private boolean hasGlobal;
     private boolean inGlobal;
+    private boolean isGfx;
+    private boolean hasConsoleMain;
+    private boolean inLiteralRow;
+    private String section = "bosonoga_main";
+    private final Map<String, String> gfxSections = new LinkedHashMap<>();
     // The variables at the top of bosonoga_global, which later sections see.
     private Map<String, Variable> globalScope = Map.of();
 
@@ -113,7 +118,8 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     public String visitProgram(BosonogaParser.ProgramContext context) {
         items(context.item());
         if (main == null) {
-            throw error(context.EOF().getSymbol(), "a program needs a bosonoga_main block");
+            throw error(context.EOF().getSymbol(), isGfx
+                    ? "a gfx program needs a gfx_main block" : "a program needs a bosonoga_main block");
         }
         for (var constant : constants.values()) {
             if (!constant.isUsed) {
@@ -133,6 +139,19 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
                 throw neverRead(variable.declaration);
             }
         }
+        if (isGfx) {
+            var callbacks = new StringBuilder(body);
+            for (var entry : gfxSections.entrySet()) {
+                callbacks.append("  [[maybe_unused]] auto ").append(entry.getKey()).append(" = [&]()")
+                        .append(entry.getKey().equals("gfx_main") ? " -> int" : "")
+                        .append(" {\n").append(entry.getValue()).append("  };\n");
+            }
+            var checked = new StringBuilder(definitions)
+                    .append("[[maybe_unused]] void gfx_sections(runtime::gfx::Context &gfx_context) {\n")
+                    .append("  static_cast<void>(gfx_context);\n").append(callbacks).append("}\n");
+            return CppText.program(sourceName, locations.declarations(), checked,
+                    "  throw runtime::Error(\"the console runner requires bosonoga_main\");\n", functionName);
+        }
         return CppText.program(sourceName, locations.declarations(), definitions, body, functionName);
     }
 
@@ -145,6 +164,8 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
                 globalSection(item.globalSection());
             } else if (item.mainSection() != null) {
                 mainSection(item.mainSection());
+            } else if (item.gfxSection() != null) {
+                gfxSection(item.gfxSection());
             } else if (item.fileItem() != null) {
                 fileItem(item.fileItem());
             } else if (item.pubItem() != null) {
@@ -175,21 +196,27 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
 
     // Its statements are before those of bosonoga_main, in the same C++ scope.
     private void globalSection(BosonogaParser.GlobalSectionContext section) {
-        if (main != null || hasGlobal) {
+        if (main != null || hasGlobal || isGfx) {
             throw error(section.BOSONOGA_GLOBAL().getSymbol(), "bosonoga_global must be the first section");
         }
         hasGlobal = true;
+        this.section = "bosonoga_global";
         inGlobal = true;
         body.append(visit(section.block()));
         inGlobal = false;
     }
 
     private void mainSection(BosonogaParser.MainSectionContext section) {
+        if (isGfx) {
+            otherItem(section.BOSONOGA_MAIN().getSymbol());
+        }
         if (main != null) {
             throw error(section.BOSONOGA_MAIN().getSymbol(),
                     "expected const, def, val or end of file, got 'bosonoga_main'");
         }
         main = section.block();
+        hasConsoleMain = true;
+        this.section = "bosonoga_main";
         body.append(visit(main));
         // As in the C bosonoga, reaching the end of bosonoga_main fails when
         // it runs, at what follows its block.
@@ -197,6 +224,25 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             body.append(INDENT).append("runtime::fail(").append(where(next(main.getStop())))
                     .append(", \"the program ended without a return\");\n");
         }
+    }
+
+    private void gfxSection(BosonogaParser.GfxSectionContext context) {
+        var token = context.section;
+        if (hasConsoleMain) otherItem(token);
+        var name = token.getText();
+        if (gfxSections.containsKey(name)) {
+            throw error(token, "there is already a %s block".formatted(name));
+        }
+        isGfx = true;
+        section = name;
+        if (name.equals("gfx_main")) main = context.block();
+        var code = visit(context.block());
+        if (name.equals("gfx_main")
+                && !(context.block().statement().getLast() instanceof BosonogaParser.ReturnStatementContext)) {
+            code += INDENT + "runtime::fail(" + where(next(context.block().getStop()))
+                    + ", \"the program ended without a return\");\n";
+        }
+        gfxSections.put(name, code);
     }
 
     // As in the C bosonoga, a module has a scope of its own, inside the scope
@@ -246,8 +292,13 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         if (token.getType() == BosonogaParser.VAR) {
             throw error(token, "a var is a variable of a block, and a top-level array is a val");
         }
-        if (main != null) {
+        if (hasConsoleMain) {
             throw error(token, "expected const, def, val or end of file, got %s".formatted(shown(token)));
+        }
+        if (isGfx) {
+            throw error(token, ("expected const, def, val, gfx_init, gfx_frame, gfx_cleanup, "
+                    + "gfx_key_down or gfx_main, got %s")
+                    .formatted(shown(token)));
         }
         throw error(token, ("expected const, def, val, %sbosonoga_main, gfx_init, gfx_frame, gfx_cleanup, "
                 + "gfx_key_down or gfx_main, got %s").formatted(hasGlobal ? "" : "bosonoga_global, ", shown(token)));
@@ -260,9 +311,10 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         // As in the C parser, a const holds a literal, not a reference to a
         // variable of bosonoga_global. Resolve the value first so that name,
         // visibility and ownership errors keep their usual precedence.
-        if (context.value() instanceof BosonogaParser.NameValueContext named
+        if (context.value() instanceof BosonogaParser.GfxValueContext
+                || context.value() instanceof BosonogaParser.NameValueContext named
                 && find(named.NAME().getSymbol()).isPresent()) {
-            throw error(named.getStart(), "a constant needs a literal or an earlier constant");
+            throw error(context.value().getStart(), "a constant needs a literal or an earlier constant");
         }
         constants.put(name.getText(), new Constant(name, value));
         declareHome(name);
@@ -351,6 +403,22 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         return "runtime::info(std::cout, "
                 + readingNew(() -> values.stream().map(value -> expression(value).cpp()).collect(joining(", ")))
                 + ");";
+    }
+
+    @Override
+    public String visitGfxStatement(BosonogaParser.GfxStatementContext context) {
+        return new GfxStatements(this::expect, this::gfxText, this::next, this::where, this::error)
+                .emit(context, currentFunction == null && section.equals("gfx_frame"),
+                        currentFunction == null && section.equals("gfx_main"));
+    }
+
+    private Expression gfxText(BosonogaParser.ValueContext value) {
+        readsNew = true;
+        try {
+            return expression(value);
+        } finally {
+            readsNew = false;
+        }
     }
 
     @Override
@@ -628,7 +696,12 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
                     throw error(value.getStart(), ("the values of a row are literals, like 7_i32, so a row "
                             + "cannot have '%s'").formatted(named.getText()));
                 }
-                cells.add(expect(value, columns.get(i), "a row of '%s'".formatted(name)).cpp());
+                inLiteralRow = true;
+                try {
+                    cells.add(expect(value, columns.get(i), "a row of '%s'".formatted(name)).cpp());
+                } finally {
+                    inLiteralRow = false;
+                }
             }
             if (values.size() > columns.size()) {
                 throw error(start, "'%s' has rows of %s, but this row has more".formatted(name, types));
@@ -1018,7 +1091,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         if (owner.isPresent()) {
             throw leavesNew(start, owner.get());
         }
-        if (inGlobal) {
+        if (currentFunction == null && !section.equals("bosonoga_main") && !section.equals("gfx_main")) {
             throw error(start, "only bosonoga_main and gfx_main can return");
         }
         if (currentFunction == null) {
@@ -1630,6 +1703,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     private static boolean isValueStart(Token token) {
         var type = CutToken.original(token).getType();
         return type == BosonogaParser.NUMBER || type == BosonogaParser.STRING || type == BosonogaParser.NAME
+                || type == BosonogaParser.GFX_DELTA_TIME || type == BosonogaParser.GFX_KEY
                 || type == BosonogaParser.TRUE_BOOL || type == BosonogaParser.FALSE_BOOL
                 || type == BosonogaParser.SHIFT_BIT || type == BosonogaParser.RESULT_NAME;
     }
@@ -1686,6 +1760,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
 
     private Expression expression(BosonogaParser.ValueContext value) {
         return switch (value) {
+            case BosonogaParser.GfxValueContext special -> gfxValue(special.special);
             case BosonogaParser.NumberValueContext number -> number(number.NUMBER().getSymbol());
             case BosonogaParser.ShiftValueContext shift -> new Expression(
                     "std::uint32_t{1U << " + parseShiftBit(shift.SHIFT_BIT().getSymbol()) + "}",
@@ -1700,6 +1775,15 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             case BosonogaParser.CutValueContext ignored -> throw cut;
             default -> throw new IllegalStateException("no C++ for the value " + value.getText());
         };
+    }
+
+    private Expression gfxValue(Token token) {
+        var delta = token.getType() == BosonogaParser.GFX_DELTA_TIME;
+        var required = delta ? "gfx_frame" : "gfx_key_down";
+        if (currentFunction != null || inLiteralRow || !section.equals(required)) {
+            throw error(token, token.getText() + " can only be in " + required);
+        }
+        return new Expression("gfx_context.scene." + (delta ? "delta_time" : "key"), delta ? Kind.F32 : Kind.INPUT_KEY);
     }
 
     // As in the C bosonoga, a str has no escape sequences, so it is the text

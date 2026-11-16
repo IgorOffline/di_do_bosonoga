@@ -17,9 +17,54 @@ void check(bool passed, const char *message) {
     throw std::runtime_error(message);
   }
 }
+
+void gfx_scene_checks() {
+  namespace runtime = bosonoga::runtime;
+  namespace gfx = runtime::gfx;
+  gfx::Scene scene;
+  scene.delta_time = 0.25F;
+  scene.key = runtime::InputKey{std::uint32_t{32}};
+  scene.reset(runtime::Color{0x123456U});
+  scene.rectangle(1.0F, 2.0F, -1.0F, 0.0F, runtime::Color{1});
+  scene.hex(0.0F, 0.0F, 0.0F, runtime::Color{2});
+  scene.circle(0.0F, 0.0F, -1.0F, runtime::Color{3});
+  scene.hex(3.0F, 4.0F, 5.0F, runtime::Color{4});
+  scene.draw_icon(1.0F, 2.0F, runtime::Icon{7, "unused", "unused"}, 0.5F, runtime::Color{5});
+  scene.draw_text(0.0F, 0.0F, runtime::Font{0, "unused", "unused"}, 0.0F, runtime::Color{6}, 1, "skip");
+  scene.draw_text(1.0F, 2.0F, runtime::Font{3, "unused", "unused"}, 12.0F, runtime::Color{7}, 66, "one");
+  scene.draw_text(1.0F, 2.0F, runtime::Font{3, "unused", "unused"}, 12.0F, runtime::Color{7}, 66, "two");
+  check(scene.shapes.size() == 5 && scene.shapes[0].kind == gfx::ShapeKind::rectangle
+            && scene.shapes[1].kind == gfx::ShapeKind::hex && scene.shapes[2].icon == 7,
+        "gfx scene skip rules or draw order differ");
+  check(scene.text == "onetwo" && scene.shapes[4].text == 3 && scene.shapes[4].text_length == 3
+            && scene.shapes[3].font == 3 && scene.shapes[3].align == 66,
+        "gfx text storage or alignment differs");
+  const runtime::Where first{"gfx.bosonoga", 1, 1}, second{"gfx.bosonoga", 2, 3};
+  check(gfx::Text().part(first, std::string(1024, 'x')).take().size() == 1024, "gfx text limit is too small");
+  try {
+    gfx::Text().part(first, std::string(1024, 'x')).part(second, 1);
+    check(false, "gfx text limit was not checked per part");
+  } catch (const runtime::Error &error) {
+    check(std::string(error.what()) == "gfx.bosonoga:2:3: gfx_draw_text is longer than 1024 bytes",
+          "gfx text error location differs");
+  }
+  scene.clear(runtime::Color{9});
+  check(scene.clear_color.rgb == 9 && scene.shapes.size() == 5, "gfx_clear discarded shapes");
+  scene.reset(runtime::Color{10});
+  check(scene.shapes.empty() && scene.text.empty() && scene.clear_color.rgb == 10
+            && scene.delta_time == 0.25F && scene.key == runtime::InputKey{"SAPP_KEYCODE_SPACE"},
+        "gfx frame reset or key codes differ");
+  check(runtime::printed(runtime::InputKey{std::uint32_t{9999}}) == "?", "unknown key code needs ?");
+  for (const auto &key : runtime::key_names) {
+    check(runtime::InputKey{key.name} == runtime::InputKey{key.code}
+              && runtime::printed(runtime::InputKey{key.code}) == key.name,
+          "gfx key code/name table differs");
+  }
+}
 }  // namespace
 
 int main(int argc, char **argv) {
+  gfx_scene_checks();
   namespace runtime = bosonoga::runtime;
   // An optional installed C locale also exercises comma-decimal formatting.
   if (argc > 1) {

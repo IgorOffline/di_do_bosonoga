@@ -40,6 +40,7 @@ public final class GeneratorTest {
     }
 
     public static void main(String[] args) {
+        failures += GfxGeneratorTest.run();
         infoIsAFunctionOfTheProgram();
         numbersOfEveryKind();
         numberMustFitItsKind();

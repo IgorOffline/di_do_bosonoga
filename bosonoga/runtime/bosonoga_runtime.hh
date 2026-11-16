@@ -17,5 +17,6 @@
 #include "bosonoga_number.hh"
 #include "bosonoga_text.hh"
 #include "bosonoga_value.hh"
+#include "bosonoga_gfx_scene.hh"
 
 #endif

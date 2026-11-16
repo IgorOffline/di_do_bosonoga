@@ -135,6 +135,10 @@ find test -name '*.bosonoga' ! -name '*.xp.bosonoga' -print0 \
   --sources-from build/bosonoga/sources.list
 # bosonoga lets a variable be compared with, or set to, itself, which clang
 # would otherwise reject.
+for source in build/bosonoga/gfx_checks/*.cc; do
+  # shellcheck disable=SC2086
+  $CXX $CXXFLAGS -Wno-tautological-compare -Wno-self-assign -I runtime -c "$source" -o "$source.o"
+done
 # shellcheck disable=SC2086
 $CXX $CXXFLAGS -I runtime test/runtime.cc -o build/runtime_test
 ./build/runtime_test

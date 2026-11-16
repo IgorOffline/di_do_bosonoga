@@ -154,9 +154,7 @@ final class BosonogaErrorStrategy extends DefaultErrorStrategy {
 
     // A word that is not reserved, as the C bosonoga takes the name of a variable.
     private static boolean isName(Token token) {
-        var text = CutToken.original(token).getText();
-        return CutToken.original(token).getType() == BosonogaParser.NAME && !text.startsWith("gfx_")
-                && !text.equals("expect");
+        return CutToken.original(token).getType() == BosonogaParser.NAME;
     }
 
     // Where the C bosonoga takes the name of something new.
