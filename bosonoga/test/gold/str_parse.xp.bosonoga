@@ -1,0 +1,7 @@
+expect 12 12
+expect -42 -42
+expect 007 -1
+expect 18446744073709551615 -1
+expect x1 -1
+expect true 18446744073709551615
+expect false 0

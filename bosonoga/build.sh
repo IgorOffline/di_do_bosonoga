@@ -106,7 +106,8 @@ if [ ! -f "$ANTLR/built" ]; then
   touch "$ANTLR/built"
 fi
 
-rm -rf build/bosonoga build/main
+# The programs write their files in build/scratch, the dir scratch of regina.ini.
+rm -rf build/bosonoga build/main build/scratch
 mkdir -p build/bosonoga/generated build/bosonoga/classes build/bosonoga/test_classes \
   build/bosonoga/cc
 
@@ -123,14 +124,21 @@ mkdir -p build/bosonoga/generated build/bosonoga/classes build/bosonoga/test_cla
 "$JAVA" -cp "build/bosonoga/test_classes:build/bosonoga/classes:$RUNTIME" \
   bosonoga.generator.GeneratorTest
 
-# Each test/<tier>/NAME.bosonoga becomes build/bosonoga/cc/NAME.cc, which main.cc
-# runs as bosonoga::program::NAME, and checks against NAME.xp.bosonoga if there is one.
-# shellcheck disable=SC2046
+# Each test/<tier>/NAME.bosonoga that no file imports, and that is not a
+# NAME.mod.bosonoga, becomes build/bosonoga/cc/NAME.cc, which main.cc runs as
+# bosonoga::program::NAME and checks against NAME.xp.bosonoga if there is one.
+# The list is NUL-separated so that paths keep their whitespace, and is read in
+# one run so that two programs of one name fail.
+find test -name '*.bosonoga' ! -name '*.xp.bosonoga' -print0 \
+  | sort -z > build/bosonoga/sources.list
 "$JAVA" -cp "build/bosonoga/classes:$RUNTIME" bosonoga.generator.Main build/bosonoga/cc \
-  $(find test -name '*.bosonoga' ! -name '*.xp.bosonoga' | sort)
+  --sources-from build/bosonoga/sources.list
 # bosonoga lets a variable be compared with, or set to, itself, which clang
 # would otherwise reject.
 # shellcheck disable=SC2086
-$CXX $CXXFLAGS -Wno-tautological-compare -Wno-self-assign -I runtime \
+$CXX $CXXFLAGS -I runtime test/runtime.cc -o build/runtime_test
+./build/runtime_test
+# shellcheck disable=SC2086
+$CXX $CXXFLAGS -Wno-tautological-compare -Wno-self-assign -I runtime -I build/bosonoga/cc \
   main.cc build/bosonoga/cc/*.cc -o build/main
 ./build/main

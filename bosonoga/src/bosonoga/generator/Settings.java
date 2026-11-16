@@ -9,8 +9,7 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.antlr.v4.runtime.CharStreams;
-import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.IntStream;
 
 // What regina.ini says, read as the C bosonoga reads it, before the program is
 // generated: its colors and globals are then literals of the program.
@@ -47,8 +46,8 @@ final class Settings {
     final Map<String, Asset> dirs;
 
     private Settings(KeyFile file, String shown, Path directory) {
-        name = text(file, shown, GROUP_META, "name");
-        version = text(file, shown, GROUP_META, "version");
+        name = text(file, GROUP_META, "name");
+        version = text(file, GROUP_META, "version");
         var hasGfx = file.hasGroup(GROUP_GFX);
         gfxWidth = hasGfx ? positive(file, shown, "width") : 0;
         gfxHeight = hasGfx ? positive(file, shown, "height") : 0;
@@ -91,7 +90,7 @@ final class Settings {
     }
 
     // GKeyFile keeps the quotes around a value.
-    private static String text(KeyFile file, String shown, String group, String key) {
+    private static String text(KeyFile file, String group, String key) {
         var value = file.string(group, key);
         if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
             return value.substring(1, value.length() - 1);
@@ -113,9 +112,10 @@ final class Settings {
             return colors;
         }
         for (var key : file.keys(GROUP_COLOR)) {
-            var text = text(file, shown, GROUP_COLOR, key);
+            var text = text(file, GROUP_COLOR, key);
             if (text.length() != COLOR_HEX_LENGTH
-                    || !text.chars().allMatch(digit -> (digit >= '0' && digit <= '9') || (digit >= 'A' && digit <= 'F'))) {
+                    || !text.chars().allMatch(digit -> (digit >= '0' && digit <= '9')
+                    || (digit >= 'A' && digit <= 'F'))) {
                 throw new BosonogaException("%s: %s must be %d uppercase hex digits"
                         .formatted(shown, key, COLOR_HEX_LENGTH));
             }
@@ -131,7 +131,7 @@ final class Settings {
             return globals;
         }
         for (var key : file.keys(GROUP_GLOBAL)) {
-            var number = number(text(file, shown, GROUP_GLOBAL, key));
+            var number = number(text(file, GROUP_GLOBAL, key));
             if (number == null) {
                 throw new BosonogaException("%s: %s must be one number, like 100_i32 or 100d0_f32"
                         .formatted(shown, key));
@@ -142,16 +142,12 @@ final class Settings {
     }
 
     private static Expression number(String text) {
-        var lexer = new BosonogaLexer(CharStreams.fromString(text));
-        lexer.removeErrorListeners();
-        lexer.addErrorListener(ThrowingErrorListener.INSTANCE);
         try {
-            var tokens = lexer.getAllTokens();
+            var tokens = Tokens.lexer(text, IntStream.UNKNOWN_SOURCE_NAME).getAllTokens();
             if (tokens.size() != 1 || tokens.getFirst().getType() != BosonogaLexer.NUMBER) {
                 return null;
             }
-            Token number = tokens.getFirst();
-            return NumberLiteral.parse(number.getText());
+            return NumberLiteral.parse(tokens.getFirst().getText());
         } catch (BosonogaException | NumberLiteral.Invalid exception) {
             return null;
         }
@@ -163,7 +159,7 @@ final class Settings {
             return keys;
         }
         for (var key : file.keys(GROUP_KEY)) {
-            var name = text(file, shown, GROUP_KEY, key);
+            var name = text(file, GROUP_KEY, key);
             if (!InputKeys.NAMES.contains(name)) {
                 throw new BosonogaException(("%s: %s must name a key, like SAPP_KEYCODE_W, SAPP_KEYCODE_0 or "
                         + "SAPP_KEYCODE_ESCAPE").formatted(shown, key));
@@ -182,13 +178,59 @@ final class Settings {
             return assets;
         }
         for (var key : file.keys(group)) {
-            var text = text(file, shown, group, key);
+            var text = text(file, group, key);
             if (text.isEmpty()) {
                 throw new BosonogaException("%s: %s must name %s, like \"%s\"".formatted(shown, key, what, example));
             }
-            var path = Path.of(text).isAbsolute() ? text : directory.resolve(text).toString();
+            var path = text.startsWith("/") ? text : buildFilename(directory.toString(), text);
             assets.put(key, new Asset(text, path));
         }
         return Collections.unmodifiableMap(assets);
+    }
+
+    // As g_build_filename of two elements, which keeps the separators that
+    // start the first and end the last, and puts one between them.
+    static String buildFilename(String first, String second) {
+        var result = new StringBuilder();
+        var isFirst = true;
+        var hasLeading = false;
+        String single = null;
+        var trailing = "";
+        for (var element : new String[] {first, second}) {
+            if (element.isEmpty()) {
+                continue;
+            }
+            var start = 0;
+            while (start < element.length() && element.charAt(start) == '/') {
+                start++;
+            }
+            var end = element.length();
+            while (end > start && element.charAt(end - 1) == '/') {
+                end--;
+            }
+            var trailingStart = end;
+            while (trailingStart > 0 && element.charAt(trailingStart - 1) == '/') {
+                trailingStart--;
+            }
+            trailing = element.substring(trailingStart);
+            if (!hasLeading) {
+                if (trailingStart <= start) {
+                    single = element;
+                }
+                result.append(element, 0, start);
+                hasLeading = true;
+            } else {
+                single = null;
+            }
+            if (end == start) {
+                continue;
+            }
+            if (!isFirst) {
+                result.append('/');
+            }
+            result.append(element, start, end);
+            isFirst = false;
+        }
+        return single != null ? single : result.append(trailing).toString();
     }
 }

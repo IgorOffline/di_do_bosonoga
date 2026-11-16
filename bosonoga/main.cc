@@ -9,28 +9,8 @@
 #include <string>
 #include <vector>
 
-// Each test/<tier>/NAME.bosonoga is generated into this function.
-namespace bosonoga::program {
-int accumulate();
-int arithmetic();
-int array();
-int boolean();
-int branch();
-int compare();
-int convert();
-int function();
-int global();
-int info();
-int join();
-int loop();
-int print();
-int recursion();
-int results();
-int setting();
-int shift();
-int text();
-int with_len_col_zeroed();
-}  // namespace bosonoga::program
+#include "programs.hh"
+#include "test/expected_output.hh"
 
 namespace {
 
@@ -41,47 +21,13 @@ struct Program {
 
 struct Tier {
   const char *name;
+  const char *directory;
   std::vector<Program> programs;
 };
 
-struct Expected {
-  bool exists = false;
-  std::string printed;
-  std::string problem;
-};
-
-// Each line that is not a comment is expect, a space, and a printed line.
-Expected read_expected(const std::string &path) {
-  Expected expected;
-  std::ifstream file(path);
-  if (!file) {
-    return expected;
-  }
-  expected.exists = true;
-  const std::string word = "expect";
-  std::string line;
-  for (std::size_t number = 1; std::getline(file, line); ++number) {
-    const std::size_t start = line.find_first_not_of(" \t");
-    if (start == std::string::npos || line.compare(start, 2, "//") == 0) {
-      continue;
-    }
-    if (line.compare(0, word.size(), word) != 0 ||
-        (line.size() > word.size() && line[word.size()] != ' ')) {
-      expected.problem = path + ":" + std::to_string(number) +
-                         ": a line that is not a comment starts with expect";
-      return expected;
-    }
-    if (line.size() > word.size()) {
-      expected.printed += line.substr(word.size() + 1);
-    }
-    expected.printed += '\n';
-  }
-  return expected;
-}
-
 // What a program prints is shown only when it fails.
-bool passes(const char *tier, const Program &program) {
-  const std::string stem = std::string("test/") + tier + '/' + program.name;
+bool passes(const Tier &tier, const Program &program) {
+  const std::string stem = std::string(tier.directory) + '/' + program.name;
   std::ostringstream output;
   std::streambuf *const shown = std::cout.rdbuf(output.rdbuf());
   const int status = program.bosonoga_main();
@@ -91,7 +37,7 @@ bool passes(const char *tier, const Program &program) {
               << output.str();
     return false;
   }
-  const Expected expected = read_expected(stem + ".xp.bosonoga");
+  const auto expected = bosonoga::tests::read_expected(stem + ".xp.bosonoga");
   if (!expected.problem.empty()) {
     std::cerr << "FAIL " << stem << ".bosonoga: " << expected.problem << '\n';
     return false;
@@ -107,37 +53,7 @@ bool passes(const char *tier, const Program &program) {
 }  // namespace
 
 int main() {
-  namespace program = bosonoga::program;
-  const Tier tiers[] = {
-      {"silver",
-       {
-           {"arithmetic", program::arithmetic},
-           {"array", program::array},
-           {"boolean", program::boolean},
-           {"branch", program::branch},
-           {"compare", program::compare},
-           {"function", program::function},
-           {"info", program::info},
-           {"join", program::join},
-           {"loop", program::loop},
-           {"print", program::print},
-           {"setting", program::setting},
-           {"text", program::text},
-       }},
-      {"gold",
-       {
-           {"accumulate", program::accumulate},
-           {"convert", program::convert},
-           {"global", program::global},
-           {"recursion", program::recursion},
-           {"results", program::results},
-           {"shift", program::shift},
-       }},
-      {"platinum",
-       {
-           {"with_len_col_zeroed", program::with_len_col_zeroed},
-       }},
-  };
+  const std::vector<Tier> tiers = BOSONOGA_TEST_TIERS;
 
   std::size_t passed = 0;
   std::size_t total = 0;
@@ -145,9 +61,9 @@ int main() {
   for (const Tier &tier : tiers) {
     std::size_t tier_passed = 0;
     for (const Program &each : tier.programs) {
-      tier_passed += passes(tier.name, each) ? 1 : 0;
+      tier_passed += passes(tier, each) ? 1 : 0;
     }
-    counts << (&tier == tiers ? "" : " ") << tier.name << ' ' << tier_passed
+    counts << (&tier == &tiers.front() ? "" : " ") << tier.name << ' ' << tier_passed
            << '/' << tier.programs.size();
     passed += tier_passed;
     total += tier.programs.size();

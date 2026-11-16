@@ -1,0 +1,3 @@
+// unit.mod.bosonoga, a module of shape.mod.bosonoga
+
+pub const unit_count is 1_i32

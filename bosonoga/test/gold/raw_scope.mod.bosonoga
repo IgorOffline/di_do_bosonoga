@@ -1,0 +1,3 @@
+io_raw_import "constant_prefix.mod.bosonoga"_str
+7_i32
+pub const public_limit is imported_limit

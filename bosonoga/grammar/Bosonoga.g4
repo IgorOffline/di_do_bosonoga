@@ -1,9 +1,38 @@
 grammar Bosonoga;
 
+// ImportingTokenSource puts FILE_START/FILE_END around a module's items, and
+// RAW_START before those of a raw import, whose end is transparent. CUT and
+// VALUE_CUT are where Generator cuts a program at its syntax error, so that
+// the errors before it come first, as the C bosonoga finds them.
+tokens { FILE_START, FILE_END, RAW_START, CUT, VALUE_CUT }
+
 // The generator checks that there is one bosonoga_main, and that
 // bosonoga_global is before it, as their errors name what a program needs.
 program
-    : (constantDeclaration | functionDefinition | topValDeclaration | globalSection | mainSection)* EOF
+    : item* EOF
+    ;
+
+// Other is what cannot start an item, for the error of the C bosonoga.
+item
+    : constantDeclaration
+    | functionDefinition
+    | topValDeclaration
+    | globalSection
+    | mainSection
+    | fileItem
+    | pubItem
+    | CUT
+    | other=~(CONST | DEF | VAL | BOSONOGA_GLOBAL | BOSONOGA_MAIN | MOD | IO_RAW_IMPORT | PUB
+        | FILE_START | FILE_END | CUT)
+    ;
+
+// Without FILE_START or RAW_START, the file is not read; the generator says why.
+fileItem
+    : keyword=(MOD | IO_RAW_IMPORT) value? (FILE_START item* FILE_END | RAW_START)?
+    ;
+
+pubItem
+    : PUB (constantDeclaration | functionDefinition | topValDeclaration)?
     ;
 
 // The generator checks that it is an array, as in the C bosonoga.
@@ -14,7 +43,7 @@ topValDeclaration
 // The generator checks what follows, as in the C bosonoga, a parameter has its
 // type at the end of its name, and a function must say what it returns.
 functionDefinition
-    : DEF name=NAME parameters+=NAME* (RET results+=NUMBER+ | RET_VOID)? block
+    : DEF name=NAME parameters+=(NAME | RESULT_NAME)* (RET results+=(NUMBER | INDEXED_TYPE)+ | RET_VOID)? block
     ;
 
 constantDeclaration
@@ -31,56 +60,84 @@ mainSection
     ;
 
 block
+@init { BlockNesting.check(this); }
     : DI statement+ DO
+    | CUT
     ;
 
 statement
     : INFO value+                                                  # infoStatement
-    | declaration=(VAR | VAL) NAME IS initializer                  # declareStatement
-    | SET NAME setter                                              # setStatement
+    | declaration=(VAR | VAL) NAME (IS initializer | CUT)          # declareStatement
+    | SET NAME (setter | CUT)                                      # setStatement
     | IF condition block (ELSE IF condition block)* (ELSE block)?  # ifStatement
     | WHILE condition block                                        # whileStatement
     | LOOP_COUNT (WITH NAME)? block                                # countStatement
     | BREAK                                                        # breakStatement
     | CONTINUE                                                     # continueStatement
     | SLEEP_MS value                                               # sleepStatement
-    | CALL callee=NAME arguments? (WITH RET binding+ block)?       # callStatement
+    | CALL callee=NAME arguments? taking?                          # callStatement
+    | given=(IO_READ | IO_WRITE | IO_MODIFIED | XML_CHILD | XML_ATTRIBUTE | STR_PARSE) value*
+        taking?                                                    # givenStatement
     | UNSET NAME                                                   # unsetStatement
     | NIHIL                                                        # nihilStatement
     | RETURN (status=(EXIT_SUCCESS | EXIT_FAILURE) | value*)       # returnStatement
+    | PUB statement?                                               # pubStatement
+    | CUT                                                          # cutStatement
     ;
 
-// A value that a call returns, taken for the block of the call.
+// The one value of a call that var and set ... to take, with ret 0_i32.
+takeOne
+    : WITH (RET (result=(NUMBER | INDEXED_TYPE) | CUT)? | CUT)?
+    | CUT
+    ;
+
+// The values that a call returns, or that a statement such as xml_child
+// gives, taken for its block, with ret 0_bool as done di ... do.
+taking
+    : WITH (RET (binding+ block? | CUT)? | CUT)?
+    ;
+
 binding
-    : NUMBER AS NAME
+    : position=(NUMBER | INDEXED_TYPE) (AS NAME? | CUT)?
     ;
 
 initializer
     : operation                                          # operationInitializer
-    | callee=NAME arguments? WITH RET result=NUMBER      # callInitializer
-    | NEW type=NAME OF value+                            # newInitializer
-    | ARRAY types+=NUMBER+ (WITH_LEN_COL value | rows)   # arrayInitializer
+    | callee=NAME arguments? takeOne?                    # callInitializer
+    | NEW type=NAME heads+=value* (OF values+=value*)?   # newInitializer
+    | ARRAY types+=(NUMBER | INDEXED_TYPE)+ (WITH_LEN_COL value | rows | CUT)  # arrayInitializer
     | arrayLength                                        # lengthInitializer
-    | value (SHIFT_OR value)*                            # valueInitializer
+    | value orFlag*                                      # valueInitializer
     ;
 
 setter
-    : TO callee=NAME arguments? WITH RET result=NUMBER                               # callSetter
-    | TO arrayLength                                                               # lengthSetter
-    | AT index=value TO value+                                                     # rowSetter
-    | TO value+                                                                    # toSetter
+    : TO assigned                                                                  # assignSetter
+    | AT index=value TO value*                                                     # rowSetter
+    | TO_JOIN value*                                                                 # joinSetter
     | accumulation=(TO_ADD | TO_SUBTRACT | TO_MULTIPLY | TO_DIVIDE | TO_MOD) value+  # accumulationSetter
     | operation                                                                    # operationSetter
     ;
 
+// What set ... to sets, read after to, as the C bosonoga does.
+assigned
+    : callee=NAME arguments? takeOne?  # callSetter
+    | arrayLength                      # lengthSetter
+    | value+                           # toSetter
+    ;
+
 // The values of a function after of, or the index of an array after at.
 arguments
-    : OF value+
-    | AT value+
+    : OF value*
+    | AT value*
     ;
 
 rows
-    : DI row+ DO
+    : DI row+ (DO | CUT)
+    ;
+
+// Flags joined to the flags before, as in read_flag shift_or write_flag.
+orFlag
+    : SHIFT_OR value?
     ;
 
 row
@@ -95,13 +152,14 @@ arrayLength
 // A conversion or a math function, each with one or two values.
 operation
     : function=(TO_I32 | TO_I64 | TO_U32 | TO_U64 | TO_F32 | TO_F64
-        | MATH_TO_ABS | MATH_TO_MIN | MATH_TO_MAX
+        | MATH_TO_ABS
         | MATH_TO_SIN | MATH_TO_COS | MATH_TO_TAN
-        | MATH_TO_ASIN | MATH_TO_ACOS | MATH_TO_ATAN2
-        | MATH_TO_SQRT | MATH_TO_POW | MATH_TO_HYPOT
+        | MATH_TO_ASIN | MATH_TO_ACOS
+        | MATH_TO_SQRT
         | MATH_TO_FLOOR | MATH_TO_CEIL | MATH_TO_ROUND
         | MATH_TO_LOG | MATH_TO_LOG10 | MATH_TO_LOG1P
-        | MATH_TO_EXP | MATH_TO_EXPM1) value+
+        | MATH_TO_EXP | MATH_TO_EXPM1) value
+    | function=(MATH_TO_MIN | MATH_TO_MAX | MATH_TO_ATAN2 | MATH_TO_POW | MATH_TO_HYPOT) value value
     ;
 
 // As in the C bosonoga, and binds tighter than or.
@@ -125,9 +183,14 @@ value
     | (TRUE_BOOL | FALSE_BOOL)  # boolValue
     | STRING                    # stringValue
     | NAME                      # nameValue
+    | RESULT_NAME               # resultValue
+    | VALUE_CUT                 # cutValue
     ;
 
 BOSONOGA_MAIN   : 'bosonoga_main' ;
+MOD           : 'mod' ;
+IO_RAW_IMPORT : 'io_raw_import' ;
+PUB           : 'pub' ;
 BOSONOGA_GLOBAL : 'bosonoga_global' ;
 DI            : 'di' ;
 DO            : 'do' ;
@@ -155,6 +218,7 @@ FALSE_BOOL    : 'false_bool' ;
 DEF           : 'def' ;
 RET           : 'ret' ;
 RET_VOID      : 'ret_void' ;
+EXPECT        : 'expect' ;
 CALL          : 'call' ;
 OF            : 'of' ;
 AS            : 'as' ;
@@ -174,6 +238,14 @@ TO_SUBTRACT : 'to_subtract' ;
 TO_MULTIPLY : 'to_multiply' ;
 TO_DIVIDE   : 'to_divide' ;
 TO_MOD      : 'to_mod' ;
+TO_JOIN     : 'to_join' ;
+
+IO_READ       : 'io_read' ;
+IO_WRITE      : 'io_write' ;
+IO_MODIFIED   : 'io_modified' ;
+XML_CHILD     : 'xml_child' ;
+XML_ATTRIBUTE : 'xml_attribute' ;
+STR_PARSE     : 'str_parse' ;
 
 TO_I32 : 'to_i32' ;
 TO_I64 : 'to_i64' ;
@@ -226,27 +298,47 @@ LOOP_COUNT
     : 'to_' DIGIT+
     ;
 
-// The generator checks the text and the suffix, so that its errors are those of
-// the C bosonoga.
+// Only LF ends the line of a string, so a CR is its text. The generator checks
+// the text and the suffix, for the errors of the C bosonoga.
 STRING
-    : '"' ~["\r\n]* '"' [A-Za-z0-9_]*
+    : '"' (~["\n\\] | '\\' ~[\n])* '"' [A-Za-z0-9_]*
     ;
 
-// The suffix is checked by the generator, so that its errors can name the types.
+// Is an error, which ImportingTokenSource throws as it reads it.
+UNTERMINATED_STRING
+    : '"' (~["\n\\] | '\\' ~[\n])* '\\'?
+    ;
+
+// An index with a type that is not a number, as 1_str. With a number type, as
+// 0_i32, it is a NUMBER, which is both a literal and an indexed type.
+INDEXED_TYPE
+    : DIGIT+ '_' ('flags' | 'color' | 'str' | 'bool' | 'input_key' | 'font' | 'icon' | 'xml_str' | 'dir')
+    ;
+
+// The generator checks the text as the C bosonoga reads it: the digits, a
+// fraction after d, and the suffix, or a . that is an error.
 NUMBER
-    : '-'? DIGIT+ ('d' DIGIT+)? ('_' [A-Za-z0-9_]*)?
+    : '-'? DIGIT+ ('.' | [A-Za-z0-9_]*)
+    ;
+
+// The old ret_0 placeholders are reserved, even with more after the digit.
+// They are values only so that their use is diagnosed.
+RESULT_NAME
+    : 'ret_' DIGIT [A-Za-z0-9_]*
     ;
 
 NAME
     : [A-Za-z_] [A-Za-z0-9_]*
     ;
 
+// As in the C tokenizer, a comment ends only at LF, and g_ascii_isspace
+// includes vertical tab and form feed as token separators.
 LINE_COMMENT
-    : '//' ~[\r\n]* -> skip
+    : '//' ~[\n]* -> skip
     ;
 
 WHITESPACE
-    : [ \t\r\n]+ -> skip
+    : [ \t\r\n\u000B\u000C]+ -> skip
     ;
 
 fragment DIGIT

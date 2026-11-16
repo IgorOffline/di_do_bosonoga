@@ -20,8 +20,50 @@ final class NumberLiteral {
     private NumberLiteral() {
     }
 
+    // As the C bosonoga reads a number as it tokenizes it, which can be an index
+    // and a type, as 1_str, and not a number.
+    static void check(String text) {
+        var at = text.startsWith("-") ? 1 : 0;
+        while (at < text.length() && isDigit(text.charAt(at))) {
+            at++;
+        }
+        if (at < text.length() && text.charAt(at) == '.') {
+            throw new Invalid("the decimal separator is the letter d, as in 1d5_f32");
+        }
+        var hasFraction = false;
+        if (at < text.length() && text.charAt(at) == 'd') {
+            hasFraction = true;
+            at++;
+            if (at == text.length() || !isDigit(text.charAt(at))) {
+                throw new Invalid("expected a digit after the decimal separator d");
+            }
+            while (at < text.length() && isDigit(text.charAt(at))) {
+                at++;
+            }
+        }
+        var suffix = text.substring(at);
+        var kind = suffix.startsWith("_") ? Kind.named(suffix.substring(1)) : Optional.<Kind>empty();
+        if (kind.isEmpty()) {
+            throw new Invalid("number must have the suffix _i32, _i64, _u32, _u64, _f32 or _f64");
+        }
+        if (!kind.get().isNumber()) {
+            if (hasFraction || text.startsWith("-")) {
+                throw new Invalid("an index is digits and a type, like 1_str");
+            }
+            return;
+        }
+        parse(text);
+    }
+
+    private static boolean isDigit(char character) {
+        return character >= '0' && character <= '9';
+    }
+
     static Expression parse(String text) {
         var matcher = NUMBER.matcher(text);
+        if (!matcher.matches()) {
+            check(text);
+        }
         if (!matcher.matches()) {
             throw new IllegalStateException("not a number: " + text);
         }

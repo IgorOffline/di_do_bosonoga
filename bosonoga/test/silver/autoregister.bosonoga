@@ -1,0 +1,6 @@
+// This test has no manual entry in main.cc.
+bosonoga_main
+di
+  info "automatically registered"_str
+  return exit_success
+do

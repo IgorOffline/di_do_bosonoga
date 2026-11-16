@@ -1,0 +1,423 @@
+# Parity with archive_d: a guide for developers
+
+`bosonoga/` is a Java 25 + ANTLR 4 generator that turns `.bosonoga` programs
+into Clang C++17. `archive_d/bosonoga/` is the C11 + GLib interpreter it
+replaces. The goal is **parity**: every program that archive_d accepts, rejects
+or runs must be accepted, rejected or run the same way here, with the same
+messages, in the same order, at the same `file:line:column`, and with the
+same output and runtime errors.
+
+archive_d is the specification. When this document and archive_d disagree,
+archive_d wins; fix this document.
+
+The console language is complete up to the known gaps below. What remains is
+**gfx**: the window sections, the drawing statements and the gfx runtime. Its
+plan is in [gfx: the remaining work](#gfx-the-remaining-work).
+
+## Ground rules
+
+- **Port, don't invent.** Read archive_d's C before writing anything. Copy its
+  messages byte for byte, and check in the order it checks.
+- **No new syntax without approval.** A keyword, statement, section, value
+  word or `regina.ini` group that archive_d does not have must be proposed to
+  the project owner, with an example, before it is implemented. The plumbing
+  behind approved syntax needs no approval.
+- **No dependency manager.** No Maven or Gradle. `build.sh` uses only what is in
+  `../java/` (the one JDK 25, the ANTLR 4.13.2 source, the ANTLR 3.5.3 complete
+  jar, icu4j), and the tests are a plain-Java `main`, not JUnit. A new
+  dependency is something the owner must place in `../java/`; ask.
+- **Version 0.2.0.** Every version in the repository, the archives included, is
+  0.2.0, unless the owner bumps it.
+- **Sparse comments.** Keep only the reasons a reader cannot infer from the
+  code. Never list in a comment what the code enumerates (limits, type lists,
+  error cases): it goes stale.
+- **No binary assets here.** Fonts and icons live in the project that uses
+  them (Erminia), never in this repository. Ask before adding gfx program
+  fixtures. Compile-time gfx checks can be tested in `GeneratorTest`, which
+  needs no assets.
+- **Grow in slices.** Work in increments of roughly 7–15% of archive_d,
+  each one complete: grammar, emitter, runtime, tests, and this document.
+- **Don't edit vendored sources** (`sokol`, `fontstash`, `stb`), see
+  [Vendored code](#vendored-code).
+
+## Building and testing
+
+```sh
+./build.sh
+```
+
+`build.sh` needs `clang++` on the PATH and everything else from `../java/`. It:
+
+1. builds the ANTLR 4 runtime and tool from source into `build/antlr`, once
+   (delete that directory to rebuild them);
+2. generates the parser from `grammar/Bosonoga.g4`, compiles the generator, and
+   runs `GeneratorTest` (169 checks of generated C++ and diagnostics);
+3. finds the test programs, generates `build/bosonoga/cc/NAME.cc` for each, and
+   writes `programs.hh`, which registers them;
+4. compiles and runs `test/runtime.cc`, the native runtime checks;
+5. compiles every program with `main.cc` under `-std=c++17 -Werror` and UBSan,
+   and runs them. A passing build ends with a line such as
+   `30/30 (silver 18/18 gold 11/11 platinum 1/1)`.
+
+The generator reads `regina.ini` from the current directory, as archive_d does,
+and `build.sh` runs from `bosonoga/`. Programs write files under
+`build/scratch` (the `[dir] scratch` setting), which `build.sh` clears.
+
+### Test programs
+
+- `test/<tier>/NAME.bosonoga` is a program, in the tiers `silver`, `gold` and
+  `platinum`. It passes when `bosonoga_main` returns `exit_success`.
+- `NAME.xp.bosonoga` holds what it must print, one `expect TEXT` line per line
+  of output; `//` comments are allowed.
+- `NAME.mod.bosonoga`, and any file that another test file imports with `mod`
+  or `io_raw_import`, is support code and is not run on its own.
+- Program names are unique across all tiers. A file name that is not a C++
+  identifier is fine; `ProgramName` encodes its C++ export.
+- When a slice covers one of archive_d's own tests
+  (`archive_d/bosonoga/test/<tier>/`), copy it here **unchanged**.
+
+## How the generator is put together
+
+```
+regina.ini ──► Settings (KeyFile, InputKeys)
+                    │
+NAME.bosonoga ──► BosonogaLexer ──► ImportingTokenSource ──► BosonogaParser ──► CppEmitter ──► NAME.cc
+                   (Tokens,           splices mod and          (BosonogaError-     (Diagnostics,
+                    StringLiteral,    io_raw_import files       Strategy,           Modules,
+                    NumberLiteral)    into one token stream     ThrowingError-      SettingValues,
+                                                                Listener)           Locations, CppText,
+                                                                                    Symbols)
+                         on a syntax error, Generator replays the program cut at the error
+```
+
+| File | Responsibility |
+| --- | --- |
+| `grammar/Bosonoga.g4` | Tokens and a deliberately permissive grammar (see [Error order](#error-order-the-replay)) |
+| `Main` | Command line, `--sources-from` NUL-separated lists |
+| `TestSources`, `TestRegistry` | Which files are programs; the generated `programs.hh` |
+| `Generator` | Lexes, parses, and on a syntax error replays the program cut at the error |
+| `ImportingTokenSource` | `mod` and `io_raw_import`: reads files, splices their tokens, keeps import errors for their place |
+| `Tokens` | Making lexers and synthetic tokens, checking literals as they are lexed, showing tokens in messages |
+| `StringLiteral`, `NumberLiteral`, `Columns` | Literal checks as archive_d's tokenizer makes them; byte columns |
+| `BosonogaErrorStrategy`, `ThrowingErrorListener` | ANTLR syntax errors in archive_d's words |
+| `BlockNesting` | The block depth limit, checked before ANTLR descends |
+| `CppEmitter` | The parser of archive_d: every semantic check, in archive_d's order, and the C++ of each statement |
+| `Diagnostics` | Errors of the emitter, and how they yield to the syntax error of a replayed program |
+| `Symbols` | Variables, constants, functions and arrays as the emitter declares them |
+| `Modules` | Module scopes and `pub` visibility |
+| `SettingValues` | `color_`, `global_`, `key_`, `font_`, `icon_` and `dir_` names as literals; asset numbering |
+| `Locations` | `runtime::Where` of each runtime error, and the C++ names of the source files |
+| `CppText` | C++ text: string escapes, types, the program skeleton |
+| `Kind`, `Operation`, `Expression` | Value kinds, conversions and math functions, a C++ expression with its kind |
+| `Settings`, `KeyFile`, `InputKeys` | `regina.ini`, read and validated as archive_d's GKeyFile code does |
+| `Markup`, `Xml` | GLib's GMarkup parser, ported, for `_xml_str` literals at generate time |
+
+The runtime is header-only, under `runtime/`. Generated code includes only
+`bosonoga_runtime.hh`, which includes the rest:
+
+| Header | Contents |
+| --- | --- |
+| `bosonoga_core.hh` | `Error`, `Where`, `fail`, the call depth guard, array rows, `unset`, `sleep_ms` |
+| `bosonoga_number.hh` | Number text (with `d`), checked arithmetic, conversions, math functions, tolerant comparison |
+| `bosonoga_value.hh` | `print` of every kind, `Color`, `InputKey`, `Font`/`Icon`/`Dir`, `info` |
+| `bosonoga_text.hh` | `new str`, `new xml_str`, `to_join`, `xml_child`, `xml_attribute`, `str_parse` |
+| `bosonoga_io.hh` | `io_read`, `io_write`, `io_modified` on POSIX |
+| `bosonoga_markup.hh`, `bosonoga_letters.hh` | GMarkup with its positions, for documents that `io_read` checks |
+
+`main.cc` is the console test runner, and `test/expected_output.hh` reads the
+expectation files.
+
+### Generated C++
+
+Each program becomes a file whose `bosonoga_main()` sits in an anonymous
+namespace and is exported as `bosonoga::program::NAME()`, which catches
+`runtime::Error`, prints it, and returns `EXIT_FAILURE`. The statements of
+`bosonoga_global` come first in the same C++ function, so `bosonoga_main` sees
+its top variables. Generated names have prefixes so a bosonoga name can never
+be a C++ keyword: `v_x` (and `v2_x` when `x` is declared again after `unset`),
+`f_double_fn`, `a_task`, `loop_N`, `result_N`, and `source`, `source_1`… for
+the files that runtime errors name.
+
+## Where archive_d's code lives here
+
+| archive_d | Here |
+| --- | --- |
+| `src/tokenizer.c` | Lexer rules in the grammar; `Tokens.checkLiteral`, `StringLiteral`, `NumberLiteral`, `Columns` |
+| `src/parser/support.c` (`bosonoga_advance`, reserved words, token display) | `ImportingTokenSource`; reserved words are grammar tokens; `Tokens.shown` |
+| `src/parser/program.c` | `CppEmitter.items`, `visitProgram`; `ImportingTokenSource` for files |
+| `src/parser/statement.c` | `CppEmitter.visit*Statement`, `BlockNesting` |
+| `src/parser/value.c`, `scope.c` | `CppEmitter.expression`, `read`, `declare`, `find`, `checkNewName`; `Modules` |
+| `src/parser/constant.c`, `assignment.c` | `declareConstant`, `visitDeclareStatement`, `visitSetStatement` |
+| `src/parser/function.c`, `call.c` | `defineFunction`, `visitCallStatement`, `call`, `takenResult`, `bindings`, `taken` |
+| `src/parser/array.c` | `defineArray`, `varArray`, `rows`, `rowWrite`, `length` |
+| `src/parser/condition.c`, `control.c` | `visitCondition`, `visitComparison`, `comparison`; `if`, loops, `break`/`continue` |
+| `src/parser/conversion.c` | `CppEmitter.operation`, `Operation` |
+| `src/parser/io.c` | `visitGivenStatement`, `gives` |
+| `src/settings.c`, `src/key.c` | `Settings`, `KeyFile`, `InputKeys` |
+| `src/xml.c` | `Xml`, `Markup` (generate time); `bosonoga_text.hh` (run time) |
+| `src/io.c` | `bosonoga_io.hh` |
+| `src/arithmetic.c`, `math_functions.c`, `value.c` | `bosonoga_number.hh`, `bosonoga_value.hh` |
+| `src/execute.c`, `interpreter.c` | The generated C++ and the runtime headers |
+| `src/test_runner.c`, `test/main.c` | `main.cc`, `TestSources`, `TestRegistry`, `expected_output.hh` |
+| `src/gfx.c`, `gfx_vendor.c`, `include/bosonoga/gfx.h` | Not ported yet |
+| `include/bosonoga/parser.h` | Its grammar comment is the reference for the whole language |
+
+## Error order: the replay
+
+This is the mechanism to understand before changing the grammar or the
+emitter.
+
+archive_d parses in a single pass and stops at the first error, whatever kind
+it is. ANTLR parses the whole program first, so a syntax error late in a file
+would hide a semantic error earlier in it. The generator therefore does this:
+
+1. If parsing throws a `SyntaxFailure`, `Generator` takes the tokens before the
+   error, appends a `CUT` (or `VALUE_CUT` where a value was expected), closes
+   every open block and file with synthetic `do` and `FILE_END` tokens, and
+   parses again. It tries the cut at the error token first, then at the start
+   of its statement or item.
+2. `CppEmitter` runs over the cut program. Any error it finds before the cut is
+   the one archive_d would report, and wins.
+3. Reaching a `CUT` throws the original syntax error. `Diagnostics.error`
+   returns the syntax error for any token after the cut, and
+   `Diagnostics.errorAtCut` is for errors archive_d reports at the cut token
+   itself.
+
+Consequences for new code:
+
+- **Keep the grammar permissive.** Where archive_d gives a specific message,
+  let the grammar accept the input (optional parts, `value*`, `CUT`
+  alternatives) and let the emitter throw the message. The grammar only
+  rejects what archive_d rejects in the same words.
+- **Handle `CUT` in every new rule** that can contain one (`throw cut`), and
+  `CutValueContext` wherever values are read (`withoutCut`).
+- **Check in archive_d's order**: names before initializers, each binding
+  before the next, a value's own errors before surplus values, and so on.
+- **Show tokens as archive_d does**: `Tokens.shown` (quoted, at most 32
+  bytes, `end of file` at the end) and `Tokens.rawShown`. Columns are bytes,
+  not characters: use `Columns`.
+- When ANTLR's own message is wrong, map the parser context to archive_d's
+  words in `BosonogaErrorStrategy`.
+
+## Doing a slice
+
+1. **Choose the slice** and list the archive_d functions it covers.
+2. **Read the C**: the parser for the rules, the order of the checks and the
+   exact message strings; `execute.c` and the runtime C files for what happens
+   at run time.
+3. **Grammar**: add tokens (a reserved word of archive_d is a token here, so it
+   cannot be a name) and permissive rules with their `CUT` alternatives. Words
+   archive_d only reads in one context, such as `element` after `new xml_str`,
+   stay `NAME` tokens checked by their text.
+4. **Emitter**: the checks in archive_d's order with its messages, then the
+   C++. A statement family that grows large belongs in its own collaborator,
+   as `Modules` and `SettingValues` are.
+5. **Runtime**: put the code in the header of its area, or a new header that
+   `bosonoga_runtime.hh` includes. Runtime errors go through `fail(where, …)`
+   with the `Where` that `Locations` writes.
+6. **Tests**:
+   - A `GeneratorTest` method for each rule and message. Add it to the list in
+     `main`, or it never runs.
+   - A program in `test/<tier>/` with its `.xp.bosonoga`, for behavior that runs.
+   - archive_d's own tests, copied unchanged, when the slice covers them.
+7. **Verify** with `./build.sh`, then against archive_d itself
+   ([Verifying against archive_d](#verifying-against-archive_d)).
+8. **Update this document**: move the slice out of the gaps.
+
+A refactor that changes no behavior must leave every generated `.cc` file
+byte-identical: copy `build/bosonoga/cc` aside before the change and `diff -r`
+it after the build.
+
+## Conventions
+
+- **Java**: Java 25, four-space indentation, lines of at most 120 characters,
+  `var` for locals, records for plain data, `is…` for booleans, imports
+  sorted. Classes are package-private in `bosonoga.generator` unless they
+  must be public.
+- **C++**: C++17 for Clang, two-space indentation, `snake_case` functions,
+  everything `inline` or a template in `bosonoga::runtime`, and warning-free
+  under the `CXXFLAGS` of `build.sh`. A header compiles on its own.
+- **Messages**: archive_d's text, verbatim. A message that is not archive_d's
+  (such as one of ANTLR's that archive_d never reaches) is a bug.
+- **Comments** start with the C behavior they reproduce ("As in the C
+  bosonoga, …") when that is the reason for the code.
+
+## Status
+
+Ported, and checked against archive_d by differential runs and by mutating the
+test programs token by token:
+
+- numbers of all six kinds, checked arithmetic, conversions, math functions;
+  flags; comparisons, `and`/`or`/`not`;
+- `var`, `val`, `const`, settings as literals, `bosonoga_global`;
+- `if`/`else`, `while`, counted loops, `break`, `continue`, `sleep_ms`, return
+  of an exit status;
+- functions, multiple results, `call … with ret` blocks, recursion and its
+  depth limit;
+- top-level `val` arrays and `var` arrays, `with_len_col`, `at`, `len_col`,
+  `len_row`;
+- `str`, `new str of`, ownership and `unset`; `xml_str` literals checked as
+  GMarkup does, `new xml_str`, `to_join`, `xml_child`, `xml_attribute`,
+  `str_parse`;
+- `io_read`, `io_write`, `io_modified`;
+- every `regina.ini` group, and the `input_key`, `font`, `icon` and `dir` kinds
+  as values;
+- `mod`, `io_raw_import` (whose end is transparent, even inside a block) and
+  `pub`;
+- syntax-error order, lexical errors, block nesting limit, display limits, and
+  the test runner's semantics.
+
+Known gaps, all verified against archive_d:
+
+- **gfx is not ported** (next section).
+- **gfx words are not reserved.** archive_d reserves every `gfx_` word, so
+  `var gfx_clear is 1_i32` fails with `expected a variable name, got
+  'gfx_clear'`. Here the grammar lexes them as `NAME` and accepts it.
+- **A gfx program is rejected at the top level.** archive_d parses
+  `gfx_main di … do`, and its console runner then fails with `the console
+  runner requires bosonoga_main`. Here `gfx_main` gets the top-level `expected
+  const, def, val, …` message.
+- **`input_key` holds the key's name, not its code.** That is enough for
+  `key_` literals today. `gfx_key` gives a sokol key code, which compares by
+  code and prints with archive_d's name table (`key.c`, `?` for a code without
+  a name).
+- `Settings` reads and validates `name`, `version`, the `[gfx]` size and the
+  background color, but nothing uses them yet.
+- Syntax-error orders outside what the mutation corpus covers may still differ
+  in rare cases.
+
+## gfx: the remaining work
+
+About 600 lines of archive_d (7%), plus vendored libraries. It is also the
+part that the C++ translation makes hardest, so plan it with the owner before
+the runtime slices.
+
+### What archive_d has
+
+The authoritative description is the grammar comment and notes of
+`include/bosonoga/parser.h`, with `src/parser/program.c`, `statement.c` and
+`value.c` for the checks, `src/execute.c` for the scene, and `src/gfx.c` for
+the window.
+
+- **Sections** `gfx_init`, `gfx_frame`, `gfx_cleanup`, `gfx_key_down` and
+  `gfx_main`, each at most once (`there is already a … block`). A program has
+  either `bosonoga_main` or gfx sections, after at most one `bosonoga_global`,
+  and a gfx program needs `gfx_main`. Which words the top-level `expected …`
+  message lists depends on what came before (`program.c`).
+- **Statements**, only in `gfx_frame` (`… can only be in gfx_frame`):
+  `gfx_clear`, `gfx_draw_rectangle`, `gfx_draw_hex`, `gfx_draw_circle`,
+  `gfx_draw_text` and `gfx_draw_icon`. `gfx_draw_text` takes a horizontal and
+  a vertical alignment word, then its values, then one or more values to draw,
+  which can be what `new` made. `gfx_await_next_frame` is only in `gfx_main`,
+  outside functions.
+- **Values**: `gfx_delta_time` (f32, only in `gfx_frame`) and `gfx_key`
+  (input_key, only in `gfx_key_down`). A function is parsed as the main
+  section, so none of these are in a function, and literal rows are parsed the
+  same way, so a row cannot hold `gfx_delta_time`.
+- **Reserved words**: every `gfx_` word, `gfx_key` and `gfx_delta_time`
+  included. The alignment words (`left`, `center`, `right`, `top`, `middle`,
+  `baseline`, `bottom`) are not reserved; they are read by text in their place.
+- **Running** (`gfx.c`): a window of the `[gfx]` size, cleared each frame to
+  `color_background`. Fonts and icons that the program names are loaded first,
+  with their own errors, then `bosonoga_global` and `gfx_init` run. Each frame
+  waits for 60 Hz, measures the delta time, runs `gfx_frame` to record a
+  scene, draws it in order, and then **advances `gfx_main` by a budget of
+  ops**. A key press (not a repeat) runs `gfx_key_down`. The run ends when
+  `gfx_main` returns or fails; closing the window first is an error. Then
+  `gfx_cleanup` runs. The limits (ops per frame, text length, icon size,
+  vertices) are defined at the top of `gfx.c` and in `parser.h`.
+
+### Decisions to make first
+
+1. **How `gfx_main` runs across frames.** archive_d interprets it: it yields at
+   `gfx_await_next_frame`, while asleep in `sleep_ms`, and when it has run its
+   ops for the frame, so a long loop in it never freezes the window and
+   `gfx_frame` sees its progress. Native C++17 has neither coroutines nor op
+   counts. Two candidates:
+   - a worker thread for `gfx_main` that strictly alternates with the window
+     thread (so the shared `bosonoga_global` variables need no further
+     locking), yielding at `gfx_await_next_frame`, at `sleep_ms`, and at a
+     counter that generated code advances at loop back edges and calls;
+   - compiling `gfx_main` into a resumable state machine. Functions never
+     await, but the op budget can preempt inside them, so this also needs a
+     counter, and is much more work in the emitter.
+
+   Exact op-for-op preemption is only possible by counting archive_d's ops.
+   Agree with the owner how close it must be before implementing.
+2. **Where the shared variables live.** Today the `bosonoga_global` statements
+   open `bosonoga_main` itself. With several sections, one approach that keeps
+   that design is to emit the global statements first and each section as a
+   lambda capturing them by reference, handed to a `runtime::gfx::run`.
+3. **How the test runner treats a gfx program.** For parity, a gfx program in a
+   test tier must fail with `the console runner requires bosonoga_main`, while
+   a separate entry point opens the window.
+4. **Key codes.** `InputKey` must carry the sokol key code (with the name table
+   of `key.c` for printing), and `InputKeys` must map names to codes.
+
+### Suggested slices
+
+1. **Compile time** (testable in `GeneratorTest`, no assets): the gfx words as
+   reserved tokens, the sections and their structural errors, every statement
+   and value with its placement and type checks, in archive_d's order.
+2. **Scene recording**: a pure runtime header (`bosonoga_gfx_scene.hh`) that
+   records what `gfx_frame` draws, as archive_d's `BosonogaGfxScene` does,
+   including what it skips (a shape of no radius, text of no size) and the
+   text length error. It can be unit tested in `test/runtime.cc`.
+3. **The window**: sokol setup, font and icon loading with their messages,
+   drawing the scene, the frame pacing, `gfx_key_down`, `gfx_cleanup`, and the
+   closed-window error. Linked with `-pthread -lX11 -lXi -lXcursor -lGL -ldl
+   -lm` (archive_d's `bosonoga_gfx.pc`).
+4. **`gfx_main` scheduling**, as decided above.
+5. **End to end** with Erminia's `gfx/gfx_erminia.bosonoga`, which uses most
+   of gfx (not `gfx_draw_rectangle`, `gfx_await_next_frame`, `gfx_init`,
+   `gfx_cleanup` or `gfx_delta_time`, which need programs of their own). Its
+   `debug.sh gfx FILE` runs a program in a window, linked through pkg-config
+   with the C bosonoga's `libbosonoga_gfx.a` (`BOSONOGA_DIR` in that script),
+   which gives the reference picture.
+
+### Vendored code
+
+archive_d vendors `sokol/` (`sokol_app`, `sokol_gfx`, `sokol_gl`, `sokol_glue`,
+`sokol_log`, `sokol_fontstash`), `fontstash/` (`fontstash.h`,
+`stb_truetype.h`) and `stb/stb_image.h`. Copy those exact files when gfx
+starts, and never edit them:
+
+- `sokol_gl.h` and `sokol_fontstash.h` must match the commit of `sokol_gfx.h`;
+  update all sokol headers together from one sokol checkout.
+- `fontstash.h` and `stb_truetype.h` are deliberate copies from another
+  project of the owner; don't replace them with upstream versions.
+- Compile the implementations in a translation unit of their own, as
+  `gfx_vendor.c` does, and include the headers with `-isystem` so the strict
+  warnings apply only to bosonoga's code.
+
+## Verifying against archive_d
+
+archive_d's test runner is built at `archive_d/bosonoga/build/test`. Run it
+from `archive_d/` (it reads `archive_d/regina.ini`) on one file; it prints
+`FAIL` and hides the reason unless GLib debug messages are on:
+
+```sh
+cd archive_d
+G_MESSAGES_DEBUG=all bosonoga/build/test /path/to/program.bosonoga
+```
+
+The new generator prints its error directly:
+
+```sh
+cd bosonoga
+../java/jdk*/bin/java -cp build/bosonoga/classes:build/antlr/runtime \
+  bosonoga.generator.Main /tmp/out /path/to/program.bosonoga
+```
+
+To rebuild archive_d, `archive_d/debug.sh` uses the GLib 2.90.1 build in
+`~/dev/glib-2.90.1/build`. Note that it also runs `clang-format -i` over
+archive_d's sources.
+
+For a slice that touches error order, compare at scale: generate mutants of
+every test program (each word deleted, duplicated, or replaced by words such
+as `di`, `do`, `with`, `ret`, `1_i32`, `"a"_str`), run both implementations,
+and compare their messages. A small Java harness in the package
+`bosonoga.generator` that calls `Generator.generate` for each mutant, and
+prints the error or a hash of the C++, runs tens of thousands of mutants in
+under a minute. The same harness, built from the sources before and after a
+refactor, proves that the refactor changed no message.

@@ -13,8 +13,14 @@ enum Kind {
     F64("f64", "double"),
     FLAGS("flags", "std::uint32_t"),
     COLOR("color", "runtime::Color"),
+    STR("str", "std::string"),
     BOOL("bool", "bool"),
-    STR("str", "std::string");
+    INPUT_KEY("input_key", "runtime::InputKey"),
+    FONT("font", "runtime::Font"),
+    ICON("icon", "runtime::Icon"),
+    // As a str, but its text is XML, which the generator checks of a literal.
+    XML_STR("xml_str", "std::string"),
+    DIR("dir", "runtime::Dir");
 
     final String shown;
     final String cpp;
@@ -30,6 +36,15 @@ enum Kind {
 
     boolean isReal() {
         return this == F32 || this == F64;
+    }
+
+    boolean isText() {
+        return this == STR || this == XML_STR;
+    }
+
+    // A value that regina.ini names, which has no zero.
+    boolean isNamed() {
+        return this == INPUT_KEY || this == FONT || this == ICON || this == DIR;
     }
 
     boolean isNumber() {
