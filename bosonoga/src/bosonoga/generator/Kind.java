@@ -12,6 +12,7 @@ enum Kind {
     F32("f32", "float"),
     F64("f64", "double"),
     FLAGS("flags", "std::uint32_t"),
+    COLOR("color", "runtime::Color"),
     BOOL("bool", "bool"),
     STR("str", "std::string");
 

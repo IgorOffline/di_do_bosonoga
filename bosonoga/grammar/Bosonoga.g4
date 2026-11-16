@@ -1,9 +1,9 @@
 grammar Bosonoga;
 
-// The generator checks that there is one bosonoga_main, as its errors name what
-// a program needs.
+// The generator checks that there is one bosonoga_main, and that
+// bosonoga_global is before it, as their errors name what a program needs.
 program
-    : (constantDeclaration | functionDefinition | topValDeclaration | mainSection)* EOF
+    : (constantDeclaration | functionDefinition | topValDeclaration | globalSection | mainSection)* EOF
     ;
 
 // The generator checks that it is an array, as in the C bosonoga.
@@ -19,6 +19,11 @@ functionDefinition
 
 constantDeclaration
     : CONST NAME IS (value | arrayLength)
+    ;
+
+// It runs before bosonoga_main, which sees the variables at its top.
+globalSection
+    : BOSONOGA_GLOBAL block
     ;
 
 mainSection
@@ -122,7 +127,8 @@ value
     | NAME                      # nameValue
     ;
 
-BOSONOGA_MAIN : 'bosonoga_main' ;
+BOSONOGA_MAIN   : 'bosonoga_main' ;
+BOSONOGA_GLOBAL : 'bosonoga_global' ;
 DI            : 'di' ;
 DO            : 'do' ;
 INFO          : 'info' ;

@@ -16,8 +16,6 @@ import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.TokenStream;
 
 final class CppEmitter extends BosonogaBaseVisitor<String> {
-    private static final Pattern NUMBER =
-            Pattern.compile("(-?[0-9]+)(?:d([0-9]+))?(?:_([A-Za-z0-9_]*))?");
     private static final String SHIFT_PREFIX = "shift_";
     private static final int SHIFT_BIT_MAX = 31;
     private static final String LOOP_PREFIX = "to_";
@@ -28,20 +26,18 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     // A type with its index, as in 0_i32, which names a value of a function.
     private static final Pattern INDEXED = Pattern.compile("(0|[1-9][0-9]{0,8})_([A-Za-z0-9_]+)");
     // The types of the C bosonoga that are for later slices.
-    private static final List<String> LATER_KINDS =
-            List.of("color", "input_key", "font", "icon", "xml_str", "dir");
+    private static final List<String> LATER_KINDS = List.of("input_key", "font", "icon", "xml_str", "dir");
+    private static final String COLOR_PREFIX = "color_";
+    private static final String GLOBAL_PREFIX = "global_";
+    private static final String KEY_PREFIX = "key_";
+    private static final String FONT_PREFIX = "font_";
+    private static final String ICON_PREFIX = "icon_";
+    private static final String DIR_PREFIX = "dir_";
     private static final String INDENT = "  ";
 
     private static final int ARRAY_VALUES_MAX = 65536;
     private static final String NEW_READS = "is only read by info, a comparison, new, to_join, io_write, "
             + "an xml_ statement or str_parse, and is not copied";
-
-    // An integer literal keeps its value, as the size of an array is one.
-    private record Expression(String cpp, Kind kind, BigInteger whole) {
-        Expression(String cpp, Kind kind) {
-            this(cpp, kind, null);
-        }
-    }
 
     private static final class Variable {
         private final Token declaration;
@@ -97,6 +93,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     private final String sourceName;
     private final String functionName;
     private final TokenStream tokens;
+    private final Settings settings;
     private final Map<String, Constant> constants = new LinkedHashMap<>();
     private final Map<String, Function> functions = new LinkedHashMap<>();
     private final Map<String, Function> arrays = new LinkedHashMap<>();
@@ -107,22 +104,27 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     private Function currentFunction;
     private int resultCount;
     private final Deque<Map<String, Variable>> scopes = new ArrayDeque<>();
+    // The variables at the top of bosonoga_global, which later sections see.
+    private Map<String, Variable> globalScope = Map.of();
+    private boolean inGlobal;
     private int depth;
     private int loopDepth;
     private int loopCount;
     private boolean usesSource;
 
-    CppEmitter(String sourceName, String functionName, TokenStream tokens) {
+    CppEmitter(String sourceName, String functionName, TokenStream tokens, Settings settings) {
         this.sourceName = sourceName;
         this.functionName = functionName;
         this.tokens = tokens;
+        this.settings = settings;
     }
 
     // As in the C bosonoga, a constant is seen only after it is declared.
     @Override
     public String visitProgram(BosonogaParser.ProgramContext context) {
         BosonogaParser.BlockContext main = null;
-        String body = null;
+        BosonogaParser.GlobalSectionContext global = null;
+        var body = new StringBuilder();
         var definitions = new StringBuilder();
         for (var item : context.children) {
             if (item instanceof BosonogaParser.ConstantDeclarationContext constant) {
@@ -131,18 +133,27 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
                 definitions.append(defineFunction(function)).append('\n');
             } else if (item instanceof BosonogaParser.TopValDeclarationContext array) {
                 definitions.append(defineArray(array)).append('\n');
+            } else if (item instanceof BosonogaParser.GlobalSectionContext section) {
+                if (main != null || global != null) {
+                    throw error(section.BOSONOGA_GLOBAL().getSymbol(), "bosonoga_global must be the first section");
+                }
+                global = section;
+                // Its statements are before those of bosonoga_main, in the same C++ scope.
+                inGlobal = true;
+                body.append(visit(section.block()));
+                inGlobal = false;
             } else if (item instanceof BosonogaParser.MainSectionContext section) {
                 if (main != null) {
                     throw error(section.BOSONOGA_MAIN().getSymbol(),
                             "expected const, def, val or end of file, got 'bosonoga_main'");
                 }
                 main = section.block();
-                body = visit(main);
+                body.append(visit(main));
                 // As in the C bosonoga, reaching the end of bosonoga_main fails when
                 // it runs, at what follows its block.
                 if (!(main.statement().getLast() instanceof BosonogaParser.ReturnStatementContext)) {
-                    body += INDENT + "runtime::fail(" + where(next(main.getStop()))
-                            + ", \"the program ended without a return\");\n";
+                    body.append(INDENT).append("runtime::fail(").append(where(next(main.getStop())))
+                            .append(", \"the program ended without a return\");\n");
                 }
             }
         }
@@ -163,6 +174,12 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         for (var array : arrays.values()) {
             if (!array.isCalled()[0]) {
                 throw error(array.name(), "'%s' is never read".formatted(array.name().getText()));
+            }
+        }
+        for (var variable : globalScope.values()) {
+            if (!variable.isRead) {
+                throw error(variable.declaration,
+                        "'%s' is never read".formatted(variable.declaration.getText()));
             }
         }
         var cpp = new StringBuilder("""
@@ -235,6 +252,12 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
                 throw error(context.DO().getSymbol(), "'%s' is new, and is unset before the end of its block"
                         .formatted(variable.declaration.getText()));
             }
+        }
+        if (inGlobal && depth == 0) {
+            // Later sections read them, so they are checked at the end of the program.
+            scopes.push(scope);
+            globalScope = scope;
+            return lines.toString();
         }
         for (var variable : scope.values()) {
             if (!variable.isRead) {
@@ -337,6 +360,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     private String defineArray(BosonogaParser.TopValDeclarationContext context) {
         var name = context.NAME().getSymbol();
         var text = name.getText();
+        checkNotSetting(name);
         if (functions.containsKey(text)) {
             throw error(name, "function '%s' already exists".formatted(text));
         }
@@ -345,6 +369,9 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         }
         if (constants.containsKey(text)) {
             throw error(name, "'%s' is already a constant".formatted(text));
+        }
+        if (find(name).isPresent()) {
+            throw error(name, "variable '%s' already exists".formatted(text));
         }
         if (!(context.initializer() instanceof BosonogaParser.ArrayInitializerContext array)) {
             throw error(context.initializer().getStart(), "a top-level val is an array, as in val task is "
@@ -376,7 +403,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
                 }
                 var value = values.get(i);
                 if (value instanceof BosonogaParser.NameValueContext named
-                        && !constants.containsKey(named.getText())) {
+                        && !constants.containsKey(named.getText()) && !isSetting(named.getText())) {
                     throw error(value.getStart(), ("the values of a row are literals, like 7_i32, so a row "
                             + "cannot have '%s'").formatted(named.getText()));
                 }
@@ -429,9 +456,9 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     private Expression flags(BosonogaParser.ValueInitializerContext context) {
         var values = context.value();
         var first = expression(values.getFirst());
+        // As in the C bosonoga, only flags are followed by shift_or.
         if (values.size() > 1 && first.kind() != Kind.FLAGS) {
-            throw error(values.getFirst().getStart(), "shift_or needs flags, but '%s' is %s"
-                    .formatted(values.getFirst().getText(), first.kind().shown));
+            throw error(context.SHIFT_OR(0).getSymbol(), "expected a statement, got 'shift_or'");
         }
         var cpp = new StringBuilder(first.cpp());
         for (var value : values.subList(1, values.size())) {
@@ -444,6 +471,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     public String visitSetStatement(BosonogaParser.SetStatementContext context) {
         var name = context.NAME().getSymbol();
         var shown = name.getText();
+        checkNotSetting(name);
         if (constants.containsKey(shown)) {
             throw error(name, "'%s' is a constant and cannot be set".formatted(shown));
         }
@@ -536,6 +564,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     public String visitUnsetStatement(BosonogaParser.UnsetStatementContext context) {
         var name = context.NAME().getSymbol();
         var shown = name.getText();
+        checkNotSetting(name);
         var variable = find(name).orElseThrow(() -> unknownVariable(name));
         if (!variable.isNew) {
             throw error(name, "'%s' is not new, and only what new made is unset".formatted(shown));
@@ -697,6 +726,9 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         if (owner.isPresent()) {
             throw error(start, "unset '%s' before return".formatted(owner.get().declaration.getText()));
         }
+        if (inGlobal) {
+            throw error(start, "only bosonoga_main and gfx_main can return");
+        }
         if (currentFunction == null) {
             if (context.status == null) {
                 var got = values.isEmpty() ? next(start) : values.getFirst().getStart();
@@ -736,6 +768,9 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     private String defineFunction(BosonogaParser.FunctionDefinitionContext context) {
         var name = context.name;
         var text = name.getText();
+        if (isSetting(text)) {
+            throw error(name, "expected a function name, got '%s'".formatted(text));
+        }
         if (!isFunctionName(text)) {
             if (text.equals(FUNCTION_SUFFIX)) {
                 throw error(name, "the name of a function has more before _fn, as in double_fn");
@@ -750,6 +785,9 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         if (constants.containsKey(text)) {
             throw error(name, "'%s' is already a constant".formatted(text));
         }
+        // The variables of bosonoga_global are not seen.
+        var outerScopes = List.copyOf(scopes);
+        scopes.clear();
         scopes.push(new LinkedHashMap<>());
         var parameters = new ArrayList<Kind>();
         var cppParameters = new StringBuilder("const runtime::Where &called_at");
@@ -786,6 +824,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
                         "'%s' is never read".formatted(parameter.declaration.getText()));
             }
         }
+        scopes.addAll(outerScopes);
         var returned = switch (results.size()) {
             case 0 -> "void";
             case 1 -> results.getFirst().cpp;
@@ -1073,6 +1112,9 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         if (kind == Kind.FLAGS) {
             throw error(compare, "flags can only be compared with shift_has");
         }
+        if (kind == Kind.COLOR) {
+            throw error(compare, "colors cannot be compared");
+        }
         if ((kind == Kind.BOOL || kind == Kind.STR)
                 && compare.getType() != BosonogaParser.EQ && compare.getType() != BosonogaParser.NOT_EQ) {
             throw error(compare, "%s can only be compared with eq or not_eq".formatted(kind.shown));
@@ -1158,59 +1200,11 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     }
 
     private Expression number(Token literal) {
-        var text = literal.getText();
-        var matcher = NUMBER.matcher(text);
-        if (!matcher.matches()) {
-            throw new IllegalStateException("not a number: " + text);
+        try {
+            return NumberLiteral.parse(literal.getText());
+        } catch (NumberLiteral.Invalid invalid) {
+            throw error(literal, invalid.getMessage());
         }
-        var kind = Optional.ofNullable(matcher.group(3)).flatMap(Kind::number)
-                .orElseThrow(() -> error(literal,
-                        "number must have the suffix _i32, _i64, _u32, _u64, _f32 or _f64"));
-        var whole = matcher.group(1);
-        var fraction = matcher.group(2);
-        var range = "the number is outside the %s range".formatted(kind.shown);
-        if (kind.isInteger()) {
-            if (fraction != null) {
-                throw error(literal, "an integer cannot have a fraction");
-            }
-            var value = new BigInteger(whole);
-            if (!fits(kind, value)) {
-                throw error(literal, range);
-            }
-            return new Expression(wholeLiteral(kind, value), kind, value);
-        }
-        var real = Double.parseDouble(whole + "." + (fraction == null ? "0" : fraction));
-        // Written so that NaN is outside the range too, as in the C bosonoga.
-        if (kind == Kind.F32 ? !(Math.abs(real) <= Float.MAX_VALUE) : !Double.isFinite(real)) {
-            throw error(literal, range);
-        }
-        // A hexadecimal literal is exact, where a decimal one would be rounded again.
-        return new Expression(kind == Kind.F32
-                ? Float.toHexString((float) real) + "F"
-                : Double.toHexString(real), kind);
-    }
-
-    private static boolean fits(Kind kind, BigInteger value) {
-        var bits = kind == Kind.I32 || kind == Kind.U32 ? 32 : 64;
-        var isSigned = kind == Kind.I32 || kind == Kind.I64;
-        var min = isSigned ? BigInteger.ONE.shiftLeft(bits - 1).negate() : BigInteger.ZERO;
-        var max = isSigned
-                ? BigInteger.ONE.shiftLeft(bits - 1).subtract(BigInteger.ONE)
-                : BigInteger.ONE.shiftLeft(bits).subtract(BigInteger.ONE);
-        return value.compareTo(min) >= 0 && value.compareTo(max) <= 0;
-    }
-
-    private static String wholeLiteral(Kind kind, BigInteger value) {
-        return switch (kind) {
-            case I32 -> "std::int32_t{" + value + "}";
-            // The literal 9223372036854775808 does not fit in a signed type.
-            case I64 -> value.equals(BigInteger.valueOf(Long.MIN_VALUE))
-                    ? "std::int64_t{-9223372036854775807LL - 1}"
-                    : "std::int64_t{" + value + "LL}";
-            case U32 -> "std::uint32_t{" + value + "U}";
-            case U64 -> "std::uint64_t{" + value + "ULL}";
-            default -> throw new IllegalStateException(kind + " is not an integer");
-        };
     }
 
     private int parseShiftBit(Token literal) {
@@ -1240,6 +1234,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     }
 
     private void checkNewName(Token name) {
+        checkNotSetting(name);
         if (constants.containsKey(name.getText())) {
             throw error(name, "a constant with this name already exists");
         }
@@ -1274,6 +1269,9 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             constant.isUsed = true;
             return constant.value;
         }
+        if (isSetting(name.getText())) {
+            return setting(name);
+        }
         if (functions.containsKey(name.getText())) {
             throw error(name, "'%s' is a function, which is called with var, set ... to or call"
                     .formatted(name.getText()));
@@ -1290,6 +1288,41 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         }
         found.isRead = true;
         return new Expression(found.cpp, found.kind);
+    }
+
+    // A name of regina.ini, as in color_night, is a literal, and is not a name
+    // of the program. As in the C bosonoga, a name that regina.ini does not have
+    // is a name of the program.
+    private boolean isSetting(String text) {
+        return hasSetting(settings.colors, COLOR_PREFIX, text) || hasSetting(settings.globals, GLOBAL_PREFIX, text)
+                || hasSetting(settings.keys, KEY_PREFIX, text) || hasSetting(settings.fonts, FONT_PREFIX, text)
+                || hasSetting(settings.icons, ICON_PREFIX, text) || hasSetting(settings.dirs, DIR_PREFIX, text);
+    }
+
+    private static boolean hasSetting(Map<String, ?> settings, String prefix, String text) {
+        return text.startsWith(prefix) && settings.containsKey(text.substring(prefix.length()));
+    }
+
+    private Expression setting(Token name) {
+        var text = name.getText();
+        if (hasSetting(settings.colors, COLOR_PREFIX, text)) {
+            var color = settings.colors.get(text.substring(COLOR_PREFIX.length()));
+            return new Expression("runtime::Color{0x%06XU}".formatted(color), Kind.COLOR);
+        }
+        if (hasSetting(settings.globals, GLOBAL_PREFIX, text)) {
+            return settings.globals.get(text.substring(GLOBAL_PREFIX.length()));
+        }
+        var kind = hasSetting(settings.keys, KEY_PREFIX, text) ? "input_key"
+                : hasSetting(settings.fonts, FONT_PREFIX, text) ? "font"
+                : hasSetting(settings.icons, ICON_PREFIX, text) ? "icon"
+                : "dir";
+        throw error(name, "a value of %s is not supported yet".formatted(kind));
+    }
+
+    private void checkNotSetting(Token name) {
+        if (isSetting(name.getText())) {
+            throw error(name, "expected a variable name, got '%s'".formatted(name.getText()));
+        }
     }
 
     private BosonogaException unknownVariable(Token name) {

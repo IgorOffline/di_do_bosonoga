@@ -8,8 +8,9 @@ public final class Generator {
     }
 
     // The program's bosonoga_main becomes the C++ function
-    // bosonoga::program::<functionName>, which returns its exit status.
-    public static String generate(String source, String sourceName, String functionName) {
+    // bosonoga::program::<functionName>, which returns its exit status. The
+    // settings are those of regina.ini, which Settings.read reads.
+    static String generate(String source, String sourceName, String functionName, Settings settings) {
         var lexer = new BosonogaLexer(CharStreams.fromString(source, sourceName));
         lexer.removeErrorListeners();
         lexer.addErrorListener(ThrowingErrorListener.INSTANCE);
@@ -19,6 +20,6 @@ public final class Generator {
         parser.removeErrorListeners();
         parser.addErrorListener(ThrowingErrorListener.INSTANCE);
 
-        return new CppEmitter(sourceName, functionName, tokens).visit(parser.program());
+        return new CppEmitter(sourceName, functionName, tokens, settings).visit(parser.program());
     }
 }

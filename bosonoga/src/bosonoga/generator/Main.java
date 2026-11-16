@@ -22,6 +22,8 @@ public final class Main {
         var outputDirectory = Path.of(args[0]);
         var names = new HashSet<String>();
         try {
+            // As the C bosonoga, from the directory that it runs in.
+            var settings = Settings.read(Path.of(Settings.FILE));
             Files.createDirectories(outputDirectory);
             for (int i = 1; i < args.length; i++) {
                 var input = Path.of(args[i]);
@@ -36,7 +38,7 @@ public final class Main {
                 if (!names.add(name)) {
                     fail("more than one program is named %s".formatted(name));
                 }
-                var cpp = Generator.generate(Files.readString(input), input.toString(), name);
+                var cpp = Generator.generate(Files.readString(input), input.toString(), name, settings);
                 Files.writeString(outputDirectory.resolve(name + ".cc"), cpp);
             }
         } catch (BosonogaException exception) {

@@ -158,6 +158,18 @@ inline void print(std::ostream &out, bool value) {
 
 inline void print(std::ostream &out, const std::string &value) { out << value; }
 
+// A color of regina.ini, as 0xRRGGBB, which a zeroed row has as black. It is
+// not a number, so that it has neither arithmetic nor comparisons.
+struct Color {
+  std::uint32_t rgb;
+};
+
+inline void print(std::ostream &out, Color value) {
+  char text[16];
+  std::snprintf(text, sizeof text, "%06X", static_cast<unsigned>(value.rgb));
+  out << text;
+}
+
 // The values are printed with nothing between them.
 template <typename... Values>
 void info(std::ostream &out, const Values &...values) {

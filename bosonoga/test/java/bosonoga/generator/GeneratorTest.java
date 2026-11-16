@@ -1,5 +1,6 @@
 package bosonoga.generator;
 
+import java.nio.file.Path;
 import java.util.function.Supplier;
 
 public final class GeneratorTest {
@@ -11,6 +12,19 @@ public final class GeneratorTest {
             + "an xml_ statement or str_parse, and is not copied";
     private static final String BODY_START = "int bosonoga_main() {\n";
     private static final String BODY_END = "}\n\n}  // namespace\n";
+
+    private static final String META = "[meta]\nname = \"t\"\nversion = \"1\"\n";
+    private static final Settings SETTINGS = Settings.parse(META + """
+            [color]
+            night = "0A0A23"
+
+            [global]
+            laps = "3_i32"
+            gravity = "-0d5_f64"
+
+            [dir]
+            fixture = "test"
+            """, "regina.ini", Path.of("."));
 
     private static int failures;
 
@@ -105,6 +119,30 @@ public final class GeneratorTest {
         withLenColIsKnownBeforeTheProgramRuns();
         valArrayCannotBeSet();
         lengthIsAnI32();
+        colorIsALiteralOfRegina();
+        globalIsANumberOfRegina();
+        settingIsNotAName();
+        missingSettingIsAName();
+        settingIsALiteralOfARow();
+        colorsCannotBeCompared();
+        colorHasNoArithmetic();
+        laterSettingIsNotYetAValue();
+        globalSectionRunsBeforeMain();
+        globalSectionIsFirst();
+        globalSectionCannotReturn();
+        globalVariableIsReadByALaterSection();
+        globalVariableIsReadAtTheEnd();
+        functionDoesNotSeeGlobalVariables();
+        reginaNeedsMeta();
+        reginaIsAKeyFile();
+        reginaValueIsUnescaped();
+        colorIsSixUppercaseHexDigits();
+        globalIsOneNumber();
+        gfxSizeIsPositive();
+        gfxNeedsABackground();
+        keyNamesASokolKey();
+        assetNamesAFile();
+        reginaMustBeReadable();
         if (failures > 0) {
             System.err.println(failures + " test(s) failed");
             System.exit(1);
@@ -115,7 +153,7 @@ public final class GeneratorTest {
         var cpp = Generator.generate("// info.bosonoga\n" + program(
                 "info 1_i32",
                 "info -7_i32 042_i32",
-                "return exit_success"), "info.bosonoga", "info");
+                "return exit_success"), "info.bosonoga", "info", SETTINGS);
         expectEquals("infoIsAFunctionOfTheProgram", """
                 // Generated from info.bosonoga by the bosonoga generator. Do not edit.
                 #include "bosonoga_runtime.hh"
@@ -223,7 +261,7 @@ public final class GeneratorTest {
     }
 
     private static void shiftOrNeedsFlags() {
-        expectError("shiftOrNeedsFlags", "t.bosonoga:3:16: shift_or needs flags, but '1_i32' is i32",
+        expectError("shiftOrNeedsFlags", "t.bosonoga:3:22: expected a statement, got 'shift_or'",
                 program("var count is 1_i32 shift_or shift_0", "return exit_success"));
     }
 
@@ -284,7 +322,7 @@ public final class GeneratorTest {
                   runtime::info(std::cout, v_count);
                   return EXIT_SUCCESS;
                 """, source);
-        expect("accumulationIsChecked has its source", Generator.generate(source, "t.bosonoga", "t")
+        expect("accumulationIsChecked has its source", generate(source)
                 .contains("constexpr const char *source = \"t.bosonoga\";\n"));
     }
 
@@ -575,7 +613,7 @@ public final class GeneratorTest {
                   runtime::info(std::cout, v_result);
                   return EXIT_SUCCESS;
                 """, source);
-        expect("functionBecomesACppFunction has the function", Generator.generate(source, "t.bosonoga", "t")
+        expect("functionBecomesACppFunction has the function", generate(source)
                 .contains("""
                         std::int32_t f_double_fn(const runtime::Where &called_at, std::int32_t v_value_i32) {
                           const runtime::Call call(called_at);
@@ -599,7 +637,7 @@ public final class GeneratorTest {
                   }
                   return EXIT_SUCCESS;
                 """, source);
-        expect("resultsAreTakenForABlock has the function", Generator.generate(source, "t.bosonoga", "t")
+        expect("resultsAreTakenForABlock has the function", generate(source)
                 .contains("""
                         std::tuple<std::int32_t, float> f_pair_fn(const runtime::Where &called_at) {
                           const runtime::Call call(called_at);
@@ -693,10 +731,9 @@ public final class GeneratorTest {
     }
 
     private static void functionWithoutReturnFails() {
-        expect("functionWithoutReturnFails", Generator.generate(
+        expect("functionWithoutReturnFails", generate(
                 "def answer_fn ret 0_i32\ndi\n  nihil\ndo\n" + program(
-                        "var answer is answer_fn with ret 0_i32", "info answer", "return exit_success"),
-                "t.bosonoga", "t")
+                        "var answer is answer_fn with ret 0_i32", "info answer", "return exit_success"))
                 .contains("  runtime::fail({source, 1, 5}, \"the function 'answer_fn' ended without a return\");\n}\n"));
     }
 
@@ -782,7 +819,7 @@ public final class GeneratorTest {
                   runtime::info(std::cout, v_second);
                   return EXIT_SUCCESS;
                 """, source);
-        expect("valArrayBecomesAVector has the array", Generator.generate(source, "t.bosonoga", "t").contains(
+        expect("valArrayBecomesAVector has the array", generate(source).contains(
                 "const std::vector<std::tuple<std::uint32_t>> a_primes = {{std::uint32_t{2U}}, {std::uint32_t{3U}}};\n"));
     }
 
@@ -848,6 +885,227 @@ public final class GeneratorTest {
                 """, PRIMES + "const count is len_col primes\n" + program("info count", "return exit_success"));
     }
 
+    private static void colorIsALiteralOfRegina() {
+        expectBody("colorIsALiteralOfRegina", """
+                  const runtime::Color v_sky = runtime::Color{0x0A0A23U};
+                  runtime::info(std::cout, v_sky);
+                  return EXIT_SUCCESS;
+                """, program("val sky is color_night", "info sky", "return exit_success"));
+    }
+
+    private static void globalIsANumberOfRegina() {
+        expectBody("globalIsANumberOfRegina", """
+                  std::vector<std::tuple<std::int32_t>> v_cells(std::size_t{3});
+                  runtime::info(std::cout, std::int32_t{3}, -0x1.0p-1);
+                  const std::int32_t v_count = std::int32_t{3};
+                  runtime::info(std::cout, v_count);
+                  return EXIT_SUCCESS;
+                """, program(
+                "var cells is array 0_i32 with_len_col global_laps",
+                "info global_laps global_gravity",
+                "val count is len_col cells",
+                "info count",
+                "return exit_success"));
+    }
+
+    private static void settingIsNotAName() {
+        expectError("settingIsNotAName", "t.bosonoga:3:7: expected a variable name, got 'color_night'",
+                program("var color_night is 1_i32", "return exit_success"));
+        expectError("settingIsNotAName of const", "t.bosonoga:1:7: expected a variable name, got 'global_laps'",
+                "const global_laps is 1_i32\n" + program("return exit_success"));
+        expectError("settingIsNotAName of set", "t.bosonoga:3:7: expected a variable name, got 'color_night'",
+                program("set color_night to color_night", "return exit_success"));
+    }
+
+    private static void missingSettingIsAName() {
+        expectError("missingSettingIsAName", "t.bosonoga:3:8: unknown variable 'color_day'",
+                program("info color_day", "return exit_success"));
+        expectBody("missingSettingIsAName declared", """
+                  const std::int32_t v_global_day = std::int32_t{1};
+                  runtime::info(std::cout, v_global_day);
+                  return EXIT_SUCCESS;
+                """, program("val global_day is 1_i32", "info global_day", "return exit_success"));
+    }
+
+    private static void settingIsALiteralOfARow() {
+        expect("settingIsALiteralOfARow", generate("val tints is array 0_color 1_i32\ndi\n"
+                + "  row color_night global_laps\ndo\n" + program(
+                "call tints at 0_i32 with ret 0_color as tint 1_i32 as laps",
+                "di",
+                "  info tint laps",
+                "do",
+                "return exit_success"))
+                .contains("const std::vector<std::tuple<runtime::Color, std::int32_t>> a_tints = "
+                        + "{{runtime::Color{0x0A0A23U}, std::int32_t{3}}};\n"));
+    }
+
+    private static void colorsCannotBeCompared() {
+        expectError("colorsCannotBeCompared", "t.bosonoga:3:18: colors cannot be compared", program(
+                "if color_night eq color_night",
+                "di",
+                "  return exit_success",
+                "do",
+                "return exit_failure"));
+    }
+
+    private static void colorHasNoArithmetic() {
+        expectError("colorHasNoArithmetic",
+                "t.bosonoga:4:12: 'tint' is color, which cannot be used in arithmetic, but set ... to sets it",
+                program("var tint is color_night", "set tint to_add tint", "return exit_success"));
+        expectError("colorHasNoArithmetic of to_i32", "t.bosonoga:3:24: to_i32 needs a number, got color",
+                program("var number is to_i32 color_night", "return exit_success"));
+    }
+
+    private static void laterSettingIsNotYetAValue() {
+        expectError("laterSettingIsNotYetAValue", "t.bosonoga:3:8: a value of dir is not supported yet",
+                program("info dir_fixture", "return exit_success"));
+    }
+
+    private static void globalSectionRunsBeforeMain() {
+        expectBody("globalSectionRunsBeforeMain", """
+                  std::int32_t v_laps = std::int32_t{3};
+                  v_laps = runtime::accumulate<std::int32_t>({source, 8, 7}, runtime::Step::add, {v_laps, std::int32_t{1}});
+                  runtime::info(std::cout, v_laps);
+                  return EXIT_SUCCESS;
+                """,
+                "bosonoga_global\ndi\n  var laps is global_laps\ndo\n\n"
+                + program("set laps to_add laps 1_i32", "info laps", "return exit_success"));
+    }
+
+    private static void globalSectionIsFirst() {
+        expectError("globalSectionIsFirst", "t.bosonoga:5:1: bosonoga_global must be the first section",
+                program("return exit_success") + "bosonoga_global\ndi\n  nihil\ndo\n");
+        expectError("globalSectionIsFirst twice", "t.bosonoga:5:1: bosonoga_global must be the first section",
+                "bosonoga_global\ndi\n  nihil\ndo\nbosonoga_global\ndi\n  nihil\ndo\n"
+                        + program("return exit_success"));
+    }
+
+    private static void globalSectionCannotReturn() {
+        expectError("globalSectionCannotReturn", "t.bosonoga:3:3: only bosonoga_main and gfx_main can return",
+                "bosonoga_global\ndi\n  return exit_success\ndo\n" + program("return exit_success"));
+    }
+
+    private static void globalVariableIsReadByALaterSection() {
+        expectError("globalVariableIsReadByALaterSection", "t.bosonoga:7:7: variable 'laps' already exists",
+                "bosonoga_global\ndi\n  var laps is 1_i32\ndo\n" + program(
+                        "var laps is 2_i32", "info laps", "return exit_success"));
+        expectError("globalVariableIsReadByALaterSection of const", "t.bosonoga:5:7: variable 'laps' already exists",
+                "bosonoga_global\ndi\n  var laps is 1_i32\ndo\nconst laps is 1_i32\n" + program(
+                        "info laps", "return exit_success"));
+        expectError("globalVariableIsReadByALaterSection of new",
+                "t.bosonoga:4:1: 'text' is new, and is unset before the end of its block",
+                "bosonoga_global\ndi\n  var text is new str of 1_i32\ndo\n" + program("return exit_success"));
+    }
+
+    private static void globalVariableIsReadAtTheEnd() {
+        expectError("globalVariableIsReadAtTheEnd", "t.bosonoga:3:7: 'laps' is never read",
+                "bosonoga_global\ndi\n  var laps is 1_i32\ndo\n" + program("var other is 1_i32", "info other",
+                        "return exit_success"));
+        expectError("globalVariableIsReadAtTheEnd of a block", "t.bosonoga:5:9: 'lap' is never read",
+                "bosonoga_global\ndi\n  if true_bool\n  di\n    var lap is 1_i32\n  do\ndo\n"
+                        + program("return exit_success"));
+    }
+
+    private static void functionDoesNotSeeGlobalVariables() {
+        expectError("functionDoesNotSeeGlobalVariables", "t.bosonoga:7:8: unknown variable 'laps'",
+                "bosonoga_global\ndi\n  var laps is 1_i32\ndo\ndef show_fn ret_void\ndi\n  info laps\ndo\n"
+                        + program("call show_fn", "info laps", "return exit_success"));
+        expect("functionDoesNotSeeGlobalVariables has its own names", generate(
+                "bosonoga_global\ndi\n  var laps is 1_i32\ndo\ndef show_fn laps_i32 ret_void\ndi\n"
+                        + "  info laps_i32\ndo\n" + program("call show_fn of laps", "return exit_success"))
+                .contains("void f_show_fn(const runtime::Where &called_at, std::int32_t v_laps_i32) {\n"));
+    }
+
+    private static void reginaNeedsMeta() {
+        expectSettingsError("reginaNeedsMeta", "regina.ini: Key file does not have group “meta”", "");
+        expectSettingsError("reginaNeedsMeta version", "regina.ini: Key file does not have key “version” in "
+                + "group “meta”", "[meta]\nname = \"t\"\n");
+        expect("reginaNeedsMeta without quotes", Settings.parse("[meta]\nname = t\nversion = \"1\"\n",
+                "regina.ini", Path.of(".")).name.equals("t"));
+    }
+
+    private static void reginaIsAKeyFile() {
+        expectSettingsError("reginaIsAKeyFile", "regina.ini: Key file does not start with a group", "name = \"t\"\n");
+        expectSettingsError("reginaIsAKeyFile of a line", "regina.ini: Key file contains line “  junk” which is "
+                + "not a key-value pair, group, or comment", META + "  junk\n");
+        expectSettingsError("reginaIsAKeyFile of a group", "regina.ini: Invalid group name: bad[group",
+                META + "[bad[group]\n");
+        expectSettingsError("reginaIsAKeyFile of a key", "regina.ini: Invalid key name: c]",
+                META + "[color]\nc] = \"ABCDEF\"\n");
+        var settings = Settings.parse(META.replace("\n", "\r\n") + "# a comment\n  \n[color]\n  c\t=\t\"000001\"\n"
+                + "c = \"000002\"\nc[de] = \"000003\"\n", "regina.ini", Path.of("."));
+        expect("reginaIsAKeyFile keeps the last value", settings.colors.equals(java.util.Map.of("c", 2)));
+    }
+
+    private static void reginaValueIsUnescaped() {
+        expect("reginaValueIsUnescaped", Settings.parse("[meta]\nname = \"a\\sb\\\\\"\nversion = \"1\"\n",
+                "regina.ini", Path.of(".")).name.equals("a b\\"));
+        expectSettingsError("reginaValueIsUnescaped of an escape",
+                "regina.ini: Key file contains key “c” which has a value that cannot be interpreted.",
+                META + "[color]\nc = \"ABC\\qDE\"\n");
+    }
+
+    private static void colorIsSixUppercaseHexDigits() {
+        expectSettingsError("colorIsSixUppercaseHexDigits", "regina.ini: c must be 6 uppercase hex digits",
+                META + "[color]\nc = \"abcdef\"\n");
+        // GKeyFile keeps the spaces after a value, and then its quotes.
+        expectSettingsError("colorIsSixUppercaseHexDigits with a space", "regina.ini: c must be 6 uppercase hex "
+                + "digits", META + "[color]\nc = \"ABCDEF\" \n");
+    }
+
+    private static void globalIsOneNumber() {
+        for (var text : new String[] {"\"5\"", "\"5_i32 6_i32\"", "\"3000000000_i32\"", "\"true_bool\"",
+                "\"1d_f32\"", "\"\""}) {
+            expectSettingsError("globalIsOneNumber " + text,
+                    "regina.ini: g must be one number, like 100_i32 or 100d0_f32", META + "[global]\ng = " + text + "\n");
+        }
+        var globals = Settings.parse(META + "[global]\na = 7_u64\nb = \"01_i32 // laps\"\n", "regina.ini",
+                Path.of(".")).globals;
+        expect("globalIsOneNumber of a number", globals.get("a").cpp().equals("std::uint64_t{7ULL}")
+                && globals.get("b").cpp().equals("std::int32_t{1}"));
+    }
+
+    private static void gfxSizeIsPositive() {
+        expectSettingsError("gfxSizeIsPositive", "regina.ini: height must be positive",
+                META + "[gfx]\nwidth = +1\nheight = -1\n");
+        for (var text : new String[] {"\"640\"", "0x10", "2147483648", "64x", ""}) {
+            expectSettingsError("gfxSizeIsPositive " + text, "regina.ini: Key file contains key “width” in group "
+                    + "“gfx” which has a value that cannot be interpreted.", META + "[gfx]\nwidth = " + text
+                    + "\nheight = 1\n");
+        }
+        expect("gfxSizeIsPositive as strtol", Settings.parse(META + "[gfx]\nwidth = 64 x\nheight = 48\n",
+                "regina.ini", Path.of(".")).gfxWidth == 64);
+    }
+
+    private static void gfxNeedsABackground() {
+        expectSettingsError("gfxNeedsABackground", "regina.ini: the group color needs the key background",
+                META + "[color]\nc = \"ABCDEF\"\n[gfx]\nwidth = 1\nheight = 1\n");
+        expect("gfxNeedsABackground only with colors", Settings.parse(META + "[gfx]\nwidth = 1\nheight = 1\n",
+                "regina.ini", Path.of(".")).backgroundColor == 0);
+    }
+
+    private static void keyNamesASokolKey() {
+        expectSettingsError("keyNamesASokolKey", "regina.ini: j must name a key, like SAPP_KEYCODE_W, "
+                + "SAPP_KEYCODE_0 or SAPP_KEYCODE_ESCAPE", META + "[key]\nk = \"SAPP_KEYCODE_W\"\nj = \"W\"\n");
+    }
+
+    private static void assetNamesAFile() {
+        expectSettingsError("assetNamesAFile", "regina.ini: d must name a directory, like \"replay\"",
+                META + "[dir]\nd = \"\"\n");
+        expectSettingsError("assetNamesAFile of a font", "regina.ini: f must name a font file, like "
+                + "\"asset/font/IntelOneMono-Medium.ttf\"", META + "[font]\nf = \"\"\n");
+        var dirs = Settings.parse(META + "[dir]\nd = \"replay\"\ne = \"/tmp\"\n", "regina.ini", Path.of(".")).dirs;
+        expect("assetNamesAFile from the directory of regina.ini", dirs.get("d").path().equals("./replay")
+                && dirs.get("e").path().equals("/tmp"));
+    }
+
+    private static void reginaMustBeReadable() {
+        expectError("reginaMustBeReadable", "build/no_such_directory/regina.ini: No such file or directory", () -> {
+            Settings.read(Path.of("build/no_such_directory/regina.ini"));
+            return "";
+        });
+    }
+
     // Lines start at line 3 and column 3, after "bosonoga_main", "di" and the indent.
     private static String program(String... lines) {
         var source = new StringBuilder("bosonoga_main\ndi\n");
@@ -855,6 +1113,17 @@ public final class GeneratorTest {
             source.append("  ").append(line).append('\n');
         }
         return source.append("do\n").toString();
+    }
+
+    private static String generate(String source) {
+        return Generator.generate(source, "t.bosonoga", "t", SETTINGS);
+    }
+
+    private static void expectSettingsError(String name, String message, String text) {
+        expectError(name, message, () -> {
+            Settings.parse(text, "regina.ini", Path.of("."));
+            return "";
+        });
     }
 
     private static void expect(String name, boolean passed) {
@@ -875,7 +1144,7 @@ public final class GeneratorTest {
     private static void expectBody(String name, String expected, String source) {
         String cpp;
         try {
-            cpp = Generator.generate(source, "t.bosonoga", "t");
+            cpp = generate(source);
         } catch (BosonogaException exception) {
             failures++;
             System.err.println("FAIL " + name + ": " + exception.getMessage());
@@ -887,7 +1156,7 @@ public final class GeneratorTest {
 
     // A null message accepts any BosonogaException.
     private static void expectError(String name, String message, String source) {
-        expectError(name, message, () -> Generator.generate(source, "t.bosonoga", "t"));
+        expectError(name, message, () -> generate(source));
     }
 
     private static void expectError(String name, String message, Supplier<String> generate) {

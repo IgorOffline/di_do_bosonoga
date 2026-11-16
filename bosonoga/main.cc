@@ -19,14 +19,17 @@ int branch();
 int compare();
 int convert();
 int function();
+int global();
 int info();
 int join();
 int loop();
 int print();
 int recursion();
 int results();
+int setting();
 int shift();
 int text();
+int with_len_col_zeroed();
 }  // namespace bosonoga::program
 
 namespace {
@@ -118,17 +121,22 @@ int main() {
            {"join", program::join},
            {"loop", program::loop},
            {"print", program::print},
+           {"setting", program::setting},
            {"text", program::text},
        }},
       {"gold",
        {
            {"accumulate", program::accumulate},
            {"convert", program::convert},
+           {"global", program::global},
            {"recursion", program::recursion},
            {"results", program::results},
            {"shift", program::shift},
        }},
-      {"platinum", {}},
+      {"platinum",
+       {
+           {"with_len_col_zeroed", program::with_len_col_zeroed},
+       }},
   };
 
   std::size_t passed = 0;
