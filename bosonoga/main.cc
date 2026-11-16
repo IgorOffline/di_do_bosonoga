@@ -13,12 +13,14 @@
 namespace bosonoga::program {
 int accumulate();
 int arithmetic();
+int array();
 int boolean();
 int branch();
 int compare();
 int convert();
 int function();
 int info();
+int join();
 int loop();
 int print();
 int recursion();
@@ -107,11 +109,13 @@ int main() {
       {"silver",
        {
            {"arithmetic", program::arithmetic},
+           {"array", program::array},
            {"boolean", program::boolean},
            {"branch", program::branch},
            {"compare", program::compare},
            {"function", program::function},
            {"info", program::info},
+           {"join", program::join},
            {"loop", program::loop},
            {"print", program::print},
            {"text", program::text},

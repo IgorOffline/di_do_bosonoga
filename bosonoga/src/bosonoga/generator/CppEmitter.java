@@ -10,10 +10,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.TokenStream;
-import org.antlr.v4.runtime.tree.TerminalNode;
 
 final class CppEmitter extends BosonogaBaseVisitor<String> {
     private static final Pattern NUMBER =
@@ -32,19 +32,36 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             List.of("color", "input_key", "font", "icon", "xml_str", "dir");
     private static final String INDENT = "  ";
 
-    private record Expression(String cpp, Kind kind) {
+    private static final int ARRAY_VALUES_MAX = 65536;
+    private static final String NEW_READS = "is only read by info, a comparison, new, to_join, io_write, "
+            + "an xml_ statement or str_parse, and is not copied";
+
+    // An integer literal keeps its value, as the size of an array is one.
+    private record Expression(String cpp, Kind kind, BigInteger whole) {
+        Expression(String cpp, Kind kind) {
+            this(cpp, kind, null);
+        }
     }
 
     private static final class Variable {
         private final Token declaration;
         private final Kind kind;
         private final boolean isVal;
+        private final boolean isNew;
+        private final int loopDepth;
+        private final String cpp;
+        // The rows of a var array, which is a variable of its block.
+        private Function array;
         private boolean isRead;
 
-        private Variable(Token declaration, Kind kind, boolean isVal) {
+        private Variable(Token declaration, Kind kind, boolean isVal, boolean isNew, int loopDepth,
+                         String cpp) {
             this.declaration = declaration;
             this.kind = kind;
             this.isVal = isVal;
+            this.isNew = isNew;
+            this.loopDepth = loopDepth;
+            this.cpp = cpp;
         }
     }
 
@@ -60,15 +77,21 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         }
     }
 
+    // A function, or an array, which the C bosonoga reads as a function of its
+    // index, so an array has one i32 parameter and its columns as results.
     private record Function(Token name, List<Kind> parameters, List<Kind> results,
-                            boolean[] isCalled) {
+                            boolean[] isCalled, String cpp, boolean isArray, int rowCount) {
+        String gives() {
+            return isArray ? "has rows of" : "returns";
+        }
     }
 
     private record Indexed(int index, Kind kind) {
     }
 
-    // A variable that a block starts with, as the variable of a loop.
-    private record Declared(Token name, Kind kind, String cpp) {
+    // A variable that a block starts with, as the variable of a loop, whose line
+    // is made from its C++ name.
+    private record Declared(Token name, Kind kind, UnaryOperator<String> line) {
     }
 
     private final String sourceName;
@@ -76,6 +99,11 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     private final TokenStream tokens;
     private final Map<String, Constant> constants = new LinkedHashMap<>();
     private final Map<String, Function> functions = new LinkedHashMap<>();
+    private final Map<String, Function> arrays = new LinkedHashMap<>();
+    // How often each name is declared, so that a name declared again after unset
+    // has a C++ name of its own.
+    private final Map<String, Integer> declarations = new LinkedHashMap<>();
+    private boolean readsNew;
     private Function currentFunction;
     private int resultCount;
     private final Deque<Map<String, Variable>> scopes = new ArrayDeque<>();
@@ -101,6 +129,8 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
                 declareConstant(constant);
             } else if (item instanceof BosonogaParser.FunctionDefinitionContext function) {
                 definitions.append(defineFunction(function)).append('\n');
+            } else if (item instanceof BosonogaParser.TopValDeclarationContext array) {
+                definitions.append(defineArray(array)).append('\n');
             } else if (item instanceof BosonogaParser.MainSectionContext section) {
                 if (main != null) {
                     throw error(section.BOSONOGA_MAIN().getSymbol(),
@@ -128,6 +158,11 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         for (var function : functions.values()) {
             if (!function.isCalled()[0]) {
                 throw error(function.name(), "'%s' is never called".formatted(function.name().getText()));
+            }
+        }
+        for (var array : arrays.values()) {
+            if (!array.isCalled()[0]) {
+                throw error(array.name(), "'%s' is never read".formatted(array.name().getText()));
             }
         }
         var cpp = new StringBuilder("""
@@ -167,7 +202,8 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     private void declareConstant(BosonogaParser.ConstantDeclarationContext context) {
         var name = context.NAME().getSymbol();
         checkNewName(name);
-        constants.put(name.getText(), new Constant(name, expression(context.value())));
+        var value = context.value() != null ? expression(context.value()) : length(context.arrayLength());
+        constants.put(name.getText(), new Constant(name, value));
     }
 
     @Override
@@ -186,14 +222,21 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             lines.append(INDENT.repeat(depth)).append(line).append('\n');
         }
         for (var variable : declared) {
-            declare(variable.name(), variable.kind(), false);
-            lines.append(INDENT.repeat(depth)).append(variable.cpp()).append('\n');
+            var cpp = declare(variable.name(), variable.kind(), false, false).cpp;
+            lines.append(INDENT.repeat(depth)).append(variable.line().apply(cpp)).append('\n');
         }
         for (var statement : context.statement()) {
             lines.append(INDENT.repeat(depth)).append(visit(statement)).append('\n');
         }
         depth--;
-        for (var variable : scopes.pop().values()) {
+        var scope = scopes.pop();
+        for (var variable : scope.values()) {
+            if (variable.isNew) {
+                throw error(context.DO().getSymbol(), "'%s' is new, and is unset before the end of its block"
+                        .formatted(variable.declaration.getText()));
+            }
+        }
+        for (var variable : scope.values()) {
             if (!variable.isRead) {
                 throw error(variable.declaration,
                         "'%s' is never read".formatted(variable.declaration.getText()));
@@ -204,25 +247,182 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
 
     @Override
     public String visitInfoStatement(BosonogaParser.InfoStatementContext context) {
-        return "runtime::info(std::cout, "
-                + context.value().stream().map(value -> expression(value).cpp()).collect(joining(", "))
-                + ");";
+        return "runtime::info(std::cout, " + readingNew(context.value()) + ");";
     }
 
     @Override
     public String visitDeclareStatement(BosonogaParser.DeclareStatementContext context) {
         var isVal = context.declaration.getType() == BosonogaParser.VAL;
+        var name = context.NAME().getSymbol();
+        if (context.initializer() instanceof BosonogaParser.ArrayInitializerContext array) {
+            if (isVal) {
+                throw error(array.ARRAY().getSymbol(),
+                        "a val array is top-level, and an array of a block is a var");
+            }
+            return varArray(name, array);
+        }
+        var isNew = context.initializer() instanceof BosonogaParser.NewInitializerContext;
+        // Declared after its value, so that the value cannot refer to it.
         var initial = switch (context.initializer()) {
             case BosonogaParser.OperationInitializerContext operation -> operation(operation.operation());
-            case BosonogaParser.CallInitializerContext call -> takenResult(context.NAME().getSymbol(),
-                    call.callee, call.OF(), call.value(), call.result);
+            case BosonogaParser.CallInitializerContext call ->
+                    takenResult(name, call.callee, call.arguments(), call.result);
+            case BosonogaParser.NewInitializerContext created -> created(created);
+            case BosonogaParser.LengthInitializerContext length -> length(length.arrayLength());
             case BosonogaParser.ValueInitializerContext value -> flags(value);
             default -> throw new IllegalStateException("no C++ for " + context.getText());
         };
-        var name = context.NAME().getSymbol();
-        declare(name, initial.kind(), isVal);
-        return (isVal ? "const " : "") + initial.kind().cpp + " " + cppName(name.getText()) + " = "
+        var variable = declare(name, initial.kind(), isVal, isNew);
+        // What new made is not const, as unset frees it.
+        return (isVal && !isNew ? "const " : "") + initial.kind().cpp + " " + variable.cpp + " = "
                 + initial.cpp() + ";";
+    }
+
+    // As in the C bosonoga, new makes a str of the values as info prints them.
+    private Expression created(BosonogaParser.NewInitializerContext context) {
+        var type = context.type;
+        var text = type.getText();
+        if (text.equals("xml_str")) {
+            throw error(type, "an xml_str is not supported yet, but new str of is");
+        }
+        if (!text.equals("str")) {
+            if (Kind.named(text).isPresent() || LATER_KINDS.contains(text)) {
+                throw error(type, "new makes only a str or an xml_str, as in new str of \"A\"_str 1_i32");
+            }
+            throw error(type, "expected a type, as in new str of, got '%s'".formatted(text));
+        }
+        return new Expression("runtime::joined(" + readingNew(context.value()) + ")", Kind.STR);
+    }
+
+    // The values of info, a comparison or new, which can be what new made.
+    private String readingNew(List<BosonogaParser.ValueContext> values) {
+        readsNew = true;
+        try {
+            return values.stream().map(value -> expression(value).cpp()).collect(joining(", "));
+        } finally {
+            readsNew = false;
+        }
+    }
+
+    private String varArray(Token name, BosonogaParser.ArrayInitializerContext context) {
+        var text = name.getText();
+        var columns = types(context.types, "a row of an array has at most %d values"
+                .formatted(FUNCTION_VALUES_MAX));
+        String initial;
+        int rowCount;
+        if (context.WITH_LEN_COL() != null) {
+            var countValue = context.value();
+            var count = expect(countValue, Kind.I32, "with_len_col");
+            if (count.whole() == null || count.whole().signum() <= 0) {
+                throw error(countValue.getStart(), "with_len_col needs an i32 literal or constant above zero, "
+                        + "as the size of an array is known before the program runs");
+            }
+            rowCount = count.whole().intValue();
+            checkArraySize(countValue.getStart(), text, rowCount, columns.size());
+            // Each value is zero, false or empty, as in the C bosonoga.
+            initial = "(std::size_t{" + rowCount + "})";
+        } else {
+            var rows = rows(context.rows(), text, columns, true);
+            rowCount = rows.size();
+            initial = " = {" + String.join(", ", rows) + "}";
+        }
+        var variable = declare(name, Kind.I32, false, false);
+        variable.array = new Function(name, List.of(Kind.I32), columns, new boolean[1], variable.cpp, true,
+                rowCount);
+        return rowsType(columns) + " " + variable.cpp + initial + ";";
+    }
+
+    // A top-level val is an array of literal rows, which the C bosonoga declares
+    // as it does a function.
+    private String defineArray(BosonogaParser.TopValDeclarationContext context) {
+        var name = context.NAME().getSymbol();
+        var text = name.getText();
+        if (functions.containsKey(text)) {
+            throw error(name, "function '%s' already exists".formatted(text));
+        }
+        if (arrays.containsKey(text)) {
+            throw error(name, "array '%s' already exists".formatted(text));
+        }
+        if (constants.containsKey(text)) {
+            throw error(name, "'%s' is already a constant".formatted(text));
+        }
+        if (!(context.initializer() instanceof BosonogaParser.ArrayInitializerContext array)) {
+            throw error(context.initializer().getStart(), "a top-level val is an array, as in val task is "
+                    + "array 0_i32, and const binds a value");
+        }
+        var columns = types(array.types, "a row of an array has at most %d values"
+                .formatted(FUNCTION_VALUES_MAX));
+        if (array.WITH_LEN_COL() != null) {
+            throw error(array.WITH_LEN_COL().getSymbol(),
+                    "a val array has literal rows, and only a var array has zeroed ones");
+        }
+        var rows = rows(array.rows(), text, columns, false);
+        var cpp = "a_" + text;
+        arrays.put(text, new Function(name, List.of(Kind.I32), columns, new boolean[1], cpp, true, rows.size()));
+        return "const " + rowsType(columns) + " " + cpp + " = {" + String.join(", ", rows) + "};\n";
+    }
+
+    private List<String> rows(BosonogaParser.RowsContext context, String name, List<Kind> columns,
+                              boolean isVar) {
+        var types = valuesShown(columns);
+        var rows = new ArrayList<String>();
+        for (var row : context.row()) {
+            var start = row.ROW().getSymbol();
+            var values = row.value();
+            var cells = new ArrayList<String>();
+            for (int i = 0; i < columns.size(); i++) {
+                if (i == values.size()) {
+                    throw error(start, "'%s' has rows of %s, but this row has %d".formatted(name, types, i));
+                }
+                var value = values.get(i);
+                if (value instanceof BosonogaParser.NameValueContext named
+                        && !constants.containsKey(named.getText())) {
+                    throw error(value.getStart(), ("the values of a row are literals, like 7_i32, so a row "
+                            + "cannot have '%s'").formatted(named.getText()));
+                }
+                cells.add(expect(value, columns.get(i), "a row of '%s'".formatted(name)).cpp());
+            }
+            if (values.size() > columns.size()) {
+                throw error(start, "'%s' has rows of %s, but this row has more".formatted(name, types));
+            }
+            rows.add("{" + String.join(", ", cells) + "}");
+            if (isVar) {
+                checkArraySize(start, name, rows.size(), columns.size());
+            }
+        }
+        return rows;
+    }
+
+    private void checkArraySize(Token token, String name, long rowCount, int columnCount) {
+        var count = rowCount * columnCount;
+        if (count > ARRAY_VALUES_MAX) {
+            throw error(token, "'%s' would hold %d values, and an array holds at most %d"
+                    .formatted(name, count, ARRAY_VALUES_MAX));
+        }
+    }
+
+    private static String rowsType(List<Kind> columns) {
+        return "std::vector<std::tuple<" + columns.stream().map(kind -> kind.cpp).collect(joining(", "))
+                + ">>";
+    }
+
+    // The number of rows of an array, len_col, or of the values of each row, len_row.
+    private Expression length(BosonogaParser.ArrayLengthContext context) {
+        var name = context.NAME().getSymbol();
+        var variable = find(name).filter(found -> found.array != null);
+        Function array;
+        if (variable.isPresent()) {
+            variable.get().isRead = true;
+            array = variable.get().array;
+        } else {
+            array = arrays.get(name.getText());
+            if (array == null) {
+                throw error(name, "expected the name of an array, got '%s'".formatted(name.getText()));
+            }
+            array.isCalled()[0] = true;
+        }
+        var count = context.count.getType() == BosonogaParser.LEN_COL ? array.rowCount() : array.results().size();
+        return new Expression("std::int32_t{" + count + "}", Kind.I32, BigInteger.valueOf(count));
     }
 
     // A value, which can be flags joined to more flags with shift_or.
@@ -247,13 +447,39 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         if (constants.containsKey(shown)) {
             throw error(name, "'%s' is a constant and cannot be set".formatted(shown));
         }
-        var target = find(name).orElseThrow(() -> unknownVariable(name));
+        var found = find(name);
+        if (found.isEmpty() && arrays.containsKey(shown)) {
+            throw error(name, "'%s' is a val array and cannot be set, but a var array of a block can"
+                    .formatted(shown));
+        }
+        var target = found.orElseThrow(() -> unknownVariable(name));
+        if (target.array != null) {
+            if (!(context.setter() instanceof BosonogaParser.RowSetterContext row)) {
+                throw error(context.setter().getStart(), ("'%s' is an array, whose rows are set with set %s at "
+                        + "INDEX to and one value per column").formatted(shown, shown));
+            }
+            return rowWrite(name, target.array, row);
+        }
+        if (target.isNew) {
+            throw error(name, "'%s' is new and cannot be set, but it can be unset and declared again"
+                    .formatted(shown));
+        }
         if (target.isVal) {
             throw error(name, "'%s' is a val and cannot be set".formatted(shown));
         }
+        if (context.setter() instanceof BosonogaParser.RowSetterContext row) {
+            throw error(row.AT().getSymbol(), "expected to, to_add, to_subtract, to_multiply, to_divide, "
+                    + "to_mod or a conversion, got 'at'");
+        }
         var assigned = switch (context.setter()) {
+            case BosonogaParser.LengthSetterContext length -> {
+                if (target.kind != Kind.I32) {
+                    throw error(name, "'%s' is %s, but a len is i32".formatted(shown, target.kind.shown));
+                }
+                yield length(length.arrayLength()).cpp();
+            }
             case BosonogaParser.CallSetterContext call -> {
-                var result = takenResult(name, call.callee, call.OF(), call.value(), call.result);
+                var result = takenResult(name, call.callee, call.arguments(), call.result);
                 if (result.kind() != target.kind) {
                     throw error(name, "'%s' is %s, but '%s' returns %s".formatted(shown,
                             target.kind.shown, call.callee.getText(), result.kind().shown));
@@ -280,7 +506,62 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             }
             default -> throw new IllegalStateException("no C++ for " + context.getText());
         };
-        return cppName(shown) + " = " + assigned + ";";
+        return target.cpp + " = " + assigned + ";";
+    }
+
+    private String rowWrite(Token name, Function array, BosonogaParser.RowSetterContext context) {
+        var shown = name.getText();
+        var columns = array.results();
+        var types = valuesShown(columns);
+        var index = expect(context.index, Kind.I32, "the index of '%s'".formatted(shown)).cpp();
+        var values = context.value().subList(1, context.value().size());
+        var cells = new ArrayList<String>();
+        for (int i = 0; i < columns.size(); i++) {
+            if (i == values.size()) {
+                throw error(name, "'%s' has rows of %s, but this row has %d".formatted(shown, types, i));
+            }
+            cells.add(expect(values.get(i), columns.get(i), "a row of '%s'".formatted(shown)).cpp());
+        }
+        if (values.size() > columns.size()) {
+            throw error(values.get(columns.size()).getStart(), "'%s' has rows of %s, but this row has more"
+                    .formatted(shown, types));
+        }
+        return "runtime::row(" + where(name) + ", " + array.cpp() + ", \"" + shown + "\", " + index + ") = {"
+                + String.join(", ", cells) + "};";
+    }
+
+    // As in the C bosonoga, only what new made is unset, in its own block, once it
+    // is read.
+    @Override
+    public String visitUnsetStatement(BosonogaParser.UnsetStatementContext context) {
+        var name = context.NAME().getSymbol();
+        var shown = name.getText();
+        var variable = find(name).orElseThrow(() -> unknownVariable(name));
+        if (!variable.isNew) {
+            throw error(name, "'%s' is not new, and only what new made is unset".formatted(shown));
+        }
+        if (scopes.getFirst().get(shown) != variable) {
+            throw error(name, "'%s' is unset in the block where it is new".formatted(shown));
+        }
+        if (!variable.isRead) {
+            throw error(variable.declaration, "'%s' is never read".formatted(shown));
+        }
+        scopes.getFirst().remove(shown);
+        return "runtime::unset(" + variable.cpp + ");";
+    }
+
+    // The first variable that new made and that is not unset, as the C bosonoga
+    // finds it, of the current loop only when in_loop.
+    private Optional<Variable> findNew(boolean inLoop) {
+        var outermost = scopes.descendingIterator();
+        while (outermost.hasNext()) {
+            for (var variable : outermost.next().values()) {
+                if (variable.isNew && (!inLoop || variable.loopDepth == loopDepth)) {
+                    return Optional.of(variable);
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     private String accumulation(Token name, Kind kind,
@@ -371,8 +652,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         loopDepth++;
         var block = block(context.block(), List.of(), name == null
                 ? List.of()
-                : List.of(new Declared(name, Kind.I32,
-                        "std::int32_t " + cppName(name.getText()) + " = " + counter + ";")));
+                : List.of(new Declared(name, Kind.I32, cpp -> "std::int32_t " + cpp + " = " + counter + ";")));
         loopDepth--;
         return "for (std::int32_t " + counter + " = 0; " + counter + " < " + limit + "; ++" + counter
                 + ") {\n" + block + INDENT.repeat(depth) + "}";
@@ -392,6 +672,10 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         if (loopDepth == 0) {
             throw error(jump, "%s can only be in a loop".formatted(jump.getText()));
         }
+        var owner = findNew(true);
+        if (owner.isPresent()) {
+            throw error(jump, "unset '%s' before %s".formatted(owner.get().declaration.getText(), jump.getText()));
+        }
         return jump.getText() + ";";
     }
 
@@ -409,6 +693,10 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     public String visitReturnStatement(BosonogaParser.ReturnStatementContext context) {
         var start = context.RETURN().getSymbol();
         var values = context.value();
+        var owner = findNew(false);
+        if (owner.isPresent()) {
+            throw error(start, "unset '%s' before return".formatted(owner.get().declaration.getText()));
+        }
         if (currentFunction == null) {
             if (context.status == null) {
                 var got = values.isEmpty() ? next(start) : values.getFirst().getStart();
@@ -470,30 +758,19 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             if (parameters.size() == FUNCTION_VALUES_MAX) {
                 throw error(parameter, "a function takes at most %d values".formatted(FUNCTION_VALUES_MAX));
             }
-            declare(parameter, kind, false);
+            var variable = declare(parameter, kind, false, false);
             parameters.add(kind);
-            cppParameters.append(", ").append(kind.cpp).append(' ').append(cppName(parameter.getText()));
+            cppParameters.append(", ").append(kind.cpp).append(' ').append(variable.cpp);
         }
-        var results = new ArrayList<Kind>();
+        List<Kind> results = List.of();
         if (context.RET() != null) {
-            for (var result : context.results) {
-                var indexed = indexed(result).orElseThrow(() -> error(result, ("expected a type with its "
-                        + "index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bool, "
-                        + "got '%s'").formatted(result.getText())));
-                if (results.size() == FUNCTION_VALUES_MAX) {
-                    throw error(result, "a function returns at most %d values".formatted(FUNCTION_VALUES_MAX));
-                }
-                if (indexed.index() != results.size()) {
-                    throw error(result, "the values are numbered from 0 in order, so '%s' is %d_%s"
-                            .formatted(result.getText(), results.size(), indexed.kind().shown));
-                }
-                results.add(indexed.kind());
-            }
+            results = types(context.results, "a function returns at most %d values".formatted(FUNCTION_VALUES_MAX));
         } else if (context.RET_VOID() == null) {
             throw error(context.block().getStart(), ("'%s' must say what it returns: ret and its types, "
                     + "or ret_void for nothing").formatted(text));
         }
-        var function = new Function(name, List.copyOf(parameters), List.copyOf(results), new boolean[1]);
+        var function = new Function(name, List.copyOf(parameters), results, new boolean[1],
+                cppFunctionName(text), false, 0);
         functions.put(text, function);
         currentFunction = function;
         var body = block(context.block(), List.of("const runtime::Call call(called_at);"), List.of());
@@ -538,6 +815,25 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
                 .formatted(text));
     }
 
+    // The types of the values of a function or of a row, numbered from 0 in order.
+    private List<Kind> types(List<Token> types, String tooMany) {
+        var kinds = new ArrayList<Kind>();
+        for (var type : types) {
+            var indexed = indexed(type).orElseThrow(() -> error(type, ("expected a type with its index, like "
+                    + "0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bool, got '%s'")
+                    .formatted(type.getText())));
+            if (kinds.size() == FUNCTION_VALUES_MAX) {
+                throw error(type, tooMany);
+            }
+            if (indexed.index() != kinds.size()) {
+                throw error(type, "the values are numbered from 0 in order, so '%s' is %d_%s"
+                        .formatted(type.getText(), kinds.size(), indexed.kind().shown));
+            }
+            kinds.add(indexed.kind());
+        }
+        return List.copyOf(kinds);
+    }
+
     private Optional<Indexed> indexed(Token token) {
         var matcher = INDEXED.matcher(token.getText());
         if (!matcher.matches()) {
@@ -553,7 +849,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     public String visitCallStatement(BosonogaParser.CallStatementContext context) {
         var function = callable(context.callee);
         var name = context.callee.getText();
-        var call = call(function, context.callee, context.OF(), context.value());
+        var call = call(function, context.callee, context.arguments());
         var results = function.results();
         if (results.isEmpty()) {
             if (context.WITH() != null) {
@@ -575,27 +871,30 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             var taken = indexed(position)
                     .filter(indexed -> indexed.index() < results.size()
                             && indexed.kind() == results.get(indexed.index()))
-                    .orElseThrow(() -> error(position, "'%s' returns %s, so it has no %s"
-                            .formatted(name, kindsNamed(results), shownPosition)));
+                    .orElseThrow(() -> error(position, "'%s' %s %s, so it has no %s"
+                            .formatted(name, function.gives(), kindsNamed(results), shownPosition)));
             if (previous != null && taken.index() <= previous.index()) {
                 throw error(position, ("the values are taken once each, by increasing index, so %s cannot "
                         + "follow %d_%s").formatted(shownPosition, previous.index(), previous.kind().shown));
             }
             previous = taken;
-            var value = results.size() == 1 ? result : "std::get<" + taken.index() + ">(" + result + ")";
+            // A row is a tuple even of one value, and a function of one value is not.
+            var value = !function.isArray() && results.size() == 1
+                    ? result
+                    : "std::get<" + taken.index() + ">(" + result + ")";
             declared.add(new Declared(binding.NAME().getSymbol(), taken.kind(),
-                    taken.kind().cpp + " " + cppName(binding.NAME().getText()) + " = " + value + ";"));
+                    cpp -> taken.kind().cpp + " " + cpp + " = " + value + ";"));
         }
         var block = block(context.block(), List.of("const auto " + result + " = " + call + ";"), declared);
         return "{\n" + block + INDENT.repeat(depth) + "}";
     }
 
     // The one value of a call that var and set ... to take, as with ret 0_i32.
-    private Expression takenResult(Token target, Token callee, TerminalNode of,
-                                   List<BosonogaParser.ValueContext> values, Token result) {
+    private Expression takenResult(Token target, Token callee, BosonogaParser.ArgumentsContext arguments,
+                                   Token result) {
         var function = callable(callee);
         var name = callee.getText();
-        var call = call(function, callee, of, values);
+        var call = call(function, callee, arguments);
         var results = function.results();
         if (results.isEmpty()) {
             throw error(target, "'%s' returns no values, so it is called with call".formatted(name));
@@ -606,22 +905,31 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         var kind = results.getFirst();
         var taken = indexed(result);
         if (taken.isEmpty() || taken.get().index() != 0 || taken.get().kind() != kind) {
-            throw error(result, "'%s' returns %s, so its call ends with ret 0_%s, not '%s'"
-                    .formatted(name, kind.shown, kind.shown, result.getText()));
+            throw error(result, "'%s' %s %s, so its call ends with ret 0_%s, not '%s'"
+                    .formatted(name, function.gives(), kind.shown, kind.shown, result.getText()));
         }
-        return new Expression(call, kind);
+        return new Expression(function.isArray() ? "std::get<0>(" + call + ")" : call, kind);
     }
 
     private BosonogaException needsBlock(Token token, Function function) {
         var results = function.results();
-        return error(token, ("'%s' returns %s, which %scall ... with ret takes for its block, each named, "
-                + "as in with ret 0_%s as value").formatted(function.name().getText(), kindsNamed(results),
-                results.size() == 1 ? "var, set ... to or " : "", results.getFirst().shown));
+        return error(token, ("'%s' %s %s, which %scall ... with ret takes for its block, each named, "
+                + "as in with ret 0_%s as value").formatted(function.name().getText(), function.gives(),
+                kindsNamed(results), results.size() == 1 ? "var, set ... to or " : "",
+                results.getFirst().shown));
     }
 
     // A function that only calls itself is not used, as in the C bosonoga.
     private Function callable(Token callee) {
+        var variable = find(callee).filter(found -> found.array != null);
+        if (variable.isPresent()) {
+            variable.get().isRead = true;
+            return variable.get().array;
+        }
         var function = functions.get(callee.getText());
+        if (function == null) {
+            function = arrays.get(callee.getText());
+        }
         if (function == null) {
             throw error(callee, "unknown function '%s'".formatted(callee.getText()));
         }
@@ -631,9 +939,26 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         return function;
     }
 
-    private String call(Function function, Token callee, TerminalNode of,
-                        List<BosonogaParser.ValueContext> values) {
+    private String call(Function function, Token callee, BosonogaParser.ArgumentsContext arguments) {
         var name = callee.getText();
+        var values = arguments == null ? List.<BosonogaParser.ValueContext>of() : arguments.value();
+        if (function.isArray()) {
+            if (arguments == null || arguments.AT() == null) {
+                throw error(arguments == null ? next(callee) : arguments.getStart(), ("'%s' is an array, "
+                        + "which is read at one i32 index, as in %s at 0_i32").formatted(name, name));
+            }
+            if (values.size() > 1) {
+                throw error(values.get(1).getStart(), ("'%s' is an array, which is read at one i32 index, "
+                        + "but is given more").formatted(name));
+            }
+            var index = expect(values.getFirst(), Kind.I32, "the index of '%s'".formatted(name)).cpp();
+            return "runtime::row(" + where(callee) + ", " + function.cpp() + ", \"" + name + "\", " + index + ")";
+        }
+        if (arguments != null && arguments.AT() != null) {
+            throw error(arguments.AT().getSymbol(),
+                    "'%s' is a function, and only an array is read at an index".formatted(name));
+        }
+        var of = arguments == null ? null : arguments.OF();
         var parameters = function.parameters();
         var shownParameters = valuesShown(parameters);
         if (parameters.isEmpty() && of != null) {
@@ -643,19 +968,19 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             throw error(next(callee), "'%s' takes %s, which follow of, as in %s of ..."
                     .formatted(name, shownParameters, name));
         }
-        var arguments = new StringBuilder(where(callee));
+        var cpp = new StringBuilder(where(callee));
         for (int i = 0; i < parameters.size(); i++) {
             if (i == values.size()) {
                 throw error(next(values.getLast().getStop()), "'%s' takes %s, but is given %d"
                         .formatted(name, shownParameters, i));
             }
-            arguments.append(", ").append(expect(values.get(i), parameters.get(i), name).cpp());
+            cpp.append(", ").append(expect(values.get(i), parameters.get(i), name).cpp());
         }
         if (values.size() > parameters.size()) {
             throw error(values.get(parameters.size()).getStart(), "'%s' takes %s, but is given more"
                     .formatted(name, shownParameters));
         }
-        return cppFunctionName(name) + "(" + arguments + ")";
+        return function.cpp() + "(" + cpp + ")";
     }
 
     private static String valuesShown(List<Kind> kinds) {
@@ -702,10 +1027,18 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
 
     @Override
     public String visitComparison(BosonogaParser.ComparisonContext context) {
-        var left = expression(context.value(0));
+        readsNew = true;
+        Expression left;
+        Expression right;
+        try {
+            left = expression(context.value(0));
+            right = context.compare != null ? expression(context.value(1)) : null;
+        } finally {
+            readsNew = false;
+        }
         String cpp;
         if (context.compare != null) {
-            cpp = comparison(context.compare, left, expression(context.value(1)));
+            cpp = comparison(context.compare, left, right);
         } else if (left.kind() == Kind.BOOL) {
             cpp = left.cpp();
         } else {
@@ -844,7 +1177,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             if (!fits(kind, value)) {
                 throw error(literal, range);
             }
-            return new Expression(wholeLiteral(kind, value), kind);
+            return new Expression(wholeLiteral(kind, value), kind, value);
         }
         var real = Double.parseDouble(whole + "." + (fraction == null ? "0" : fraction));
         // Written so that NaN is outside the range too, as in the C bosonoga.
@@ -895,9 +1228,15 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         return bit;
     }
 
-    private void declare(Token name, Kind kind, boolean isVal) {
+    private Variable declare(Token name, Kind kind, boolean isVal, boolean isNew) {
         checkNewName(name);
-        scopes.getFirst().put(name.getText(), new Variable(name, kind, isVal));
+        var text = name.getText();
+        var count = declarations.merge(text, 1, Integer::sum);
+        // The prefix keeps a bosonoga name from being a C++ keyword, such as new.
+        var cpp = count == 1 ? "v_" + text : "v" + count + "_" + text;
+        var variable = new Variable(name, kind, isVal, isNew, loopDepth, cpp);
+        scopes.getFirst().put(text, variable);
+        return variable;
     }
 
     private void checkNewName(Token name) {
@@ -913,6 +1252,9 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         }
         if (functions.containsKey(name.getText())) {
             throw error(name, "'%s' is already a function".formatted(name.getText()));
+        }
+        if (arrays.containsKey(name.getText())) {
+            throw error(name, "'%s' is already an array".formatted(name.getText()));
         }
     }
 
@@ -936,9 +1278,18 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             throw error(name, "'%s' is a function, which is called with var, set ... to or call"
                     .formatted(name.getText()));
         }
-        var variable = find(name).orElseThrow(() -> unknownVariable(name));
-        variable.isRead = true;
-        return new Expression(cppName(name.getText()), variable.kind);
+        var variable = find(name);
+        if (arrays.containsKey(name.getText()) || variable.filter(found -> found.array != null).isPresent()) {
+            throw error(name, "'%s' is an array, which is read with var, set ... to or call"
+                    .formatted(name.getText()));
+        }
+        var found = variable.orElseThrow(() -> unknownVariable(name));
+        // A copy would outlive the unset of what it points into, as in the C bosonoga.
+        if (found.isNew && !readsNew) {
+            throw error(name, "'%s' is new, so it %s".formatted(name.getText(), NEW_READS));
+        }
+        found.isRead = true;
+        return new Expression(found.cpp, found.kind);
     }
 
     private BosonogaException unknownVariable(Token name) {
@@ -949,11 +1300,6 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
     private String where(Token token) {
         usesSource = true;
         return "{source, " + token.getLine() + ", " + (token.getCharPositionInLine() + 1) + "}";
-    }
-
-    // The prefix keeps a bosonoga name from being a C++ keyword, such as new.
-    private static String cppName(String name) {
-        return "v_" + name;
     }
 
     private static String cppStringText(String text) {

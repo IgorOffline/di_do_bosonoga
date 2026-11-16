@@ -6,6 +6,9 @@ public final class GeneratorTest {
     private static final String DOUBLE_FN =
             "def double_fn value_i32 ret 0_i32\ndi\n  return value_i32\ndo\n";
     private static final String PAIR_FN = "def pair_fn ret 0_i32 1_f32\ndi\n  return 1_i32 2d0_f32\ndo\n";
+    private static final String PRIMES = "val primes is array 0_u32\ndi\n  row 2_u32\n  row 3_u32\ndo\n";
+    private static final String NEW_READS = "is only read by info, a comparison, new, to_join, io_write, "
+            + "an xml_ statement or str_parse, and is not copied";
     private static final String BODY_START = "int bosonoga_main() {\n";
     private static final String BODY_END = "}\n\n}  // namespace\n";
 
@@ -84,6 +87,24 @@ public final class GeneratorTest {
         functionMustBeKnown();
         functionIsNotAValue();
         functionWithoutReturnFails();
+        newStrJoinsItsValues();
+        nameIsDeclaredAgainAfterUnset();
+        newIsNotCopied();
+        newIsUnsetInItsBlock();
+        newIsUnsetBeforeReturn();
+        newIsUnsetBeforeBreak();
+        onlyNewIsUnset();
+        newCannotBeSet();
+        newMakesAStr();
+        valArrayBecomesAVector();
+        varArrayRowsAreWritten();
+        rowsAreLiterals();
+        rowHasEachValue();
+        topLevelValIsAnArray();
+        arrayIsReadAtAnIndex();
+        withLenColIsKnownBeforeTheProgramRuns();
+        valArrayCannotBeSet();
+        lengthIsAnI32();
         if (failures > 0) {
             System.err.println(failures + " test(s) failed");
             System.exit(1);
@@ -677,6 +698,154 @@ public final class GeneratorTest {
                         "var answer is answer_fn with ret 0_i32", "info answer", "return exit_success"),
                 "t.bosonoga", "t")
                 .contains("  runtime::fail({source, 1, 5}, \"the function 'answer_fn' ended without a return\");\n}\n"));
+    }
+
+    private static void newStrJoinsItsValues() {
+        expectBody("newStrJoinsItsValues", """
+                  std::int32_t v_count = std::int32_t{3};
+                  std::string v_line = runtime::joined(std::string{"n "}, v_count);
+                  runtime::info(std::cout, v_line);
+                  runtime::unset(v_line);
+                  return EXIT_SUCCESS;
+                """, program(
+                "var count is 3_i32",
+                "val line is new str of \"n \"_str count",
+                "info line",
+                "unset line",
+                "return exit_success"));
+    }
+
+    private static void nameIsDeclaredAgainAfterUnset() {
+        expectBody("nameIsDeclaredAgainAfterUnset", """
+                  std::string v_line = runtime::joined(std::string{"a"});
+                  runtime::info(std::cout, v_line);
+                  runtime::unset(v_line);
+                  std::string v2_line = runtime::joined(std::string{"b"});
+                  runtime::info(std::cout, v2_line);
+                  runtime::unset(v2_line);
+                  return EXIT_SUCCESS;
+                """, program(
+                "val line is new str of \"a\"_str",
+                "info line",
+                "unset line",
+                "val line is new str of \"b\"_str",
+                "info line",
+                "unset line",
+                "return exit_success"));
+    }
+
+    private static void newIsNotCopied() {
+        expectError("newIsNotCopied", "t.bosonoga:4:15: 'line' is new, so it " + NEW_READS,
+                program("val line is new str of \"a\"_str", "val copy is line", "return exit_success"));
+    }
+
+    private static void newIsUnsetInItsBlock() {
+        expectError("newIsUnsetInItsBlock", "t.bosonoga:7:3: 'line' is new, and is unset before the end of its block",
+                program("if true_bool", "di", "  val line is new str of \"a\"_str", "  info line", "do",
+                        "return exit_success"));
+    }
+
+    private static void newIsUnsetBeforeReturn() {
+        expectError("newIsUnsetBeforeReturn", "t.bosonoga:5:3: unset 'line' before return",
+                program("val line is new str of \"a\"_str", "info line", "return exit_success"));
+    }
+
+    private static void newIsUnsetBeforeBreak() {
+        expectError("newIsUnsetBeforeBreak", "t.bosonoga:7:5: unset 'line' before break",
+                program("to_2", "di", "  val line is new str of \"a\"_str", "  info line", "  break", "do",
+                        "return exit_success"));
+    }
+
+    private static void onlyNewIsUnset() {
+        expectError("onlyNewIsUnset", "t.bosonoga:5:9: 'count' is not new, and only what new made is unset",
+                program("val count is 1_i32", "info count", "unset count", "return exit_success"));
+    }
+
+    private static void newCannotBeSet() {
+        expectError("newCannotBeSet",
+                "t.bosonoga:4:7: 'line' is new and cannot be set, but it can be unset and declared again",
+                program("var line is new str of \"a\"_str", "set line to \"b\"_str", "info line", "unset line",
+                        "return exit_success"));
+    }
+
+    private static void newMakesAStr() {
+        expectError("newMakesAStr",
+                "t.bosonoga:3:19: new makes only a str or an xml_str, as in new str of \"A\"_str 1_i32",
+                program("val line is new i32 of 1_i32", "return exit_success"));
+    }
+
+    private static void valArrayBecomesAVector() {
+        var source = PRIMES + program("var second is primes at 1_i32 with ret 0_u32", "info second",
+                "return exit_success");
+        expectBody("valArrayBecomesAVector", """
+                  std::uint32_t v_second = std::get<0>(runtime::row({source, 8, 17}, a_primes, "primes", std::int32_t{1}));
+                  runtime::info(std::cout, v_second);
+                  return EXIT_SUCCESS;
+                """, source);
+        expect("valArrayBecomesAVector has the array", Generator.generate(source, "t.bosonoga", "t").contains(
+                "const std::vector<std::tuple<std::uint32_t>> a_primes = {{std::uint32_t{2U}}, {std::uint32_t{3U}}};\n"));
+    }
+
+    private static void varArrayRowsAreWritten() {
+        expectBody("varArrayRowsAreWritten", """
+                  std::vector<std::tuple<std::int32_t, bool>> v_cells(std::size_t{2});
+                  runtime::row({source, 4, 7}, v_cells, "cells", std::int32_t{1}) = {std::int32_t{7}, true};
+                  {
+                    const auto result_1 = runtime::row({source, 5, 8}, v_cells, "cells", std::int32_t{1});
+                    std::int32_t v_seven = std::get<0>(result_1);
+                    runtime::info(std::cout, v_seven);
+                  }
+                  return EXIT_SUCCESS;
+                """, program(
+                "var cells is array 0_i32 1_bool with_len_col 2_i32",
+                "set cells at 1_i32 to 7_i32 true_bool",
+                "call cells at 1_i32 with ret 0_i32 as seven",
+                "di",
+                "  info seven",
+                "do",
+                "return exit_success"));
+    }
+
+    private static void rowsAreLiterals() {
+        expectError("rowsAreLiterals",
+                "t.bosonoga:3:7: the values of a row are literals, like 7_i32, so a row cannot have 'count'",
+                "val counts is array 0_i32\ndi\n  row count\ndo\n" + program("return exit_success"));
+    }
+
+    private static void rowHasEachValue() {
+        expectError("rowHasEachValue", "t.bosonoga:3:3: 'pairs' has rows of 2 values, i32 i32, but this row has 1",
+                "val pairs is array 0_i32 1_i32\ndi\n  row 1_i32\ndo\n" + program("return exit_success"));
+    }
+
+    private static void topLevelValIsAnArray() {
+        expectError("topLevelValIsAnArray",
+                "t.bosonoga:1:14: a top-level val is an array, as in val task is array 0_i32, and const binds a value",
+                "val count is 1_i32\n" + program("return exit_success"));
+    }
+
+    private static void arrayIsReadAtAnIndex() {
+        expectError("arrayIsReadAtAnIndex",
+                "t.bosonoga:8:24: 'primes' is an array, which is read at one i32 index, as in primes at 0_i32",
+                PRIMES + program("var second is primes with ret 0_u32", "info second", "return exit_success"));
+    }
+
+    private static void withLenColIsKnownBeforeTheProgramRuns() {
+        expectError("withLenColIsKnownBeforeTheProgramRuns", "t.bosonoga:4:41: with_len_col needs an i32 literal "
+                        + "or constant above zero, as the size of an array is known before the program runs",
+                program("var size is 2_i32", "var cells is array 0_i32 with_len_col size", "return exit_success"));
+    }
+
+    private static void valArrayCannotBeSet() {
+        expectError("valArrayCannotBeSet",
+                "t.bosonoga:8:7: 'primes' is a val array and cannot be set, but a var array of a block can",
+                PRIMES + program("set primes at 0_i32 to 1_u32", "return exit_success"));
+    }
+
+    private static void lengthIsAnI32() {
+        expectBody("lengthIsAnI32", """
+                  runtime::info(std::cout, std::int32_t{2});
+                  return EXIT_SUCCESS;
+                """, PRIMES + "const count is len_col primes\n" + program("info count", "return exit_success"));
     }
 
     // Lines start at line 3 and column 3, after "bosonoga_main", "di" and the indent.

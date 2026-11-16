@@ -3,7 +3,12 @@ grammar Bosonoga;
 // The generator checks that there is one bosonoga_main, as its errors name what
 // a program needs.
 program
-    : (constantDeclaration | functionDefinition | mainSection)* EOF
+    : (constantDeclaration | functionDefinition | topValDeclaration | mainSection)* EOF
+    ;
+
+// The generator checks that it is an array, as in the C bosonoga.
+topValDeclaration
+    : VAL NAME IS initializer
     ;
 
 // The generator checks what follows, as in the C bosonoga, a parameter has its
@@ -13,7 +18,7 @@ functionDefinition
     ;
 
 constantDeclaration
-    : CONST NAME IS value
+    : CONST NAME IS (value | arrayLength)
     ;
 
 mainSection
@@ -34,7 +39,8 @@ statement
     | BREAK                                                        # breakStatement
     | CONTINUE                                                     # continueStatement
     | SLEEP_MS value                                               # sleepStatement
-    | CALL callee=NAME (OF value+)? (WITH RET binding+ block)?     # callStatement
+    | CALL callee=NAME arguments? (WITH RET binding+ block)?       # callStatement
+    | UNSET NAME                                                   # unsetStatement
     | NIHIL                                                        # nihilStatement
     | RETURN (status=(EXIT_SUCCESS | EXIT_FAILURE) | value*)       # returnStatement
     ;
@@ -46,15 +52,39 @@ binding
 
 initializer
     : operation                                          # operationInitializer
-    | callee=NAME (OF value+)? WITH RET result=NUMBER    # callInitializer
+    | callee=NAME arguments? WITH RET result=NUMBER      # callInitializer
+    | NEW type=NAME OF value+                            # newInitializer
+    | ARRAY types+=NUMBER+ (WITH_LEN_COL value | rows)   # arrayInitializer
+    | arrayLength                                        # lengthInitializer
     | value (SHIFT_OR value)*                            # valueInitializer
     ;
 
 setter
-    : TO callee=NAME (OF value+)? WITH RET result=NUMBER                             # callSetter
+    : TO callee=NAME arguments? WITH RET result=NUMBER                               # callSetter
+    | TO arrayLength                                                               # lengthSetter
+    | AT index=value TO value+                                                     # rowSetter
     | TO value+                                                                    # toSetter
     | accumulation=(TO_ADD | TO_SUBTRACT | TO_MULTIPLY | TO_DIVIDE | TO_MOD) value+  # accumulationSetter
     | operation                                                                    # operationSetter
+    ;
+
+// The values of a function after of, or the index of an array after at.
+arguments
+    : OF value+
+    | AT value+
+    ;
+
+rows
+    : DI row+ DO
+    ;
+
+row
+    : ROW value*
+    ;
+
+// The number of rows, len_col, or of the values of each row, len_row, of an array.
+arrayLength
+    : count=(LEN_COL | LEN_ROW) NAME
     ;
 
 // A conversion or a math function, each with one or two values.
@@ -122,6 +152,14 @@ RET_VOID      : 'ret_void' ;
 CALL          : 'call' ;
 OF            : 'of' ;
 AS            : 'as' ;
+NEW           : 'new' ;
+UNSET         : 'unset' ;
+ARRAY         : 'array' ;
+ROW           : 'row' ;
+AT            : 'at' ;
+WITH_LEN_COL  : 'with_len_col' ;
+LEN_COL       : 'len_col' ;
+LEN_ROW       : 'len_row' ;
 EXIT_SUCCESS  : 'exit_success' ;
 EXIT_FAILURE  : 'exit_failure' ;
 

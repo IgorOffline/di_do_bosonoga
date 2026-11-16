@@ -8,16 +8,19 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <initializer_list>
 #include <iostream>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <tuple>
 #include <type_traits>
+#include <vector>
 
 namespace bosonoga::runtime {
 
@@ -160,6 +163,32 @@ template <typename... Values>
 void info(std::ostream &out, const Values &...values) {
   (print(out, values), ...);
   out << '\n';
+}
+
+// What new str of makes: the values as info prints them, with nothing between.
+template <typename... Values>
+std::string joined(const Values &...values) {
+  std::ostringstream out;
+  (print(out, values), ...);
+  return out.str();
+}
+
+// What new made is freed when it is unset.
+inline void unset(std::string &value) { std::string().swap(value); }
+
+// A row of an array, as the C bosonoga reads and writes it, at a checked index.
+template <typename Rows>
+auto &row(const Where &where, Rows &rows, const char *name, std::int32_t index) {
+  if (index < 0 || static_cast<std::size_t>(index) >= rows.size()) {
+    if (rows.size() == 1) {
+      fail(where, std::string("'") + name + "' has only row 0, not " +
+                      std::to_string(index));
+    }
+    fail(where, std::string("'") + name + "' has rows 0 to " +
+                    std::to_string(rows.size() - 1) + ", not " +
+                    std::to_string(index));
+  }
+  return rows[static_cast<std::size_t>(index)];
 }
 
 inline bool close(double a, double b, double tolerance) {
