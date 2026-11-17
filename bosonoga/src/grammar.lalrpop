@@ -1,0 +1,51 @@
+use lalrpop_util::ParseError;
+
+use crate::Diagnostic;
+use crate::ast::{ExitStatus, Program, Statement};
+use crate::lexer::Tok;
+
+grammar<'input>;
+
+extern {
+    type Location = usize;
+    type Error = Diagnostic;
+
+    enum Tok<'input> {
+        "bosonoga_main" => Tok::BosonogaMain,
+        "di" => Tok::Di,
+        "do" => Tok::Do,
+        "info" => Tok::Info,
+        "nihil" => Tok::Nihil,
+        "return" => Tok::Return,
+        "exit_success" => Tok::ExitSuccess,
+        "exit_failure" => Tok::ExitFailure,
+        "number" => Tok::I32(<i32>),
+        "word" => Tok::Word(<&'input str>),
+        "end" => Tok::End,
+    }
+}
+
+pub Program: Program =
+    "bosonoga_main" <statements:Block> <end:@L> "end" => Program { statements, end };
+
+Block: Vec<Statement> =
+    <opening:@L> "di" <statements:Statement*> "do" =>? {
+        if statements.is_empty() {
+            Err(ParseError::User {
+                error: Diagnostic::new(opening, "empty block, write nihil for a block that does nothing"),
+            })
+        } else {
+            Ok(statements)
+        }
+    };
+
+Statement: Statement = {
+    "info" <values:"number"+> => Statement::Info(values),
+    "nihil" => Statement::Nihil,
+    "return" <status:Status> => Statement::Return(status),
+};
+
+Status: ExitStatus = {
+    "exit_success" => ExitStatus::Success,
+    "exit_failure" => ExitStatus::Failure,
+};
