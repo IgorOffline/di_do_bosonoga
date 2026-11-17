@@ -140,19 +140,44 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
             }
         }
         if (isGfx) {
-            var callbacks = new StringBuilder(body);
-            for (var entry : gfxSections.entrySet()) {
-                callbacks.append("  [[maybe_unused]] auto ").append(entry.getKey()).append(" = [&]()")
-                        .append(entry.getKey().equals("gfx_main") ? " -> int" : "")
-                        .append(" {\n").append(entry.getValue()).append("  };\n");
-            }
-            var checked = new StringBuilder(definitions)
-                    .append("[[maybe_unused]] void gfx_sections(runtime::gfx::Context &gfx_context) {\n")
-                    .append("  static_cast<void>(gfx_context);\n").append(callbacks).append("}\n");
-            return CppText.program(sourceName, locations.declarations(), checked,
-                    "  throw runtime::Error(\"the console runner requires bosonoga_main\");\n", functionName);
+            return CppText.program(sourceName, locations.declarations(), new StringBuilder(definitions)
+                    .append(gfxProgram()), "  throw runtime::Error(\"the console runner requires bosonoga_main\");\n",
+                    functionName) + """
+
+                    namespace bosonoga {
+
+                    int gfx_program() { return ::bosonoga_gfx(); }
+
+                    }  // namespace bosonoga
+                    """;
         }
         return CppText.program(sourceName, locations.declarations(), definitions, body, functionName);
+    }
+
+    // As the C bosonoga's gfx runner: the window reads the fonts and icons,
+    // bosonoga_global runs, and then the window runs the sections.
+    private String gfxProgram() {
+        var file = settings.settings();
+        var cpp = new StringBuilder("int bosonoga_gfx() {\n  runtime::gfx::Window gfx_window({\"")
+                .append(CppText.escapedBytes(sourceName)).append("\", ").append(file.gfxWidth).append(", ")
+                .append(file.gfxHeight).append(", runtime::Color{0x%06XU}, ".formatted(file.backgroundColor))
+                .append(gfxAssets(Kind.FONT)).append(", ").append(gfxAssets(Kind.ICON)).append("});\n").append(body);
+        for (var entry : gfxSections.entrySet()) {
+            var name = entry.getKey();
+            cpp.append("  gfx_window.").append(name.substring("gfx_".length())).append(" = [&]()")
+                    .append(name.equals("gfx_main") ? " -> int" : "").append(" {\n").append(entry.getValue())
+                    .append("  };\n");
+        }
+        return cpp.append("  return gfx_window.run();\n}\n\n").toString();
+    }
+
+    private String gfxAssets(Kind kind) {
+        var assets = new StringBuilder("{");
+        for (var entry : settings.named(kind).entrySet()) {
+            assets.append(assets.length() > 1 ? ", " : "").append("{\"").append(CppText.escapedBytes(entry.getKey()))
+                    .append("\", \"").append(CppText.escapedBytes(entry.getValue().path())).append("\"}");
+        }
+        return assets.append('}').toString();
     }
 
     private void items(List<BosonogaParser.ItemContext> items) {
@@ -1783,7 +1808,7 @@ final class CppEmitter extends BosonogaBaseVisitor<String> {
         if (currentFunction != null || inLiteralRow || !section.equals(required)) {
             throw error(token, token.getText() + " can only be in " + required);
         }
-        return new Expression("gfx_context.scene." + (delta ? "delta_time" : "key"), delta ? Kind.F32 : Kind.INPUT_KEY);
+        return new Expression("gfx_window.scene." + (delta ? "delta_time" : "key"), delta ? Kind.F32 : Kind.INPUT_KEY);
     }
 
     // As in the C bosonoga, a str has no escape sequences, so it is the text

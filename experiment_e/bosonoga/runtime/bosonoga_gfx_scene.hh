@@ -3,7 +3,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -75,11 +74,6 @@ struct Scene {
     shape.x = x; shape.y = y; shape.icon = icon.index; shape.angle = angle; shape.color = color.rgb;
     shapes.push_back(shape);
   }
-};
-
-struct Context {
-  Scene scene;
-  std::function<void()> next_frame;
 };
 }  // namespace bosonoga::runtime::gfx
 #endif

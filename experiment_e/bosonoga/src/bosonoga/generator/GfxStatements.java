@@ -34,7 +34,7 @@ final class GfxStatements {
         if (start.getType() == BosonogaParser.GFX_AWAIT_NEXT_FRAME) {
             if (!canAwait) throw error.apply(start, word + " can only be in gfx_main");
             surplus(values, 0);
-            return "gfx_context.next_frame();";
+            return "runtime::gfx::next_frame();";
         }
         if (!inFrame) throw error.apply(start, word + " can only be in gfx_frame");
         var arguments = new ArrayList<String>();
@@ -85,7 +85,7 @@ final class GfxStatements {
             case BosonogaParser.GFX_DRAW_ICON -> "draw_icon";
             default -> word.substring("gfx_draw_".length());
         };
-        return "gfx_context.scene." + method + "(" + String.join(", ", arguments) + ");";
+        return "gfx_window.scene." + method + "(" + String.join(", ", arguments) + ");";
     }
 
     private Token after(List<BosonogaParser.ValueContext> values, Token start) {

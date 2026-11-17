@@ -1,6 +1,7 @@
 package bosonoga.generator;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -52,6 +53,21 @@ final class SettingValues {
             return asset(text.substring(ICON_PREFIX.length()), settings.icons, icons, Kind.ICON);
         }
         return asset(text.substring(DIR_PREFIX.length()), settings.dirs, dirs, Kind.DIR);
+    }
+
+    Settings settings() {
+        return settings;
+    }
+
+    // The fonts or icons that the program names, by key, in the order of their index.
+    Map<String, Settings.Asset> named(Kind kind) {
+        var keys = kind == Kind.FONT ? fonts : icons;
+        var group = kind == Kind.FONT ? settings.fonts : settings.icons;
+        var named = new LinkedHashMap<String, Settings.Asset>();
+        for (var key : keys) {
+            named.put(key, group.get(key));
+        }
+        return named;
     }
 
     private static boolean has(Map<String, ?> group, String prefix, String text) {

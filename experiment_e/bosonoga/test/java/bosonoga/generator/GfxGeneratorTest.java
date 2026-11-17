@@ -125,7 +125,7 @@ final class GfxGeneratorTest {
         error(source, source.indexOf("blue"), "expected top, middle, baseline or bottom, got 'blue'");
         source = "gfx_frame di gfx_draw_text left top 0d0_f32 0d0_f32 font_mono 12d0_f32 color_night do\n" + MAIN;
         error(source, source.indexOf(" do") + 1, "expected a value to draw, got 'do'");
-        valid("draw", """
+        var draw = """
                 gfx_init di nihil do
                 gfx_frame di
                   gfx_clear color_night
@@ -139,7 +139,13 @@ final class GfxGeneratorTest {
                 do
                 gfx_cleanup di nihil do
                 gfx_main di gfx_await_next_frame return exit_success do
-                """, "gfx_context.scene.draw_text");
+                """;
+        valid("draw", draw, "gfx_window.scene.draw_text");
+        valid("setup", draw, "runtime::gfx::Window gfx_window({\"gfx.bosonoga\", 0, 0, runtime::Color{0x000000U}, "
+                + "{{\"mono\", \"./font.ttf\"}}, {{\"dot\", \"./dot.png\"}}});");
+        valid("sections", draw, "  gfx_window.cleanup = [&]() {\n  // nihil\n  };\n  gfx_window.main = [&]() -> int {\n"
+                + "  runtime::gfx::next_frame();\n  return EXIT_SUCCESS;\n  };\n  return gfx_window.run();");
+        valid("entry", MAIN, "int gfx_program() { return ::bosonoga_gfx(); }");
     }
 
     private static void specialValues() {
@@ -156,6 +162,6 @@ final class GfxGeneratorTest {
         error(source, source.indexOf("gfx_delta_time"), "gfx_delta_time can only be in gfx_frame");
         valid("values", "gfx_frame di info gfx_delta_time do\n"
                 + "gfx_key_down di if gfx_key eq key_jump di info gfx_key do do\n" + MAIN,
-                "gfx_context.scene.key");
+                "gfx_window.scene.key");
     }
 }

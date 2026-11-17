@@ -13,6 +13,7 @@ cd "$(dirname "$0")"
 : "${JAVA_DIR:=../java}"
 : "${ANTLR4_SRC:=$JAVA_DIR/antlr4-4.13.2}"
 : "${ANTLR3:=$JAVA_DIR/antlr-complete-3.5.3}"
+: "${CC:=clang}"
 : "${CXX:=clang++}"
 : "${CXXFLAGS:=-std=c++17 -O0 -g -fsanitize=undefined -fno-sanitize-recover=all -Wall -Wextra -Wpedantic -Werror -Wconversion -Wsign-conversion -Wshadow}"
 
@@ -139,6 +140,24 @@ for source in build/bosonoga/gfx_checks/*.cc; do
   # shellcheck disable=SC2086
   $CXX $CXXFLAGS -Wno-tautological-compare -Wno-self-assign -I runtime -c "$source" -o "$source.o"
 done
+# The window is linked with a gfx program, but not run, as a test has neither
+# a display nor assets. The vendored libraries are compiled again only when
+# gfx/vendor.c changes, as they take long.
+VENDOR="-isystem sokol -isystem fontstash -isystem stb"
+GFX_LIBS="-pthread -lX11 -lXi -lXcursor -lGL -ldl -lm"
+mkdir -p build/gfx
+if [ ! -f build/gfx/vendor.o ] || [ gfx/vendor.c -nt build/gfx/vendor.o ]; then
+  # shellcheck disable=SC2086
+  $CC -std=c11 -O0 -g -fsanitize=undefined -fno-sanitize-recover=all $VENDOR -c gfx/vendor.c \
+    -o build/gfx/vendor.o
+fi
+# shellcheck disable=SC2086
+$CXX $CXXFLAGS $VENDOR -I runtime -c gfx/window.cc -o build/gfx/window.o
+# shellcheck disable=SC2086
+$CXX $CXXFLAGS -I runtime -c gfx/main.cc -o build/gfx/main.o
+# shellcheck disable=SC2086
+$CXX $CXXFLAGS build/bosonoga/gfx_checks/draw.cc.o build/gfx/window.o build/gfx/main.o build/gfx/vendor.o \
+  $GFX_LIBS -o build/gfx/draw
 # shellcheck disable=SC2086
 $CXX $CXXFLAGS -I runtime test/runtime.cc -o build/runtime_test
 ./build/runtime_test

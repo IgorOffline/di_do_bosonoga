@@ -92,7 +92,15 @@ auto &row(const Where &where, Rows &rows, const char *name, std::int32_t index) 
   return rows[static_cast<std::size_t>(index)];
 }
 
+// Set by the window while gfx_main runs, as gfx_main sleeps a frame at a time
+// so that the window goes on, as in the C bosonoga.
+inline void (*sleeping)(std::uint32_t milliseconds) = nullptr;
+
 inline void sleep_ms(std::uint32_t milliseconds) {
+  if (sleeping != nullptr) {
+    sleeping(milliseconds);
+    return;
+  }
   std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
 }
 

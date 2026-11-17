@@ -10,10 +10,10 @@ same output and runtime errors.
 archive_d is the specification. When this document and archive_d disagree,
 archive_d wins; fix this document.
 
-The console language is complete up to the known gaps below. Graphics syntax,
-validation, scene recording and key codes are ported. The window backend and
-resumable `gfx_main` execution remain; their plan is in
-[gfx: the remaining work](#gfx-the-remaining-work).
+The console language is complete up to the known gaps below. gfx is ported
+too: its syntax and checks, the scene, the window (`gfx/`) and `gfx_main`
+across frames, with one deliberate difference in how `gfx_main` is paused,
+see [How gfx runs](#how-gfx-runs).
 
 ## Ground rules
 
@@ -128,12 +128,17 @@ The runtime is header-only, under `runtime/`. Generated code includes only
 | `bosonoga_value.hh` | `print` of every kind, `Color`, `InputKey`, `Font`/`Icon`/`Dir`, `info` |
 | `bosonoga_keys.hh` | archive_d's key name/code table, including `?` for unknown codes |
 | `bosonoga_gfx_scene.hh` | Shapes, ordered scene recording, text parts and frame reset |
+| `bosonoga_gfx_window.hh` | The `Window` a generated gfx program runs in: its setup, sections and scene, and `next_frame` |
 | `bosonoga_text.hh` | `new str`, `new xml_str`, `to_join`, `xml_child`, `xml_attribute`, `str_parse` |
 | `bosonoga_io.hh` | `io_read`, `io_write`, `io_modified` on POSIX |
 | `bosonoga_markup.hh`, `bosonoga_letters.hh` | GMarkup with its positions, for documents that `io_read` checks |
 
 `main.cc` is the console test runner, and `test/expected_output.hh` reads the
-expectation files.
+expectation files. `gfx/` is the window, which needs the vendored libraries
+and X11/GL, so it is not header-only: `window.cc` (archive_d's `gfx.c`),
+`vendor.c` (the vendored implementations, compiled as C) and `main.cc` (runs
+`bosonoga::gfx_program()`, which the generated gfx program exports). `build.sh` links them with a
+generated gfx program, but cannot run it without a display and assets.
 
 ### Generated C++
 
@@ -167,7 +172,7 @@ the files that runtime errors name.
 | `src/arithmetic.c`, `math_functions.c`, `value.c` | `bosonoga_number.hh`, `bosonoga_value.hh` |
 | `src/execute.c`, `interpreter.c` | The generated C++ and the runtime headers |
 | `src/test_runner.c`, `test/main.c` | `main.cc`, `TestSources`, `TestRegistry`, `expected_output.hh` |
-| `src/gfx.c`, `gfx_vendor.c`, `include/bosonoga/gfx.h` | Window/runtime scheduling not ported; vendor headers copied unchanged |
+| `src/gfx.c`, `gfx_vendor.c`, `include/bosonoga/gfx.h` | `gfx/window.cc`, `gfx/vendor.c`, `gfx/main.cc`, `bosonoga_gfx_window.hh` |
 | `include/bosonoga/parser.h` | Its grammar comment is the reference for the whole language |
 
 ## Error order: the replay
@@ -277,14 +282,16 @@ test programs token by token:
 
 Known gaps, all verified against archive_d:
 
-- **The graphics window backend and `gfx_main` scheduler remain unported.**
-  Valid graphics programs compile and their console entry point reports
-  `the console runner requires bosonoga_main`, as archive_d does. Generated
-  section lambdas are currently compiled in a private type-checking function;
-  they are not yet wired to a window entry point. `gfx_await_next_frame`
-  targets the context's scheduler callback, whose policy is still undecided.
-- `Settings` reads and validates `name`, `version`, the `[gfx]` size and the
-  background color, but nothing uses them yet.
+- **`gfx_main` is not paused by an op budget.** archive_d also pauses it after
+  a number of ops in each frame. Here it only stops at
+  `gfx_await_next_frame` and while it sleeps, so a loop in `gfx_main` that
+  never awaits freezes the window, and `gfx_frame` cannot see its progress
+  in between. This was chosen with the owner; see [How gfx runs](#how-gfx-runs).
+- **The window opens after `bosonoga_global` runs**, where archive_d runs it in
+  the window's first callback. Fonts and icons are still read and checked
+  first, with archive_d's messages, but a texture that cannot be made is
+  reported after `bosonoga_global` and its output.
+- `Settings` reads and validates `name` and `version`, but nothing uses them.
 - Syntax-error orders outside what the mutation corpus covers may still differ
   in rare cases.
 
@@ -314,11 +321,11 @@ the archived executable; the remaining input was a valid console program
 whose missing-return error belongs to execution, not frontend rejection.
 No asset-based graphics fixtures were added.
 
-## gfx: the remaining work
+## gfx
 
-About 600 lines of archive_d (7%), plus vendored libraries. It is also the
-part that the C++ translation makes hardest, so plan it with the owner before
-the runtime slices.
+About 600 lines of archive_d (7%), plus vendored libraries, and the part that
+the C++ translation makes hardest. A change to how `gfx_main` runs needs the
+owner's agreement.
 
 ### What archive_d has
 
@@ -355,53 +362,49 @@ the window.
   `gfx_cleanup` runs. The limits (ops per frame, text length, icon size,
   vertices) are defined at the top of `gfx.c` and in `parser.h`.
 
-### Decisions to make first
+### How gfx runs
 
-1. **How `gfx_main` runs across frames.** archive_d interprets it: it yields at
-   `gfx_await_next_frame`, while asleep in `sleep_ms`, and when it has run its
-   ops for the frame, so a long loop in it never freezes the window and
-   `gfx_frame` sees its progress. Native C++17 has neither coroutines nor op
-   counts. Two candidates:
-   - a worker thread for `gfx_main` that strictly alternates with the window
-     thread (so the shared `bosonoga_global` variables need no further
-     locking), yielding at `gfx_await_next_frame`, at `sleep_ms`, and at a
-     counter that generated code advances at loop back edges and calls;
-   - compiling `gfx_main` into a resumable state machine. Functions never
-     await, but the op budget can preempt inside them, so this also needs a
-     counter, and is much more work in the emitter.
+As in archive_d, sokol_app calls the window back, and the window runs the
+program's sections from there. A generated gfx program's `bosonoga_main()`
+throws `the console runner requires bosonoga_main`, as archive_d's console
+runner fails. Instead it has `bosonoga_gfx()`, exported as
+`bosonoga::gfx_program()` for `gfx/main.cc`, which:
 
-   Exact op-for-op preemption is only possible by counting archive_d's ops.
-   Agree with the owner how close it must be before implementing.
-2. **Where the shared variables live.** Today the `bosonoga_global` statements
-   open `bosonoga_main` itself. With several sections, one approach that keeps
-   that design is to emit the global statements first and each section as a
-   lambda capturing them by reference, handed to a `runtime::gfx::run`.
-3. **How the test runner treats a gfx program.** For parity, a gfx program in a
-   test tier must fail with `the console runner requires bosonoga_main`, while
-   a separate entry point opens the window.
-4. **Key codes.** `InputKey` must carry the sokol key code (with the name table
-   of `key.c` for printing), and `InputKeys` must map names to codes.
+1. makes a `runtime::gfx::Window` of the `[gfx]` size and `color_background`,
+   with the fonts and icons that the program names, in index order, which
+   it reads and checks;
+2. runs the `bosonoga_global` statements;
+3. sets the window's sections to lambdas, which capture those variables by
+   reference;
+4. returns `gfx_window.run()`.
 
-### Suggested slices
+`gfx/window.cc` is `gfx.c`'s callbacks, on one thread. Each frame runs
+`gfx_frame`, draws its scene, and then advances `gfx_main` until
+`gfx_await_next_frame` (`runtime::gfx::next_frame()`) or its end. Compiled
+code cannot stop halfway as the interpreter's execution does, so `gfx_main`
+runs on a stack of its own (`ucontext`): advancing it switches to that stack,
+and `next_frame()` switches back. While it runs, `sleep_ms` waits a frame at a
+time, and its call depth is its own, as each execution's is in archive_d. When
+the window closes first, `gfx_main` is left where it stopped.
 
-1. **Compile time — implemented** (testable in `GeneratorTest`, no assets): the gfx words as
-   reserved tokens, the sections and their structural errors, every statement
-   and value with its placement and type checks, in archive_d's order.
-2. **Scene recording — implemented**: a pure runtime header (`bosonoga_gfx_scene.hh`) that
-   records what `gfx_frame` draws, as archive_d's `BosonogaGfxScene` does,
-   including what it skips (a shape of no radius, text of no size) and the
-   text length error. It can be unit tested in `test/runtime.cc`.
-3. **The window**: sokol setup, font and icon loading with their messages,
-   drawing the scene, the frame pacing, `gfx_key_down`, `gfx_cleanup`, and the
-   closed-window error. Linked with `-pthread -lX11 -lXi -lXcursor -lGL -ldl
-   -lm` (archive_d's `bosonoga_gfx.pc`).
-4. **`gfx_main` scheduling**, as decided above.
-5. **End to end** with Erminia's `gfx/gfx_erminia.bosonoga`, which uses most
-   of gfx (not `gfx_draw_rectangle`, `gfx_await_next_frame`, `gfx_init`,
-   `gfx_cleanup` or `gfx_delta_time`, which need programs of their own). Its
-   `debug.sh gfx FILE` runs a program in a window, linked through pkg-config
-   with the C bosonoga's `libbosonoga_gfx.a` (`BOSONOGA_DIR` in that script),
-   which gives the reference picture.
+Pausing `gfx_main` after a budget of ops, as archive_d does, would take a
+counter that generated code advances at loop back edges and calls, with a
+`next_frame()` when it runs out. It was left out by agreement with the owner.
+
+### Verifying gfx
+
+The end-to-end programs are corela_bpmn (`gfx/gfx_corela_bpmn.bosonoga`, built
+and run by its `debug.sh` with this bosonoga) and Erminia. corela's frames were
+compared pixel for pixel, and its printed log line for line, against the same
+sources run by archive_d's C library, both idle and after a sequence of key
+presses, and so were its closed-window and missing-font errors. To do that:
+
+- screenshot the window with `xwd -id` (`xdotool search --name` finds it);
+- send keys with `xdotool windowfocus --sync` and then `xdotool key`, as
+  `key --window` sends synthetic events that the window ignores;
+- close it as a window manager would, with a `WM_DELETE_WINDOW` client
+  message. `xdotool windowclose` destroys the window instead, and Xlib then
+  exits both implementations in the same way, which tests nothing.
 
 ### Vendored code
 
