@@ -1,0 +1,18 @@
+// shape.mod.bosonoga, a module of module.bosonoga
+
+mod "unit.mod.bosonoga"_str
+
+pub const side_count is 4_i32
+
+pub val corners is array 0_str
+di
+  row "north"_str
+  row "south"_str
+do
+
+pub def square_fn side_i32 ret 0_i32
+di
+  var area is 0_i32
+  set area to_multiply side_i32 side_i32 unit_count
+  return area
+do

@@ -1,0 +1,5 @@
+// join.xp.bosonoga
+
+expect count 3 is true
+expect 1d5-18446744073709551615
+expect 1d5-18446744073709551615!

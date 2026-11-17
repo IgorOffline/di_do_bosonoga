@@ -1,0 +1,38 @@
+// setting.bosonoga
+
+// The colors and the globals of regina.ini are literals.
+val tints is array 0_color 1_i32
+di
+  row color_amber 1_i32
+  row color_night 2_i32
+do
+
+def chosen_fn first_color second_color pick_bool ret 0_color
+di
+  if pick_bool
+  di
+    return first_color
+  do
+  return second_color
+do
+
+bosonoga_main
+di
+  var laps is array 0_f64 with_len_col global_lap_count
+  set laps at 2_i32 to global_gravity
+  var tint is chosen_fn of color_amber color_night false_bool with ret 0_color
+  call tints at 0_i32 with ret 0_color as first 1_i32 as order
+  di
+    info first " "_str order " "_str tint
+  do
+  var count is len_col laps
+  var last is laps at 2_i32 with ret 0_f64
+  val line is new str of "lap "_str count " "_str last
+  info line
+  unset line
+  if last eq_6 9d75_f64
+  di
+    return exit_success
+  do
+  return exit_failure
+do

@@ -1,0 +1,17 @@
+// module.bosonoga
+
+mod "shape.mod.bosonoga"_str
+io_raw_import "limit.mod.bosonoga"_str
+
+bosonoga_main
+di
+  var area is square_fn of 3_i32 with ret 0_i32
+  info area
+  info side_count
+  call corners at 1_i32 with ret 0_str as corner
+  di
+    info corner
+  do
+  info raw_limit
+  return exit_success
+do

@@ -1,0 +1,2 @@
+// A raw import resumes its reader even between is and the value.
+const imported_limit is

@@ -1,0 +1,13 @@
+// print.bosonoga
+
+bosonoga_main
+di
+  info 1d5_f32
+  info 0d1_f32
+  info 100000000d0_f32
+  info 0d1_f64
+  info -2_i64 4000000000_u32 18446744073709551615_u64
+  val flags is shift_0 shift_or shift_3
+  info flags
+  return exit_success
+do

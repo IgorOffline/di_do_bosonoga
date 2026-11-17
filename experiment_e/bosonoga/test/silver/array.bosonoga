@@ -1,0 +1,75 @@
+// array.bosonoga
+
+val planets is array 0_str 1_i32
+di
+  row "Merkur"_str 0_i32
+  row "Venera"_str 0_i32
+  row "Zemlja"_str 1_i32
+do
+
+val primes is array 0_u32
+di
+  row 2_u32
+  row 3_u32
+  row 5_u32
+do
+
+const planet_count is len_col planets
+const column_count is len_row planets
+
+bosonoga_main
+di
+  var moons is 0_i32
+  to_3 with index
+  di
+    call planets at index with ret 1_i32 as count
+    di
+      set moons to_add moons count
+    do
+  do
+  call planets at 2_i32 with ret 0_str as name
+  di
+    info name " has "_str moons
+  do
+
+  var third is primes at 2_i32 with ret 0_u32
+
+  var cells is array 0_i32 1_bool with_len_col 4_i32
+  set cells at 1_i32 to 7_i32 true_bool
+  var cell_count is len_col cells
+  var seven is 0_i32
+  var marked is false_bool
+  call cells at 1_i32 with ret 0_i32 as value 1_bool as flag
+  di
+    set seven to value
+    set marked to flag
+  do
+  // A zeroed row is 0 and false_bool.
+  call cells at 3_i32 with ret 1_bool as untouched
+  di
+    if untouched
+    di
+      set marked to false_bool
+    do
+  do
+
+  var grid is array 0_f64
+  di
+    row 1d5_f64
+    row 2d5_f64
+  do
+  var second is grid at 1_i32 with ret 0_f64
+
+  if planet_count eq 3_i32
+  and column_count eq 2_i32
+  and moons eq 1_i32
+  and third eq 5_u32
+  and cell_count eq 4_i32
+  and seven eq 7_i32
+  and marked
+  and second eq_6 2d5_f64
+  di
+    return exit_success
+  do
+  return exit_failure
+do

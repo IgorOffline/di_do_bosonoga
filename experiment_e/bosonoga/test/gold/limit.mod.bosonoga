@@ -1,0 +1,3 @@
+// limit.mod.bosonoga, which module.bosonoga reads with io_raw_import
+
+const raw_limit is 10_i32

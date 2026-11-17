@@ -1,0 +1,2 @@
+const abcdefghijklmnopqrstuvwxyzabcdef_private is 7_i32
+pub const abcdefghijklmnopqrstuvwxyzabcdef_public is abcdefghijklmnopqrstuvwxyzabcdef_private
