@@ -1,12 +1,23 @@
 use bosonoga::ast::ExitStatus;
 
+#[cfg(test)]
+fn check_program(path: &str, source: &str) {
+    let program = bosonoga::parse(source)
+        .unwrap_or_else(|diagnostic| panic!("{}", diagnostic.located(path, source)));
+    let (_, status) = bosonoga::run(&program)
+        .unwrap_or_else(|(_, diagnostic)| panic!("{}", diagnostic.located(path, source)));
+    assert_eq!(status, ExitStatus::Success, "{path}");
+}
+
 #[test]
-fn info_prints_values_without_separators() {
-    let program =
-        bosonoga::parse("bosonoga_main di info -7_i32 0_i32 42_i32 return exit_failure do")
-            .unwrap();
-    assert_eq!(
-        bosonoga::run(&program).unwrap(),
-        ("-7042\n".to_owned(), ExitStatus::Failure)
+fn arithmetic() {
+    check_program(
+        "test/arithmetic.bosonoga",
+        include_str!("arithmetic.bosonoga"),
     );
+}
+
+#[test]
+fn shift() {
+    check_program("test/shift.bosonoga", include_str!("shift.bosonoga"));
 }

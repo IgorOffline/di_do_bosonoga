@@ -1,8 +1,9 @@
 use lalrpop_util::ParseError;
 
 use crate::Diagnostic;
-use crate::ast::{ExitStatus, Program, Statement};
+use crate::ast::{Block, Comparison, Condition, ExitStatus, Main, Operand, Span, Statement, Term};
 use crate::lexer::Tok;
+use crate::value::{Compare, Value};
 
 grammar<'input>;
 
@@ -19,16 +20,33 @@ extern {
         "return" => Tok::Return,
         "exit_success" => Tok::ExitSuccess,
         "exit_failure" => Tok::ExitFailure,
-        "number" => Tok::I32(<i32>),
-        "word" => Tok::Word(<&'input str>),
+        "var" => Tok::Var,
+        "val" => Tok::Val,
+        "is" => Tok::Is,
+        "set" => Tok::Set,
+        "operation" => Tok::Operation(<crate::value::Operation>),
+        "if" => Tok::If,
+        "else" => Tok::Else,
+        "and" => Tok::And,
+        "or" => Tok::Or,
+        "not" => Tok::Not,
+        "shift_or" => Tok::ShiftOr,
+        "compare" => Tok::Compare(<Compare>),
+        "literal" => Tok::Literal(<Value>),
+        "shift" => Tok::Shift(<&'input str>),
+        "name" => Tok::Name(<&'input str>),
+        "result" => Tok::Result(<&'input str>),
+        "gfx_value" => Tok::GfxValue(<&'input str>),
+        "reserved" => Tok::Reserved(<&'input str>),
+        "indexed_type" => Tok::IndexedType(<&'input str>),
         "end" => Tok::End,
     }
 }
 
-pub Program: Program =
-    "bosonoga_main" <statements:Block> <end:@L> "end" => Program { statements, end };
+pub Main: Main<'input> =
+    "bosonoga_main" <statements:Block> <end:@L> "end" => Main { statements, end };
 
-Block: Vec<Statement> =
+Block: Block<'input> =
     <opening:@L> "di" <statements:Statement*> "do" =>? {
         if statements.is_empty() {
             Err(ParseError::User {
@@ -39,10 +57,73 @@ Block: Vec<Statement> =
         }
     };
 
-Statement: Statement = {
-    "info" <values:"number"+> => Statement::Info(values),
+Statement: Statement<'input> = {
+    "info" <values:Operand+> => Statement::Info(values),
+    "set" <name:Named> <start:@L> <operation:"operation"> <end:@R> <values:Operand+> =>
+        Statement::Set { name, operation: (Span { start, end }, operation), values },
+    <declaration:Declaration> "is" <initial:Operand> <shift_or:ShiftOr*> =>
+        Statement::Declare { name: declaration.0, mutable: declaration.1, initial, shift_or },
+    "if" <condition:Condition> <block:Block> <tail:Else> => {
+        let (mut branches, otherwise) = tail;
+        branches.insert(0, (condition, block));
+        Statement::If { branches, otherwise }
+    },
     "nihil" => Statement::Nihil,
     "return" <status:Status> => Statement::Return(status),
+};
+
+Declaration: ((Span, &'input str), bool) = {
+    "var" <name:Named> => (name, true),
+    "val" <name:Named> => (name, false),
+};
+
+Named: (Span, &'input str) = <start:@L> <name:"name"> <end:@R> => (Span { start, end }, name);
+
+ShiftOr: (Span, Operand<'input>) =
+    <start:@L> "shift_or" <end:@R> <value:Operand> => (Span { start, end }, value);
+
+Else: (Vec<(Condition<'input>, Block<'input>)>, Option<Block<'input>>) = {
+    => (Vec::new(), None),
+    "else" <block:Block> => (Vec::new(), Some(block)),
+    "else" "if" <condition:Condition> <block:Block> <tail:Else> => {
+        let (mut branches, otherwise) = tail;
+        branches.insert(0, (condition, block));
+        (branches, otherwise)
+    },
+};
+
+Condition: Condition<'input> = {
+    <Conjunction> => vec![<>],
+    <mut condition:Condition> "or" <conjunction:Conjunction> => {
+        condition.push(conjunction);
+        condition
+    },
+};
+
+Conjunction: Vec<Comparison<'input>> = {
+    <Comparison> => vec![<>],
+    <mut conjunction:Conjunction> "and" <comparison:Comparison> => {
+        conjunction.push(comparison);
+        conjunction
+    },
+};
+
+Comparison: Comparison<'input> =
+    <negate:"not"?> <left:Operand> <right:(<@L> <"compare"> <@R> <Operand>)?> =>
+        Comparison {
+            negate: negate.is_some(),
+            left,
+            right: right.map(|(start, compare, end, value)| (Span { start, end }, compare, value)),
+        };
+
+Operand: Operand<'input> = <start:@L> <term:Term> <end:@R> => Operand { span: Span { start, end }, term };
+
+Term: Term<'input> = {
+    "literal" => Term::Literal(<>),
+    "shift" => Term::Shift(<>),
+    "name" => Term::Name(<>),
+    "result" => Term::Result(<>),
+    "gfx_value" => Term::GfxValue(<>),
 };
 
 Status: ExitStatus = {
