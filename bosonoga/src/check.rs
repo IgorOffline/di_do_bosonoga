@@ -1,10 +1,12 @@
 use std::mem;
 
-use crate::ast::{self, Arguments, ExitStatus, Initial, Item, Named, Results, Section, Span, Term};
+use crate::ast::{
+    self, Arguments, ExitStatus, Initial, Item, Named, Results, Rows, Section, Span, Term,
+};
 use crate::gfx::{Align, Horizontal, Vertical};
 use crate::lexer::{Lexer, Tok};
 use crate::program::{
-    self, Array, Callee, Comparison, Condition, Draw, Operand, Program, Statement,
+    self, Array, Callee, Comparison, Condition, Draw, Operand, Program, Statement, VarArray,
 };
 use crate::settings::Settings;
 use crate::sources::Sources;
@@ -14,6 +16,7 @@ use crate::{Diagnostic, shown};
 const SHIFT_BIT_MAX: u64 = 31;
 const FUNCTION_VALUES_MAX: usize = 16;
 const INDEX_DIGITS_MAX: usize = 9;
+const ARRAY_VALUES_MAX: usize = 65_536;
 const SETTING_PREFIXES: [&str; 6] = ["color_", "key_", "font_", "icon_", "dir_", "global_"];
 
 #[derive(Clone, Copy)]
@@ -29,6 +32,7 @@ struct Variable<'input> {
     kind: Kind,
     slot: usize,
     mutable: bool,
+    array: Option<(usize, Vec<Kind>)>,
     declaration: Declaration,
 }
 
@@ -42,6 +46,7 @@ struct Constant<'input> {
 enum Callable {
     Function(usize),
     Array(usize),
+    VarArray(usize),
 }
 
 struct Function<'input> {
@@ -56,14 +61,14 @@ impl Function<'_> {
     fn noun(&self) -> &'static str {
         match self.callable {
             Callable::Function(_) => "function",
-            Callable::Array(_) => "array",
+            Callable::Array(_) | Callable::VarArray(_) => "array",
         }
     }
 
     fn gives(&self) -> &'static str {
         match self.callable {
             Callable::Function(_) => "returns",
-            Callable::Array(_) => "has rows of",
+            Callable::Array(_) | Callable::VarArray(_) => "has rows of",
         }
     }
 }
@@ -309,6 +314,21 @@ impl<'a, 'input> Checker<'a, 'input> {
                 text: asset.text.clone(),
             });
         }
+        if let Some(key) = name.strip_prefix("icon_") {
+            let asset = self.settings.icon(key)?;
+            let icons = &mut self.program.icons;
+            let index = icons
+                .iter()
+                .position(|(known, _)| known == key)
+                .unwrap_or_else(|| {
+                    icons.push((key.to_owned(), asset.clone()));
+                    icons.len() - 1
+                });
+            return Some(Value::Icon {
+                index,
+                text: asset.text.clone(),
+            });
+        }
         name.strip_prefix("global_")
             .and_then(|key| self.settings.global(key))
             .cloned()
@@ -359,10 +379,19 @@ impl<'a, 'input> Checker<'a, 'input> {
     fn fail_unknown_variable<T>(&self, span: Span, name: &str) -> Result<T, Diagnostic> {
         self.check_not_hidden(span, name)?;
         let shown = self.text(span);
+        let is_var_array = self
+            .variable(name)
+            .is_some_and(|i| self.variables[i].array.is_some());
+        if is_var_array {
+            return Self::fail(
+                span.start,
+                format!("'{shown}' is an array, which is read with var, set ... to or call"),
+            );
+        }
         if let Some(i) = self.function(name) {
             let (what, done) = match self.functions[i].callable {
                 Callable::Function(_) => ("a function", "called"),
-                Callable::Array(_) => ("an array", "read"),
+                Callable::Array(_) | Callable::VarArray(_) => ("an array", "read"),
             };
             return Self::fail(
                 span.start,
@@ -395,7 +424,7 @@ impl<'a, 'input> Checker<'a, 'input> {
         if let Some(i) = self.function_any(name) {
             let what = match self.functions[i].callable {
                 Callable::Function(_) => "a function",
-                Callable::Array(_) => "an array",
+                Callable::Array(_) | Callable::VarArray(_) => "an array",
             };
             return Self::fail(span.start, format!("'{shown}' is already {what}"));
         }
@@ -414,6 +443,7 @@ impl<'a, 'input> Checker<'a, 'input> {
             kind,
             slot,
             mutable,
+            array: None,
             declaration,
         });
     }
@@ -703,12 +733,60 @@ impl<'a, 'input> Checker<'a, 'input> {
     ) -> Result<(), Diagnostic> {
         let is_public = self.public(public)?;
         self.new_name((span, name))?;
-        let kinds = self.types(
-            kind_spans,
-            &format!("a row has at most {FUNCTION_VALUES_MAX} values"),
-        )?;
+        let kinds = self.array_kinds(kind_spans)?;
+        let table = self.literal_rows(span, &kinds, rows, false)?;
+        let index = self.program.arrays.len();
+        self.program.arrays.push(Array {
+            name: self.text(span).to_owned(),
+            rows: table,
+        });
+        let declaration = self.declaration(span, is_public);
+        self.functions.push(Function {
+            name,
+            callable: Callable::Array(index),
+            parameters: vec![Kind::I32],
+            results: kinds,
+            declaration,
+        });
+        Ok(())
+    }
+
+    fn array_kinds(&self, spans: &[Span]) -> Result<Vec<Kind>, Diagnostic> {
+        self.types(
+            spans,
+            &format!("a row of an array has at most {FUNCTION_VALUES_MAX} values"),
+        )
+    }
+
+    fn check_array_size(
+        &self,
+        span: Span,
+        name: Span,
+        rows: usize,
+        kinds: &[Kind],
+    ) -> Result<(), Diagnostic> {
+        let values = rows.saturating_mul(kinds.len());
+        if values <= ARRAY_VALUES_MAX {
+            return Ok(());
+        }
+        Self::fail(
+            span.start,
+            format!(
+                "'{}' would hold {values} values, and an array holds at most {ARRAY_VALUES_MAX}",
+                self.text(name)
+            ),
+        )
+    }
+
+    fn literal_rows(
+        &mut self,
+        span: Span,
+        kinds: &[Kind],
+        rows: &[(Span, Vec<ast::Operand<'input>>)],
+        is_var: bool,
+    ) -> Result<Vec<Vec<Value>>, Diagnostic> {
         let shown = self.text(span);
-        let types = values_shown(&kinds);
+        let types = values_shown(kinds);
         let context = format!("a row of '{shown}'");
         let mut table = Vec::new();
         for (row_span, values) in rows {
@@ -746,21 +824,144 @@ impl<'a, 'input> Checker<'a, 'input> {
                 );
             }
             table.push(row);
+            if is_var {
+                self.check_array_size(*row_span, span, table.len(), kinds)?;
+            }
         }
-        let index = self.program.arrays.len();
-        self.program.arrays.push(Array {
-            name: shown.to_owned(),
-            rows: table,
+        Ok(table)
+    }
+
+    fn var_array(
+        &mut self,
+        (span, name): Named<'input>,
+        mutable: bool,
+        array: Span,
+        kind_spans: &[Span],
+        rows: &Rows<'input>,
+    ) -> Result<Statement, Diagnostic> {
+        if !mutable {
+            return Self::fail(
+                array.start,
+                "a val array is top-level, and an array of a block is a var",
+            );
+        }
+        self.new_name((span, name))?;
+        let kinds = self.array_kinds(kind_spans)?;
+        let (values, repeat) = match rows {
+            Rows::Literal(literal) => {
+                let table = self.literal_rows(span, &kinds, literal, true)?;
+                (table.into_iter().flatten().collect::<Vec<_>>(), 1)
+            }
+            Rows::Zeroed(keyword, count) => {
+                let above_zero = match self.value_of_kind(count, Kind::I32, "with_len_col")? {
+                    Operand::Literal(Value::I32(given)) => {
+                        usize::try_from(given).ok().filter(|n| *n > 0)
+                    }
+                    Operand::Literal(_) | Operand::Slot(_) => None,
+                };
+                let Some(row_count) = above_zero else {
+                    return Self::fail(
+                        count.span.start,
+                        "with_len_col needs an i32 literal or constant above zero, as the size of an array is known before the program runs",
+                    );
+                };
+                self.check_array_size(count.span, span, row_count, &kinds)?;
+                let mut zero = Vec::new();
+                for kind in &kinds {
+                    zero.push(match kind {
+                        Kind::I32 => Value::I32(0),
+                        Kind::I64 => Value::I64(0),
+                        Kind::U32 => Value::U32(0),
+                        Kind::U64 => Value::U64(0),
+                        Kind::F32 => Value::F32(0.0),
+                        Kind::F64 => Value::F64(0.0),
+                        Kind::Flags => Value::Flags(0),
+                        Kind::Color => Value::Color(0),
+                        Kind::Str => Value::Str(String::new()),
+                        Kind::Bool => Value::Bool(false),
+                        Kind::InputKey | Kind::Font | Kind::Icon => {
+                            return Self::fail(
+                                keyword.start,
+                                format!(
+                                    "a zeroed row cannot have {}, which has no zero, but literal rows can",
+                                    kind.name()
+                                ),
+                            );
+                        }
+                    });
+                }
+                (zero, row_count)
+            }
+        };
+        let columns = kinds.len();
+        let row_count = values.len().checked_div(columns).unwrap_or(0) * repeat;
+        let slot = self.slot_count;
+        self.slot_count += row_count * columns;
+        let index = self.program.var_arrays.len();
+        self.program.var_arrays.push(VarArray {
+            name: self.text(span).to_owned(),
+            slot,
+            columns,
+            rows: row_count,
         });
-        let declaration = self.declaration(span, is_public);
-        self.functions.push(Function {
-            name,
-            callable: Callable::Array(index),
-            parameters: vec![Kind::I32],
-            results: kinds,
-            declaration,
-        });
-        Ok(())
+        self.declare((span, name), Kind::I32, slot, true);
+        if let Some(variable) = self.variables.last_mut() {
+            variable.array = Some((index, kinds));
+        }
+        Ok(Statement::ArrayInit {
+            slot,
+            values,
+            repeat,
+        })
+    }
+
+    fn set_at(
+        &mut self,
+        (span, name): Named<'input>,
+        index: &ast::Operand<'input>,
+        (operation_span, operation): (Span, Operation),
+        values: &[ast::Operand<'input>],
+    ) -> Result<Statement, Diagnostic> {
+        let found = self
+            .variable(name)
+            .and_then(|i| self.variables[i].array.clone());
+        let Some((array, kinds)) = found else {
+            self.target((span, name))?;
+            return self.expected(
+                span.end,
+                "to, to_add, to_subtract, to_multiply, to_divide, to_mod or a conversion",
+            );
+        };
+        let shown = self.text(span);
+        let index_operand =
+            self.value_of_kind(index, Kind::I32, &format!("the index of '{shown}'"))?;
+        if operation != Operation::Copy {
+            return self.expected_at(operation_span, "to");
+        }
+        let types = values_shown(&kinds);
+        let context = format!("a row of '{shown}'");
+        let mut operands = Vec::new();
+        for (i, kind) in kinds.iter().enumerate() {
+            let Some(value) = values.get(i) else {
+                return Self::fail(
+                    span.start,
+                    format!("'{shown}' has rows of {types}, but this row has {i}"),
+                );
+            };
+            operands.push(self.value_of_kind(value, *kind, &context)?);
+        }
+        if let Some(extra) = values.get(kinds.len()) {
+            return Self::fail(
+                extra.span.start,
+                format!("'{shown}' has rows of {types}, but this row has more"),
+            );
+        }
+        Ok(Statement::ArrayWrite {
+            array,
+            index: index_operand,
+            values: operands,
+            offset: span.start,
+        })
     }
 
     fn check_variables_used(&self, first: usize) -> Result<(), Diagnostic> {
@@ -789,7 +990,7 @@ impl<'a, 'input> Checker<'a, 'input> {
         if let Some(unused) = self.functions.iter().find(|f| !f.declaration.used) {
             let what = match unused.callable {
                 Callable::Function(_) => "called",
-                Callable::Array(_) => "read",
+                Callable::Array(_) | Callable::VarArray(_) => "read",
             };
             return Self::fail(
                 unused.declaration.span.start,
@@ -858,6 +1059,19 @@ impl<'a, 'input> Checker<'a, 'input> {
                 mutable,
                 initial,
             } => self.declaration_statement(*name, *mutable, initial)?,
+            ast::Statement::DeclareArray {
+                name,
+                mutable,
+                array,
+                kinds,
+                rows,
+            } => self.var_array(*name, *mutable, *array, kinds, rows)?,
+            ast::Statement::SetAt {
+                name,
+                index,
+                operation,
+                values,
+            } => self.set_at(*name, index, *operation, values)?,
             ast::Statement::If {
                 branches,
                 otherwise,
@@ -1085,6 +1299,14 @@ impl<'a, 'input> Checker<'a, 'input> {
             return self.fail_unknown_variable(span, name);
         };
         let variable = &self.variables[index];
+        if variable.array.is_some() {
+            return Self::fail(
+                span.start,
+                format!(
+                    "'{shown}' is an array, whose rows are set with set {shown} at INDEX to and one value per column"
+                ),
+            );
+        }
         if !variable.mutable {
             return Self::fail(span.start, format!("'{shown}' is a val and cannot be set"));
         }
@@ -1215,7 +1437,7 @@ impl<'a, 'input> Checker<'a, 'input> {
         let (span, _) = call.name;
         let shown = self.text(span);
         Ok(match callable {
-            Callable::Array(array) => {
+            Callable::Array(_) | Callable::VarArray(_) => {
                 let index_operand = match &call.arguments {
                     Arguments::At(_, operand) => {
                         self.value_of_kind(operand, Kind::I32, &format!("the index of '{shown}'"))?
@@ -1238,7 +1460,14 @@ impl<'a, 'input> Checker<'a, 'input> {
                         );
                     }
                 };
-                (Callee::Array(array), vec![index_operand])
+                let callee = if let Callable::VarArray(array) = callable {
+                    Callee::VarArray(array)
+                } else if let Callable::Array(array) = callable {
+                    Callee::Array(array)
+                } else {
+                    return Ok((Callee::Function(0), Vec::new()));
+                };
+                (callee, vec![index_operand])
             }
             Callable::Function(code) => {
                 let taken = values_shown(parameters);
@@ -1298,18 +1527,35 @@ impl<'a, 'input> Checker<'a, 'input> {
     ) -> Result<(program::Call, Kind, &'static str), Diagnostic> {
         let (span, name) = call.name;
         let shown = self.text(span);
-        let Some(index) = self.function(name) else {
-            if self.variable(name).is_some() {
-                return self.expected(span.end, "a statement");
-            }
-            return self.fail_unknown_variable(span, name);
+        let var_array = self.variable(name).and_then(|i| {
+            let variable = &mut self.variables[i];
+            let (array, kinds) = variable.array.clone()?;
+            variable.declaration.used = true;
+            Some((
+                Callable::VarArray(array),
+                vec![Kind::I32],
+                kinds,
+                "has rows of",
+            ))
+        });
+        let (callable, parameters, results, gives) = if let Some(found) = var_array {
+            found
+        } else {
+            let Some(index) = self.function(name) else {
+                if self.variable(name).is_some() {
+                    return self.expected(span.end, "a statement");
+                }
+                return self.fail_unknown_variable(span, name);
+            };
+            self.use_function(index);
+            let function = &self.functions[index];
+            (
+                function.callable,
+                function.parameters.clone(),
+                function.results.clone(),
+                function.gives(),
+            )
         };
-        self.use_function(index);
-        let function = &self.functions[index];
-        let callable = function.callable;
-        let parameters = function.parameters.clone();
-        let results = function.results.clone();
-        let gives = function.gives();
         let (callee, arguments) = self.arguments(call, callable, &parameters)?;
         let Some(&result) = results.first().filter(|_| results.len() == 1) else {
             if results.is_empty() {
@@ -1364,6 +1610,7 @@ impl<'a, 'input> Checker<'a, 'input> {
             ast::Draw::Clear => &[Kind::Color],
             ast::Draw::Rectangle => &[Kind::F32, Kind::F32, Kind::F32, Kind::F32, Kind::Color],
             ast::Draw::Hex | ast::Draw::Circle => &[Kind::F32, Kind::F32, Kind::F32, Kind::Color],
+            ast::Draw::Icon => &[Kind::F32, Kind::F32, Kind::Icon, Kind::F32, Kind::Color],
             ast::Draw::Text => &[Kind::F32, Kind::F32, Kind::Font, Kind::F32, Kind::Color],
         };
         let align = match aligns {
@@ -1410,6 +1657,7 @@ impl<'a, 'input> Checker<'a, 'input> {
             ast::Draw::Rectangle => Draw::Rectangle([next(), next(), next(), next(), next()]),
             ast::Draw::Hex => Draw::Hex([next(), next(), next(), next()]),
             ast::Draw::Circle => Draw::Circle([next(), next(), next(), next()]),
+            ast::Draw::Icon => Draw::Icon([next(), next(), next(), next(), next()]),
             ast::Draw::Text => Draw::Text {
                 align,
                 values: [next(), next(), next(), next(), next()],
@@ -1497,7 +1745,10 @@ impl<'a, 'input> Checker<'a, 'input> {
                     let kind = value.kind();
                     return Ok((Operand::Literal(value), kind));
                 }
-                let Some(index) = self.variable(name) else {
+                let Some(index) = self
+                    .variable(name)
+                    .filter(|&i| self.variables[i].array.is_none())
+                else {
                     return self.fail_unknown_variable(operand.span, name);
                 };
                 let variable = &mut self.variables[index];
@@ -1573,8 +1824,10 @@ impl<'a, 'input> Checker<'a, 'input> {
         if left == Kind::Color {
             return fail("colors cannot be compared".to_owned());
         }
-        if matches!(left, Kind::Str | Kind::Bool | Kind::InputKey | Kind::Font)
-            && !matches!(compare, Compare::Eq | Compare::NotEq)
+        if matches!(
+            left,
+            Kind::Str | Kind::Bool | Kind::InputKey | Kind::Font | Kind::Icon
+        ) && !matches!(compare, Compare::Eq | Compare::NotEq)
         {
             return fail(format!(
                 "{} can only be compared with eq or not_eq",

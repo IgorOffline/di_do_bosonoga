@@ -116,6 +116,7 @@ pub enum Draw {
     Hex,
     Circle,
     Text,
+    Icon,
 }
 
 #[derive(Debug, PartialEq)]
@@ -141,6 +142,19 @@ pub enum Statement<'input> {
         mutable: bool,
         initial: Initial<'input>,
     },
+    DeclareArray {
+        name: Named<'input>,
+        mutable: bool,
+        array: Span,
+        kinds: Vec<Span>,
+        rows: Rows<'input>,
+    },
+    SetAt {
+        name: Named<'input>,
+        index: Operand<'input>,
+        operation: (Span, Operation),
+        values: Vec<Operand<'input>>,
+    },
     If {
         branches: Vec<(Condition<'input>, Block<'input>)>,
         otherwise: Option<Block<'input>>,
@@ -156,6 +170,12 @@ pub enum Statement<'input> {
     Nihil,
     Return(Span, ExitStatus),
     ReturnValues(Span, Vec<Operand<'input>>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Rows<'input> {
+    Literal(Vec<(Span, Vec<Operand<'input>>)>),
+    Zeroed(Span, Operand<'input>),
 }
 
 #[derive(Debug, PartialEq)]

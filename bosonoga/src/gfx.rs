@@ -43,6 +43,13 @@ pub enum Shape {
         radius: f32,
         color: u32,
     },
+    Icon {
+        x: f32,
+        y: f32,
+        icon: usize,
+        angle: f32,
+        color: u32,
+    },
     Text {
         x: f32,
         y: f32,

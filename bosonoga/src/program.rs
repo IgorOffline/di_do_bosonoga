@@ -32,6 +32,7 @@ pub(crate) type Condition = Vec<Vec<Comparison>>;
 pub(crate) enum Callee {
     Function(usize),
     Array(usize),
+    VarArray(usize),
 }
 
 #[derive(Debug)]
@@ -47,6 +48,7 @@ pub(crate) enum Draw {
     Rectangle([Operand; 5]),
     Hex([Operand; 4]),
     Circle([Operand; 4]),
+    Icon([Operand; 5]),
     Text {
         align: Align,
         values: [Operand; 5],
@@ -79,6 +81,17 @@ pub(crate) enum Statement {
         slot: usize,
         call: Call,
     },
+    ArrayInit {
+        slot: usize,
+        values: Vec<Value>,
+        repeat: usize,
+    },
+    ArrayWrite {
+        array: usize,
+        index: Operand,
+        values: Vec<Operand>,
+        offset: usize,
+    },
     If {
         branches: Vec<(Condition, Vec<Statement>)>,
         otherwise: Option<Vec<Statement>>,
@@ -108,6 +121,50 @@ pub(crate) struct Array {
     pub(crate) rows: Vec<Vec<Value>>,
 }
 
+#[derive(Debug)]
+pub(crate) struct VarArray {
+    pub(crate) name: String,
+    pub(crate) slot: usize,
+    pub(crate) columns: usize,
+    pub(crate) rows: usize,
+}
+
+fn asset_index(value: &Value) -> usize {
+    match value {
+        Value::Font { index, .. } | Value::Icon { index, .. } => *index,
+        Value::I32(_)
+        | Value::I64(_)
+        | Value::U32(_)
+        | Value::U64(_)
+        | Value::F32(_)
+        | Value::F64(_)
+        | Value::Flags(_)
+        | Value::Color(_)
+        | Value::Str(_)
+        | Value::Bool(_)
+        | Value::InputKey(_) => 0,
+    }
+}
+
+fn row_start(name: &str, rows: usize, index: &Value, offset: usize) -> Result<usize, Diagnostic> {
+    if let Some(row) = index
+        .as_whole()
+        .and_then(|at| usize::try_from(at).ok())
+        .filter(|row| *row < rows)
+    {
+        return Ok(row);
+    }
+    let message = if rows == 1 {
+        format!("'{name}' has only row 0, not {index}")
+    } else {
+        format!(
+            "'{name}' has rows 0 to {}, not {index}",
+            rows.saturating_sub(1)
+        )
+    };
+    Err(Diagnostic::new(offset, message))
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Sections {
     pub(crate) global: Vec<Statement>,
@@ -128,7 +185,9 @@ pub struct Program {
     pub(crate) delta_time_slot: Option<usize>,
     pub(crate) functions: Vec<Function>,
     pub(crate) arrays: Vec<Array>,
+    pub(crate) var_arrays: Vec<VarArray>,
     pub(crate) fonts: Vec<(String, Asset)>,
+    pub(crate) icons: Vec<(String, Asset)>,
     pub(crate) background: u32,
 }
 
@@ -249,30 +308,27 @@ impl<'a> Execution<'a> {
         let arguments = self.values(&call.arguments);
         match call.callee {
             Callee::Array(index) => {
-                let Some(array) = program.arrays.get(index) else {
+                let (Some(array), Some(at)) = (program.arrays.get(index), arguments.first()) else {
                     return Ok(Flow::Next);
                 };
-                let found = arguments
-                    .first()
-                    .and_then(Value::as_whole)
-                    .and_then(|at| usize::try_from(at).ok())
-                    .and_then(|at| array.rows.get(at));
-                let Some(row) = found else {
-                    let shown = arguments
-                        .first()
-                        .map_or_else(String::new, ToString::to_string);
-                    let message = if array.rows.len() == 1 {
-                        format!("'{}' has only row 0, not {shown}", array.name)
-                    } else {
-                        format!(
-                            "'{}' has rows 0 to {}, not {shown}",
-                            array.name,
-                            array.rows.len().saturating_sub(1)
-                        )
-                    };
-                    return Err(Diagnostic::new(call.offset, message));
+                let row = row_start(&array.name, array.rows.len(), at, call.offset)?;
+                Ok(Flow::Values(
+                    array.rows.get(row).cloned().unwrap_or_default(),
+                ))
+            }
+            Callee::VarArray(index) => {
+                let (Some(array), Some(at)) = (program.var_arrays.get(index), arguments.first())
+                else {
+                    return Ok(Flow::Next);
                 };
-                Ok(Flow::Values(row.clone()))
+                let row = row_start(&array.name, array.rows, at, call.offset)?;
+                let start = array.slot + row * array.columns;
+                Ok(Flow::Values(
+                    self.frames
+                        .last()
+                        .and_then(|frame| frame.get(start..start + array.columns))
+                        .map_or_else(Vec::new, <[Value]>::to_vec),
+                ))
             }
             Callee::Function(index) => {
                 let Some(function) = program.functions.get(index) else {
@@ -338,6 +394,13 @@ impl<'a> Execution<'a> {
                     }
                 }
             }
+            Draw::Icon([x, y, image, angle, fill]) => Shape::Icon {
+                x: real(self, x),
+                y: real(self, y),
+                icon: asset_index(self.get(image)),
+                angle: real(self, angle),
+                color: color(self, fill),
+            },
             Draw::Text {
                 align,
                 values: [x, y, typeface, size, fill],
@@ -357,20 +420,7 @@ impl<'a> Execution<'a> {
                 if height <= 0.0 {
                     return Ok(());
                 }
-                let font = match self.get(typeface) {
-                    Value::Font { index, .. } => *index,
-                    Value::I32(_)
-                    | Value::I64(_)
-                    | Value::U32(_)
-                    | Value::U64(_)
-                    | Value::F32(_)
-                    | Value::F64(_)
-                    | Value::Flags(_)
-                    | Value::Color(_)
-                    | Value::Str(_)
-                    | Value::Bool(_)
-                    | Value::InputKey(_) => 0,
-                };
+                let font = asset_index(self.get(typeface));
                 Shape::Text {
                     x: real(self, x),
                     y: real(self, y),
@@ -383,6 +433,23 @@ impl<'a> Execution<'a> {
             }
         };
         self.scene.shapes.push(shape);
+        Ok(())
+    }
+
+    fn write_array(
+        &mut self,
+        array: usize,
+        index: &Operand,
+        values: &[Operand],
+        offset: usize,
+    ) -> Result<(), Diagnostic> {
+        if let Some(target) = self.program.var_arrays.get(array) {
+            let row = row_start(&target.name, target.rows, self.get(index), offset)?;
+            let start = target.slot + row * target.columns;
+            for (column, value) in self.values(values).into_iter().enumerate() {
+                self.set(start + column, value);
+            }
+        }
         Ok(())
     }
 
@@ -466,6 +533,23 @@ impl<'a> Execution<'a> {
                 flow @ (Flow::Exit(_) | Flow::Closed) => return Ok(flow),
                 Flow::Next => {}
             },
+            Statement::ArrayInit {
+                slot,
+                values,
+                repeat,
+            } => {
+                for row in 0..*repeat {
+                    for (column, value) in values.iter().enumerate() {
+                        self.set(slot + row * values.len() + column, value.clone());
+                    }
+                }
+            }
+            Statement::ArrayWrite {
+                array,
+                index,
+                values,
+                offset,
+            } => self.write_array(*array, index, values, *offset)?,
             Statement::If {
                 branches,
                 otherwise,
@@ -510,6 +594,11 @@ impl Program {
     #[must_use]
     pub fn fonts(&self) -> &[(String, Asset)] {
         &self.fonts
+    }
+
+    #[must_use]
+    pub fn icons(&self) -> &[(String, Asset)] {
+        &self.icons
     }
 
     #[must_use]

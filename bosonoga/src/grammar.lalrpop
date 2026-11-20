@@ -3,7 +3,7 @@ use lalrpop_util::ParseError;
 use crate::Diagnostic;
 use crate::ast::{
     Arguments, Block, Call, Comparison, Condition, Draw, ExitStatus, File, Initial, Item, Named,
-    Operand, Results, Section, Span, Statement, Term,
+    Operand, Results, Rows, Section, Span, Statement, Term,
 };
 use crate::lexer::Tok;
 use crate::value::{Compare, Conversion, Operation, Value};
@@ -47,6 +47,8 @@ extern {
         "gfx_draw_hex" => Tok::GfxDrawHex,
         "gfx_draw_circle" => Tok::GfxDrawCircle,
         "gfx_draw_text" => Tok::GfxDrawText,
+        "gfx_draw_icon" => Tok::GfxDrawIcon,
+        "with_len_col" => Tok::WithLenCol,
         "if" => Tok::If,
         "else" => Tok::Else,
         "and" => Tok::And,
@@ -98,6 +100,11 @@ Indexed: Span = {
 Row: (Span, Vec<Operand<'input>>) =
     <start:@L> "row" <end:@R> <values:Operand+> => (Span { start, end }, values);
 
+Rows: Rows<'input> = {
+    "di" <rows:Row+> "do" => Rows::Literal(rows),
+    <start:@L> "with_len_col" <end:@R> <count:Operand> => Rows::Zeroed(Span { start, end }, count),
+};
+
 Block: Block<'input> =
     <opening:@L> "di" <statements:Statement*> "do" =>? {
         if statements.is_empty() {
@@ -116,6 +123,16 @@ Statement: Statement<'input> = {
     "set" <name:Named> <conversion:Spanned<"conversion">> <values:Operand+> =>
         Statement::SetConversion { name, conversion, values },
     "set" <name:Named> <operation:Spanned<"operation">> <call:Call> => Statement::SetCall { name, operation, call },
+    "set" <name:Named> "at" <index:Operand> <operation:Spanned<"operation">> <values:Operand+> =>
+        Statement::SetAt { name, index, operation, values },
+    <declaration:Declaration> "is" <start:@L> "array" <end:@R> <kinds:Indexed+> <rows:Rows> =>
+        Statement::DeclareArray {
+            name: declaration.0,
+            mutable: declaration.1,
+            array: Span { start, end },
+            kinds,
+            rows,
+        },
     <declaration:Declaration> "is" <initial:Initial> =>
         Statement::Declare { name: declaration.0, mutable: declaration.1, initial },
     "if" <condition:Condition> <block:Block> <tail:Else> => {
@@ -145,6 +162,13 @@ Statement: Statement<'input> = {
         values.extend(text);
         Statement::Draw { span: Span { start, end }, draw: Draw::Text, aligns: Some((horizontal, vertical)), values }
     },
+    <start:@L> "gfx_draw_icon" <end:@R> <x:Operand> <y:Operand> <icon:Operand> <angle:Operand> <color:Operand> =>
+        Statement::Draw {
+            span: Span { start, end },
+            draw: Draw::Icon,
+            aligns: None,
+            values: vec![x, y, icon, angle, color],
+        },
     "nihil" => Statement::Nihil,
     <start:@L> "return" <end:@R> <status:Status> => Statement::Return(Span { start, end }, status),
     <start:@L> "return" <end:@R> <values:Operand*> => Statement::ReturnValues(Span { start, end }, values),

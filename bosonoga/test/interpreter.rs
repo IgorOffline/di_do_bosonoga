@@ -41,6 +41,14 @@ fn arrays() {
 }
 
 #[test]
+fn var_arrays() {
+    check_program(
+        "test/var_array.bosonoga",
+        include_str!("var_array.bosonoga"),
+    );
+}
+
+#[test]
 fn conversions() {
     check_program(
         "test/conversion.bosonoga",

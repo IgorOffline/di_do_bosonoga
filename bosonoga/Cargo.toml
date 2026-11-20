@@ -4,8 +4,8 @@ version = "0.2.0"
 edition = "2024"
 
 [[test]]
-name = "programs"
-path = "test/programs.rs"
+name = "interpreter"
+path = "test/interpreter.rs"
 
 [dependencies]
 lalrpop-util = "0.23.2"
@@ -37,57 +37,57 @@ missing_errors_doc = "allow"                   # C11 had no doc requirement
 
 # Every crate of the tree, so that Cargo.lock has no crates.io source or checksum.
 [patch.crates-io]
-aho-corasick = { path = "/home/igor/dev/rust_vendor/lalrpop/current/aho-corasick-1.1.5" }
-ascii-canvas = { path = "/home/igor/dev/rust_vendor/lalrpop/current/ascii-canvas-4.0.0" }
-bit-set = { path = "/home/igor/dev/rust_vendor/lalrpop/current/bit-set-0.11.1" }
-bit-vec = { path = "/home/igor/dev/rust_vendor/lalrpop/current/bit-vec-0.10.2" }
-bitflags = { path = "/home/igor/dev/rust_vendor/lalrpop/current/bitflags-2.13.2" }
-cfg-if = { path = "/home/igor/dev/rust_vendor/lalrpop/current/cfg-if-1.0.5" }
-cpufeatures = { path = "/home/igor/dev/rust_vendor/lalrpop/current/cpufeatures-0.3.1" }
-crypto-common = { path = "/home/igor/dev/rust_vendor/lalrpop/current/crypto-common-0.2.2" }
-digest = { path = "/home/igor/dev/rust_vendor/lalrpop/current/digest-0.11.3" }
-either = { path = "/home/igor/dev/rust_vendor/lalrpop/current/either-1.19.0" }
-ena = { path = "/home/igor/dev/rust_vendor/lalrpop/current/ena-0.14.4" }
-equivalent = { path = "/home/igor/dev/rust_vendor/lalrpop/current/equivalent-1.0.3" }
-fixedbitset = { path = "/home/igor/dev/rust_vendor/lalrpop/current/fixedbitset-0.5.9" }
-foldhash = { path = "/home/igor/dev/rust_vendor/lalrpop/current/foldhash-0.1.5" }
-hashbrown_0_15_5 = { package = "hashbrown", path = "/home/igor/dev/rust_vendor/lalrpop/current/hashbrown-0.15.5" }
-hashbrown_0_17_1 = { package = "hashbrown", path = "/home/igor/dev/rust_vendor/lalrpop/current/hashbrown-0.17.1" }
-hybrid-array = { path = "/home/igor/dev/rust_vendor/lalrpop/current/hybrid-array-0.4.15" }
-indexmap = { path = "/home/igor/dev/rust_vendor/lalrpop/current/indexmap-2.14.2" }
-itertools = { path = "/home/igor/dev/rust_vendor/lalrpop/current/itertools-0.15.0" }
-keccak = { path = "/home/igor/dev/rust_vendor/lalrpop/current/keccak-0.2.2" }
-lalrpop = { path = "/home/igor/dev/rust_vendor/lalrpop/current/lalrpop-0.23.2" }
-lalrpop-util = { path = "/home/igor/dev/rust_vendor/lalrpop/current/lalrpop-util-0.23.2" }
-libc = { path = "/home/igor/dev/rust_vendor/lalrpop/current/libc-0.2.191" }
-lock_api = { path = "/home/igor/dev/rust_vendor/lalrpop/current/lock_api-0.4.14" }
-log = { path = "/home/igor/dev/rust_vendor/lalrpop/current/log-0.4.35" }
-memchr = { path = "/home/igor/dev/rust_vendor/lalrpop/current/memchr-2.8.3" }
-new_debug_unreachable = { path = "/home/igor/dev/rust_vendor/lalrpop/current/new_debug_unreachable-1.0.6" }
-parking_lot = { path = "/home/igor/dev/rust_vendor/lalrpop/current/parking_lot-0.12.5" }
-parking_lot_core = { path = "/home/igor/dev/rust_vendor/lalrpop/current/parking_lot_core-0.9.12" }
-petgraph = { path = "/home/igor/dev/rust_vendor/lalrpop/current/petgraph-0.8.3" }
-phf_shared = { path = "/home/igor/dev/rust_vendor/lalrpop/current/phf_shared-0.14.0" }
-pico-args = { path = "/home/igor/dev/rust_vendor/lalrpop/current/pico-args-0.5.0" }
-precomputed-hash = { path = "/home/igor/dev/rust_vendor/lalrpop/current/precomputed-hash-0.1.1" }
-redox_syscall = { path = "/home/igor/dev/rust_vendor/lalrpop/current/redox_syscall-0.5.18" }
-regex = { path = "/home/igor/dev/rust_vendor/lalrpop/current/regex-1.13.1" }
-regex-automata = { path = "/home/igor/dev/rust_vendor/lalrpop/current/regex-automata-0.4.18" }
-regex-syntax = { path = "/home/igor/dev/rust_vendor/lalrpop/current/regex-syntax-0.8.11" }
-same-file = { path = "/home/igor/dev/rust_vendor/lalrpop/current/same-file-1.0.6" }
-scopeguard = { path = "/home/igor/dev/rust_vendor/lalrpop/current/scopeguard-1.2.0" }
-sha3 = { path = "/home/igor/dev/rust_vendor/lalrpop/current/sha3-0.12.0" }
-siphasher = { path = "/home/igor/dev/rust_vendor/lalrpop/current/siphasher-1.0.4" }
-smallvec = { path = "/home/igor/dev/rust_vendor/lalrpop/current/smallvec-1.16.5" }
-sponge-cursor = { path = "/home/igor/dev/rust_vendor/lalrpop/current/sponge-cursor-0.1.0" }
-string_cache = { path = "/home/igor/dev/rust_vendor/lalrpop/current/string_cache-0.11.0" }
-term = { path = "/home/igor/dev/rust_vendor/lalrpop/current/term-1.2.1" }
-typenum = { path = "/home/igor/dev/rust_vendor/lalrpop/current/typenum-1.20.1" }
-unicode-xid = { path = "/home/igor/dev/rust_vendor/lalrpop/current/unicode-xid-0.2.6" }
-walkdir = { path = "/home/igor/dev/rust_vendor/lalrpop/current/walkdir-2.5.0" }
-winapi-util = { path = "/home/igor/dev/rust_vendor/lalrpop/current/winapi-util-0.1.11" }
-windows-link = { path = "/home/igor/dev/rust_vendor/lalrpop/current/windows-link-0.2.1" }
-windows-sys = { path = "/home/igor/dev/rust_vendor/lalrpop/current/windows-sys-0.61.2" }
+aho-corasick = { path = "../../../rust_vendor/lalrpop/current/aho-corasick-1.1.5" }
+ascii-canvas = { path = "../../../rust_vendor/lalrpop/current/ascii-canvas-4.0.0" }
+bit-set = { path = "../../../rust_vendor/lalrpop/current/bit-set-0.11.1" }
+bit-vec = { path = "../../../rust_vendor/lalrpop/current/bit-vec-0.10.2" }
+bitflags = { path = "../../../rust_vendor/lalrpop/current/bitflags-2.13.2" }
+cfg-if = { path = "../../../rust_vendor/lalrpop/current/cfg-if-1.0.5" }
+cpufeatures = { path = "../../../rust_vendor/lalrpop/current/cpufeatures-0.3.1" }
+crypto-common = { path = "../../../rust_vendor/lalrpop/current/crypto-common-0.2.2" }
+digest = { path = "../../../rust_vendor/lalrpop/current/digest-0.11.3" }
+either = { path = "../../../rust_vendor/lalrpop/current/either-1.19.0" }
+ena = { path = "../../../rust_vendor/lalrpop/current/ena-0.14.4" }
+equivalent = { path = "../../../rust_vendor/lalrpop/current/equivalent-1.0.3" }
+fixedbitset = { path = "../../../rust_vendor/lalrpop/current/fixedbitset-0.5.9" }
+foldhash = { path = "../../../rust_vendor/lalrpop/current/foldhash-0.1.5" }
+hashbrown_0_15_5 = { package = "hashbrown", path = "../../../rust_vendor/lalrpop/current/hashbrown-0.15.5" }
+hashbrown_0_17_1 = { package = "hashbrown", path = "../../../rust_vendor/lalrpop/current/hashbrown-0.17.1" }
+hybrid-array = { path = "../../../rust_vendor/lalrpop/current/hybrid-array-0.4.15" }
+indexmap = { path = "../../../rust_vendor/lalrpop/current/indexmap-2.14.2" }
+itertools = { path = "../../../rust_vendor/lalrpop/current/itertools-0.15.0" }
+keccak = { path = "../../../rust_vendor/lalrpop/current/keccak-0.2.2" }
+lalrpop = { path = "../../../rust_vendor/lalrpop/current/lalrpop-0.23.2" }
+lalrpop-util = { path = "../../../rust_vendor/lalrpop/current/lalrpop-util-0.23.2" }
+libc = { path = "../../../rust_vendor/lalrpop/current/libc-0.2.191" }
+lock_api = { path = "../../../rust_vendor/lalrpop/current/lock_api-0.4.14" }
+log = { path = "../../../rust_vendor/lalrpop/current/log-0.4.35" }
+memchr = { path = "../../../rust_vendor/lalrpop/current/memchr-2.8.3" }
+new_debug_unreachable = { path = "../../../rust_vendor/lalrpop/current/new_debug_unreachable-1.0.6" }
+parking_lot = { path = "../../../rust_vendor/lalrpop/current/parking_lot-0.12.5" }
+parking_lot_core = { path = "../../../rust_vendor/lalrpop/current/parking_lot_core-0.9.12" }
+petgraph = { path = "../../../rust_vendor/lalrpop/current/petgraph-0.8.3" }
+phf_shared = { path = "../../../rust_vendor/lalrpop/current/phf_shared-0.14.0" }
+pico-args = { path = "../../../rust_vendor/lalrpop/current/pico-args-0.5.0" }
+precomputed-hash = { path = "../../../rust_vendor/lalrpop/current/precomputed-hash-0.1.1" }
+redox_syscall = { path = "../../../rust_vendor/lalrpop/current/redox_syscall-0.5.18" }
+regex = { path = "../../../rust_vendor/lalrpop/current/regex-1.13.1" }
+regex-automata = { path = "../../../rust_vendor/lalrpop/current/regex-automata-0.4.18" }
+regex-syntax = { path = "../../../rust_vendor/lalrpop/current/regex-syntax-0.8.11" }
+same-file = { path = "../../../rust_vendor/lalrpop/current/same-file-1.0.6" }
+scopeguard = { path = "../../../rust_vendor/lalrpop/current/scopeguard-1.2.0" }
+sha3 = { path = "../../../rust_vendor/lalrpop/current/sha3-0.12.0" }
+siphasher = { path = "../../../rust_vendor/lalrpop/current/siphasher-1.0.4" }
+smallvec = { path = "../../../rust_vendor/lalrpop/current/smallvec-1.16.5" }
+sponge-cursor = { path = "../../../rust_vendor/lalrpop/current/sponge-cursor-0.1.0" }
+string_cache = { path = "../../../rust_vendor/lalrpop/current/string_cache-0.11.0" }
+term = { path = "../../../rust_vendor/lalrpop/current/term-1.2.1" }
+typenum = { path = "../../../rust_vendor/lalrpop/current/typenum-1.20.1" }
+unicode-xid = { path = "../../../rust_vendor/lalrpop/current/unicode-xid-0.2.6" }
+walkdir = { path = "../../../rust_vendor/lalrpop/current/walkdir-2.5.0" }
+winapi-util = { path = "../../../rust_vendor/lalrpop/current/winapi-util-0.1.11" }
+windows-link = { path = "../../../rust_vendor/lalrpop/current/windows-link-0.2.1" }
+windows-sys = { path = "../../../rust_vendor/lalrpop/current/windows-sys-0.61.2" }
 
 # -fsanitize=undefined traps signed overflow in every build.
 [profile.release]

@@ -17,9 +17,10 @@ pub enum Kind {
     Bool,
     InputKey,
     Font,
+    Icon,
 }
 
-const KINDS: [Kind; 12] = [
+const KINDS: [Kind; 13] = [
     Kind::I32,
     Kind::I64,
     Kind::U32,
@@ -32,6 +33,7 @@ const KINDS: [Kind; 12] = [
     Kind::Bool,
     Kind::InputKey,
     Kind::Font,
+    Kind::Icon,
 ];
 
 impl Kind {
@@ -50,6 +52,7 @@ impl Kind {
             Kind::Bool => "bool",
             Kind::InputKey => "input_key",
             Kind::Font => "font",
+            Kind::Icon => "icon",
         }
     }
 
@@ -88,6 +91,7 @@ pub enum Value {
     Bool(bool),
     InputKey(u32),
     Font { index: usize, text: String },
+    Icon { index: usize, text: String },
 }
 
 impl Value {
@@ -106,6 +110,7 @@ impl Value {
             Value::Bool(_) => Kind::Bool,
             Value::InputKey(_) => Kind::InputKey,
             Value::Font { .. } => Kind::Font,
+            Value::Icon { .. } => Kind::Icon,
         }
     }
 
@@ -123,7 +128,8 @@ impl Value {
             | Kind::Str
             | Kind::Bool
             | Kind::InputKey
-            | Kind::Font => None,
+            | Kind::Font
+            | Kind::Icon => None,
         }
     }
 
@@ -143,7 +149,8 @@ impl Value {
             | Kind::Str
             | Kind::Bool
             | Kind::InputKey
-            | Kind::Font => None,
+            | Kind::Font
+            | Kind::Icon => None,
         }
     }
 
@@ -168,7 +175,8 @@ impl Value {
             | Value::Str(_)
             | Value::Bool(_)
             | Value::InputKey(_)
-            | Value::Font { .. } => None,
+            | Value::Font { .. }
+            | Value::Icon { .. } => None,
         }
     }
 
@@ -185,7 +193,8 @@ impl Value {
             | Value::Str(_)
             | Value::Bool(_)
             | Value::InputKey(_)
-            | Value::Font { .. } => None,
+            | Value::Font { .. }
+            | Value::Icon { .. } => None,
         }
     }
 
@@ -202,7 +211,8 @@ impl Value {
             | Value::Str(_)
             | Value::Bool(_)
             | Value::InputKey(_)
-            | Value::Font { .. } => 0.0,
+            | Value::Font { .. }
+            | Value::Icon { .. } => 0.0,
         }
     }
 
@@ -219,7 +229,8 @@ impl Value {
             | Value::Str(_)
             | Value::Bool(_)
             | Value::InputKey(_)
-            | Value::Font { .. } => 0,
+            | Value::Font { .. }
+            | Value::Icon { .. } => 0,
         }
     }
 
@@ -270,7 +281,8 @@ impl Value {
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::InputKey(a), Value::InputKey(b)) => a == b,
-            (Value::Font { index: a, .. }, Value::Font { index: b, .. }) => a == b,
+            (Value::Font { index: a, .. }, Value::Font { index: b, .. })
+            | (Value::Icon { index: a, .. }, Value::Icon { index: b, .. }) => a == b,
             _ => self.order(other) == Some(Ordering::Equal),
         }
     }
@@ -314,7 +326,9 @@ impl Display for Value {
             Value::F64(v) => f.write_str(&general(*v, 17)),
             Value::Color(v) => write!(f, "{v:06X}"),
             Value::Bool(v) => f.write_str(if *v { "true" } else { "false" }),
-            Value::Str(v) | Value::Font { text: v, .. } => f.write_str(v),
+            Value::Str(v) | Value::Font { text: v, .. } | Value::Icon { text: v, .. } => {
+                f.write_str(v)
+            }
             Value::InputKey(v) => f.write_str(crate::key::name(*v).unwrap_or_default()),
         }
     }
