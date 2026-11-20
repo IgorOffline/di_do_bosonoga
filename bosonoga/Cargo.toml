@@ -35,6 +35,7 @@ unwrap_used = "deny"                           # -Wnull-dereference
 expect_used = "deny"                           # -Wnull-dereference
 panic = "deny"                                 # -fno-sanitize-recover is for bugs, not errors
 missing_errors_doc = "allow"                   # C11 had no doc requirement
+manual_find = "allow"                          # plain search loops read better than iterator chains
 
 # Every crate of the tree, so that Cargo.lock has no crates.io source or checksum.
 [patch.crates-io]

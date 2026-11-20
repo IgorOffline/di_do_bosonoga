@@ -5,10 +5,14 @@ use bosonoga::settings::Settings;
 
 #[cfg(test)]
 fn check_program(path: &str, source: &str) {
-    let program = bosonoga::parse(source)
-        .unwrap_or_else(|diagnostic| panic!("{}", diagnostic.located(path, source)));
-    let (_, status) = bosonoga::run(&program)
-        .unwrap_or_else(|(_, diagnostic)| panic!("{}", diagnostic.located(path, source)));
+    let program = match bosonoga::parse(source) {
+        Ok(program) => program,
+        Err(diagnostic) => panic!("{}", diagnostic.located(path, source)),
+    };
+    let status = match bosonoga::run(&program) {
+        Ok((_, status)) => status,
+        Err((_, diagnostic)) => panic!("{}", diagnostic.located(path, source)),
+    };
     assert_eq!(status, ExitStatus::Success, "{path}");
 }
 
@@ -58,9 +62,13 @@ fn conversions() {
 
 #[test]
 fn modules() {
-    let program = bosonoga::load(Path::new("test/module.bosonoga"), &Settings::default())
-        .unwrap_or_else(|message| panic!("{message}"));
-    let (_, status) = bosonoga::run(&program)
-        .unwrap_or_else(|(_, diagnostic)| panic!("{}", program.located(&diagnostic)));
+    let program = match bosonoga::load(Path::new("test/module.bosonoga"), &Settings::default()) {
+        Ok(program) => program,
+        Err(message) => panic!("{message}"),
+    };
+    let status = match bosonoga::run(&program) {
+        Ok((_, status)) => status,
+        Err((_, diagnostic)) => panic!("{}", program.located(&diagnostic)),
+    };
     assert_eq!(status, ExitStatus::Success);
 }

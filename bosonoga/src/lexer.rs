@@ -112,13 +112,22 @@ impl<'input> Lexer<'input> {
         self.source.as_bytes().get(at).copied()
     }
 
+    fn is_digit_at(&self, at: usize) -> bool {
+        match self.byte(at) {
+            Some(b) => b.is_ascii_digit(),
+            None => false,
+        }
+    }
+
     fn at_word_char(&self) -> bool {
-        self.byte(self.cursor)
-            .is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_')
+        match self.byte(self.cursor) {
+            Some(b) => b.is_ascii_alphanumeric() || b == b'_',
+            None => false,
+        }
     }
 
     fn at_digit(&self) -> bool {
-        self.byte(self.cursor).is_some_and(|b| b.is_ascii_digit())
+        self.is_digit_at(self.cursor)
     }
 
     fn consume_digits(&mut self) {
@@ -140,22 +149,27 @@ impl<'input> Lexer<'input> {
             if is_space(b) {
                 self.cursor += 1;
             } else if b == b'/' && self.byte(self.cursor + 1) == Some(b'/') {
-                while self.byte(self.cursor).is_some_and(|c| c != b'\n') {
-                    self.cursor += 1;
-                }
+                self.skip_line();
             } else {
                 return;
             }
         }
     }
 
+    fn skip_line(&mut self) {
+        while let Some(b) = self.byte(self.cursor) {
+            if b == b'\n' {
+                return;
+            }
+            self.cursor += 1;
+        }
+    }
+
     fn at_number(&self) -> bool {
-        let digit = if self.byte(self.cursor) == Some(b'-') {
-            self.cursor + 1
-        } else {
-            self.cursor
-        };
-        self.byte(digit).is_some_and(|b| b.is_ascii_digit())
+        if self.byte(self.cursor) == Some(b'-') {
+            return self.is_digit_at(self.cursor + 1);
+        }
+        self.is_digit_at(self.cursor)
     }
 
     fn lex_number(&mut self, start: usize) -> Result<Tok<'input>, Diagnostic> {
@@ -210,24 +224,21 @@ impl<'input> Lexer<'input> {
                 "an integer cannot have a fraction",
             ));
         }
-        let value = if kind.is_integer() {
-            number
-                .parse()
-                .ok()
-                .and_then(|whole| Value::whole(kind, whole))
-        } else {
-            number
-                .replace('d', ".")
-                .parse()
-                .ok()
-                .and_then(|real| Value::real(kind, real))
-        };
-        value.map(Tok::Literal).ok_or_else(|| {
-            Diagnostic::new(
+        let mut value = None;
+        if kind.is_integer() {
+            if let Ok(whole) = number.parse::<i128>() {
+                value = Value::whole(kind, whole);
+            }
+        } else if let Ok(real) = number.replace('d', ".").parse::<f64>() {
+            value = Value::real(kind, real);
+        }
+        match value {
+            Some(literal) => Ok(Tok::Literal(literal)),
+            None => Err(Diagnostic::new(
                 self.base + start,
                 format!("the number is outside the {} range", kind.name()),
-            )
-        })
+            )),
+        }
     }
 
     fn lex_string(&mut self, start: usize) -> Result<Tok<'input>, Diagnostic> {
@@ -279,8 +290,28 @@ fn is_space(b: u8) -> bool {
 }
 
 fn is_numbered(text: &str, prefix: &str) -> bool {
-    text.strip_prefix(prefix)
-        .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
+    let Some(digits) = text.strip_prefix(prefix) else {
+        return false;
+    };
+    if digits.is_empty() {
+        return false;
+    }
+    for b in digits.bytes() {
+        if !b.is_ascii_digit() {
+            return false;
+        }
+    }
+    true
+}
+
+fn is_result_name(text: &str) -> bool {
+    if !text.starts_with("ret_") {
+        return false;
+    }
+    match text.as_bytes().get(4) {
+        Some(b) => b.is_ascii_digit(),
+        None => false,
+    }
 }
 
 fn word(text: &str) -> Tok<'_> {
@@ -343,9 +374,7 @@ fn word(text: &str) -> Tok<'_> {
         "false_bool" => Tok::Literal(Value::Bool(false)),
         "gfx_delta_time" | "gfx_key" => Tok::GfxValue(text),
         _ if is_numbered(text, "shift_") => Tok::Shift(text),
-        _ if text.starts_with("ret_") && text.as_bytes().get(4).is_some_and(u8::is_ascii_digit) => {
-            Tok::Result(text)
-        }
+        _ if is_result_name(text) => Tok::Result(text),
         _ if is_numbered(text, "to_") || RESERVED.contains(&text) => Tok::Reserved(text),
         _ => Tok::Name(text),
     }
@@ -370,9 +399,12 @@ impl<'input> Iterator for Lexer<'input> {
             Some(b) if b.is_ascii_alphabetic() || b == b'_' => Ok(word(self.consume_word())),
             Some(_) => Err(Diagnostic::new(self.base + start, "unexpected character")),
         };
-        if token.is_err() {
-            self.ended = true;
+        match token {
+            Ok(lexed) => Some(Ok((self.base + start, lexed, self.base + self.cursor))),
+            Err(diagnostic) => {
+                self.ended = true;
+                Some(Err(diagnostic))
+            }
         }
-        Some(token.map(|t| (self.base + start, t, self.base + self.cursor)))
     }
 }

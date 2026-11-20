@@ -1,0 +1,133 @@
+use lalrpop_util::ParseError;
+
+use crate::Diagnostic;
+use crate::lexer::{Lexer, Tok};
+use crate::shown;
+use crate::sources::SourceFile;
+use crate::value::Value;
+
+pub(crate) fn describe(
+    file: &SourceFile,
+    error: ParseError<usize, Tok<'_>, Diagnostic>,
+) -> Diagnostic {
+    match error {
+        ParseError::User { error: user } => user,
+        ParseError::UnrecognizedToken {
+            token: (start, token, end),
+            expected,
+        } => unrecognized(file, start, &token, end, &expected),
+        ParseError::UnrecognizedEof { location, .. }
+        | ParseError::InvalidToken { location }
+        | ParseError::ExtraToken {
+            token: (location, ..),
+        } => Diagnostic::new(location, "unexpected token"),
+    }
+}
+
+fn unrecognized(
+    file: &SourceFile,
+    start: usize,
+    token: &Tok<'_>,
+    end: usize,
+    expected: &[String],
+) -> Diagnostic {
+    let before = tokens_before(file, start);
+    if has(expected, "is") && matches!(token, Tok::Name(_)) {
+        let mut declaration = "var";
+        if before.len() >= 2 && before[before.len() - 2] == Tok::Val {
+            declaration = "val";
+        }
+        return Diagnostic::new(
+            start,
+            format!(
+                "a {declaration} declares one variable, and the values of a call are taken with call ... with ret, one per line"
+            ),
+        );
+    }
+    let got = if *token == Tok::End {
+        "end of file".to_owned()
+    } else {
+        format!("'{}'", shown(file.slice(start, end)))
+    };
+    let wanted = wanted(expected, &before);
+    Diagnostic::new(start, format!("expected {wanted}, got {got}"))
+}
+
+fn wanted(expected: &[String], before: &[Tok<'_>]) -> String {
+    if has(expected, "section") && has(expected, "end") {
+        return "const, def, val, bosonoga_global, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down or gfx_main".to_owned();
+    }
+    if has(expected, "section") {
+        return "a program, which has a bosonoga_main block".to_owned();
+    }
+    if has(expected, "info") {
+        return "a statement".to_owned();
+    }
+    if has(expected, "compare") {
+        if let Some(Tok::Literal(Value::Bool(_))) = before.last() {
+            return "di".to_owned();
+        }
+        return "a comparison".to_owned();
+    }
+    let literal = has(expected, "literal");
+    let indexed_type = has(expected, "indexed_type");
+    if has(expected, "di") && !literal && !indexed_type {
+        return "di".to_owned();
+    }
+    if literal && !indexed_type {
+        return "a value".to_owned();
+    }
+    if indexed_type {
+        return "a type with its index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bool".to_owned();
+    }
+    listed(expected)
+}
+
+fn has(expected: &[String], terminal: &str) -> bool {
+    for name in expected {
+        if name.trim_matches('"') == terminal {
+            return true;
+        }
+    }
+    false
+}
+
+fn tokens_before(file: &SourceFile, offset: usize) -> Vec<Tok<'_>> {
+    let mut tokens = Vec::new();
+    for spanned in Lexer::starting_at(&file.text, file.base, file.base) {
+        let Ok((start, token, _)) = spanned else {
+            break;
+        };
+        if start >= offset {
+            break;
+        }
+        tokens.push(token);
+    }
+    tokens
+}
+
+fn terminal_word(terminal: &str) -> &str {
+    match terminal {
+        "end" => "end of file",
+        "name" => "a variable name",
+        "operation" => "to, to_add, to_subtract, to_multiply, to_divide, to_mod or a conversion",
+        word => word,
+    }
+}
+
+fn listed(expected: &[String]) -> String {
+    if expected.is_empty() {
+        return "nothing".to_owned();
+    }
+    let last = expected.len() - 1;
+    let mut text = String::new();
+    for (index, terminal) in expected.iter().enumerate() {
+        if index > 0 && index == last {
+            text.push_str(" or ");
+        } else if index > 0 {
+            text.push_str(", ");
+        }
+        text.push_str(terminal_word(terminal.trim_matches('"')));
+    }
+    text
+}

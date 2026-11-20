@@ -239,7 +239,10 @@ Comparison: Comparison<'input> =
         Comparison {
             negate: negate.is_some(),
             left,
-            right: right.map(|(start, compare, end, value)| (Span { start, end }, compare, value)),
+            right: match right {
+                Some((start, compare, end, value)) => Some((Span { start, end }, compare, value)),
+                None => None,
+            },
         };
 
 Operand: Operand<'input> = <start:@L> <term:Term> <end:@R> => Operand { span: Span { start, end }, term };

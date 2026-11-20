@@ -1,0 +1,245 @@
+use super::{ARRAY_VALUES_MAX, Checker, values_shown};
+use crate::Diagnostic;
+use crate::ast::{self, Named, Rows, Span, Term};
+use crate::program::{Operand, Statement, VarArray};
+use crate::value::{Kind, Operation, Value};
+
+fn zero_value(kind: Kind) -> Option<Value> {
+    match kind {
+        Kind::I32 => Some(Value::I32(0)),
+        Kind::I64 => Some(Value::I64(0)),
+        Kind::U32 => Some(Value::U32(0)),
+        Kind::U64 => Some(Value::U64(0)),
+        Kind::F32 => Some(Value::F32(0.0)),
+        Kind::F64 => Some(Value::F64(0.0)),
+        Kind::Flags => Some(Value::Flags(0)),
+        Kind::Color => Some(Value::Color(0)),
+        Kind::Str => Some(Value::Str(String::new())),
+        Kind::Bool => Some(Value::Bool(false)),
+        Kind::InputKey | Kind::Font | Kind::Icon => None,
+    }
+}
+
+impl<'input> Checker<'_, 'input> {
+    fn check_array_size(
+        &self,
+        span: Span,
+        name: Span,
+        rows: usize,
+        kinds: &[Kind],
+    ) -> Result<(), Diagnostic> {
+        let values = rows.saturating_mul(kinds.len());
+        if values <= ARRAY_VALUES_MAX {
+            return Ok(());
+        }
+        Self::fail(
+            span.start,
+            format!(
+                "'{}' would hold {values} values, and an array holds at most {ARRAY_VALUES_MAX}",
+                self.text(name)
+            ),
+        )
+    }
+
+    pub(super) fn literal_rows(
+        &mut self,
+        span: Span,
+        kinds: &[Kind],
+        rows: &[(Span, Vec<ast::Operand<'input>>)],
+        is_var: bool,
+    ) -> Result<Vec<Vec<Value>>, Diagnostic> {
+        let shown = self.text(span);
+        let types = values_shown(kinds);
+        let context = format!("a row of '{shown}'");
+        let mut table = Vec::new();
+        for (row_span, values) in rows {
+            let mut row = Vec::new();
+            for (index, kind) in kinds.iter().enumerate() {
+                let Some(value) = values.get(index) else {
+                    return Self::fail(
+                        row_span.start,
+                        format!("'{shown}' has rows of {types}, but this row has {index}"),
+                    );
+                };
+                row.push(self.row_literal(value, *kind, &context)?);
+            }
+            if values.len() > kinds.len() {
+                return Self::fail(
+                    row_span.start,
+                    format!("'{shown}' has rows of {types}, but this row has more"),
+                );
+            }
+            table.push(row);
+            if is_var {
+                self.check_array_size(*row_span, span, table.len(), kinds)?;
+            }
+        }
+        Ok(table)
+    }
+
+    fn row_literal(
+        &mut self,
+        value: &ast::Operand<'input>,
+        kind: Kind,
+        context: &str,
+    ) -> Result<Value, Diagnostic> {
+        let not_literal = Diagnostic::new(
+            value.span.start,
+            format!(
+                "the values of a row are literals, like 7_i32, so a row cannot have '{}'",
+                self.text(value.span)
+            ),
+        );
+        if let Term::Name(word) = value.term
+            && !self.is_reserved(word)
+            && self.constant(word).is_none()
+        {
+            self.check_not_hidden(value.span, word)?;
+            return Err(not_literal);
+        }
+        match self.value_of_kind(value, kind, context)? {
+            Operand::Literal(literal) => Ok(literal),
+            Operand::Slot(_) => Err(not_literal),
+        }
+    }
+
+    pub(super) fn var_array(
+        &mut self,
+        (span, name): Named<'input>,
+        mutable: bool,
+        array: Span,
+        kind_spans: &[Span],
+        rows: &Rows<'input>,
+    ) -> Result<Statement, Diagnostic> {
+        if !mutable {
+            return Self::fail(
+                array.start,
+                "a val array is top-level, and an array of a block is a var",
+            );
+        }
+        self.new_name((span, name))?;
+        let kinds = self.array_kinds(kind_spans)?;
+        let mut values = Vec::new();
+        let repeat;
+        match rows {
+            Rows::Literal(literal) => {
+                let table = self.literal_rows(span, &kinds, literal, true)?;
+                for row in table {
+                    values.extend(row);
+                }
+                repeat = 1;
+            }
+            Rows::Zeroed(keyword, count) => {
+                repeat = self.zeroed_row_count(span, &kinds, count)?;
+                for kind in &kinds {
+                    let Some(zero) = zero_value(*kind) else {
+                        return Self::fail(
+                            keyword.start,
+                            format!(
+                                "a zeroed row cannot have {}, which has no zero, but literal rows can",
+                                kind.name()
+                            ),
+                        );
+                    };
+                    values.push(zero);
+                }
+            }
+        }
+        let columns = kinds.len();
+        let row_count = match values.len().checked_div(columns) {
+            Some(per_repeat) => per_repeat * repeat,
+            None => 0,
+        };
+        let slot = self.slot_count;
+        self.slot_count += row_count * columns;
+        let index = self.program.var_arrays.len();
+        self.program.var_arrays.push(VarArray {
+            name: self.text(span).to_owned(),
+            slot,
+            columns,
+            rows: row_count,
+        });
+        self.declare((span, name), Kind::I32, slot, true);
+        if let Some(variable) = self.variables.last_mut() {
+            variable.array = Some((index, kinds));
+        }
+        Ok(Statement::ArrayInit {
+            slot,
+            values,
+            repeat,
+        })
+    }
+
+    fn zeroed_row_count(
+        &mut self,
+        name: Span,
+        kinds: &[Kind],
+        count: &ast::Operand<'input>,
+    ) -> Result<usize, Diagnostic> {
+        let mut row_count = 0;
+        if let Operand::Literal(Value::I32(given)) =
+            self.value_of_kind(count, Kind::I32, "with_len_col")?
+            && let Ok(rows) = usize::try_from(given)
+        {
+            row_count = rows;
+        }
+        if row_count == 0 {
+            return Self::fail(
+                count.span.start,
+                "with_len_col needs an i32 literal or constant above zero, as the size of an array is known before the program runs",
+            );
+        }
+        self.check_array_size(count.span, name, row_count, kinds)?;
+        Ok(row_count)
+    }
+
+    pub(super) fn set_at(
+        &mut self,
+        (span, name): Named<'input>,
+        index: &ast::Operand<'input>,
+        (operation_span, operation): (Span, Operation),
+        values: &[ast::Operand<'input>],
+    ) -> Result<Statement, Diagnostic> {
+        let found = match self.variable(name) {
+            Some(variable) => self.variables[variable].array.clone(),
+            None => None,
+        };
+        let Some((array, kinds)) = found else {
+            self.target((span, name))?;
+            return self.expected(
+                span.end,
+                "to, to_add, to_subtract, to_multiply, to_divide, to_mod or a conversion",
+            );
+        };
+        let shown = self.text(span);
+        let index_operand =
+            self.value_of_kind(index, Kind::I32, &format!("the index of '{shown}'"))?;
+        if operation != Operation::Copy {
+            return self.expected_at(operation_span, "to");
+        }
+        let types = values_shown(&kinds);
+        let context = format!("a row of '{shown}'");
+        let mut operands = Vec::new();
+        for (column, kind) in kinds.iter().enumerate() {
+            let Some(value) = values.get(column) else {
+                return Self::fail(
+                    span.start,
+                    format!("'{shown}' has rows of {types}, but this row has {column}"),
+                );
+            };
+            operands.push(self.value_of_kind(value, *kind, &context)?);
+        }
+        if let Some(extra) = values.get(kinds.len()) {
+            return Self::fail(
+                extra.span.start,
+                format!("'{shown}' has rows of {types}, but this row has more"),
+            );
+        }
+        Ok(Statement::ArrayWrite {
+            array,
+            index: index_operand,
+            values: operands,
+            offset: span.start,
+        })
+    }
+}

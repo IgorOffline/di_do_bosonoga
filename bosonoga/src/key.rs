@@ -123,16 +123,18 @@ const NAMES: [&str; 120] = [
 
 #[must_use]
 pub fn named(name: &str) -> Option<u32> {
-    NAMES
-        .iter()
-        .position(|known| *known == name)
-        .and_then(|index| u32::try_from(index).ok())
+    for (index, known) in NAMES.iter().enumerate() {
+        if *known == name {
+            return u32::try_from(index).ok();
+        }
+    }
+    None
 }
 
 #[must_use]
 pub fn name(code: u32) -> Option<&'static str> {
-    usize::try_from(code)
-        .ok()
-        .and_then(|index| NAMES.get(index))
-        .copied()
+    let Ok(index) = usize::try_from(code) else {
+        return None;
+    };
+    NAMES.get(index).copied()
 }

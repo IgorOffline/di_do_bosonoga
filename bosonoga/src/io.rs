@@ -66,13 +66,22 @@ impl Drop for Staging {
     }
 }
 
+fn has_control_char(name: &str) -> bool {
+    for c in name.chars() {
+        if c.is_control() {
+            return true;
+        }
+    }
+    false
+}
+
 fn file_path(directory: &Path, name: &str) -> io::Result<PathBuf> {
     if name.is_empty()
         || name.len() > 255
         || name == "."
         || name == ".."
         || name.contains(['/', '\\', ':'])
-        || name.chars().any(char::is_control)
+        || has_control_char(name)
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -83,7 +92,11 @@ fn file_path(directory: &Path, name: &str) -> io::Result<PathBuf> {
 }
 
 fn check_text(text: &str) -> io::Result<()> {
-    if u64::try_from(text.len()).is_ok_and(|length| length > TEXT_LIMIT) || text.contains('\0') {
+    let too_long = match u64::try_from(text.len()) {
+        Ok(length) => length > TEXT_LIMIT,
+        Err(_) => false,
+    };
+    if too_long || text.contains('\0') {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "expected UTF-8 text up to 1 MiB without NUL bytes",
@@ -96,10 +109,10 @@ impl Io for FileIo {
     fn read(&mut self, directory: &Path, name: &str) -> io::Result<String> {
         let path = file_path(directory, name)?;
         regular_file(&path)?;
+        let file = File::open(path)?;
+        let mut limited = file.take(TEXT_LIMIT + 1);
         let mut text = String::new();
-        File::open(path)?
-            .take(TEXT_LIMIT + 1)
-            .read_to_string(&mut text)?;
+        limited.read_to_string(&mut text)?;
         check_text(&text)?;
         Ok(text)
     }
@@ -124,11 +137,13 @@ impl Io for FileIo {
     }
 
     fn modified(&mut self, directory: &Path, name: &str) -> io::Result<SystemTime> {
-        regular_file(&file_path(directory, name)?)?.modified()
+        let path = file_path(directory, name)?;
+        let metadata = regular_file(&path)?;
+        metadata.modified()
     }
 
     fn latest(&mut self, directory: &Path, prefix: &str, suffix: &str) -> io::Result<String> {
-        let mut latest = None;
+        let mut latest: Option<(SystemTime, String)> = None;
         for found in fs::read_dir(directory)? {
             let entry = found?;
             let Ok(name) = entry.file_name().into_string() else {
@@ -141,14 +156,20 @@ impl Io for FileIo {
             {
                 continue;
             }
-            let candidate = (regular_file(&entry.path())?.modified()?, name);
-            if latest.as_ref().is_none_or(|known| candidate > *known) {
+            let metadata = regular_file(&entry.path())?;
+            let candidate = (metadata.modified()?, name);
+            let is_newer = match &latest {
+                Some(known) => candidate > *known,
+                None => true,
+            };
+            if is_newer {
                 latest = Some(candidate);
             }
         }
-        latest
-            .map(|(_, name)| name)
-            .ok_or_else(|| io::ErrorKind::NotFound.into())
+        match latest {
+            Some((_, name)) => Ok(name),
+            None => Err(io::ErrorKind::NotFound.into()),
+        }
     }
 }
 
@@ -216,69 +237,83 @@ impl Builtin {
         use Value::{Bool, I32, I64, Str};
         match (self, directory, values) {
             (Self::Read, Some(dir), [Str(name)]) => {
-                let result = file_path(dir, name)
-                    .and_then(|_| io.read(dir, name))
-                    .and_then(|text| {
-                        check_text(&text)?;
-                        Ok(text)
-                    });
-                read_result(result, dir, name)
+                read_result(read_file(io, dir, name), dir, name)
             }
             (Self::Write, Some(dir), [Str(name), Str(text)]) => {
-                let result = file_path(dir, name)
-                    .and_then(|_| check_text(text))
-                    .and_then(|()| io.write(dir, name, text));
+                let result = write_file(io, dir, name, text);
                 let taken = has_error_kind(&result, io::ErrorKind::AlreadyExists);
-                let mut returned = file_result(result.map(|()| false), dir, name, Bool);
+                let written = match result {
+                    Ok(()) => Ok(false),
+                    Err(error) => Err(error),
+                };
+                let mut returned = file_result(written, dir, name, Bool);
                 if let Some(slot) = returned.get_mut(1) {
                     *slot = Bool(taken);
                 }
                 returned
             }
             (Self::Modified, Some(dir), [Str(name)]) => {
-                let result = file_path(dir, name)
-                    .and_then(|_| io.modified(dir, name))
-                    .and_then(|time| {
-                        let nanos = match time.duration_since(UNIX_EPOCH) {
-                            Ok(duration) => i128::try_from(duration.as_nanos()),
-                            Err(before_epoch) => i128::try_from(before_epoch.duration().as_nanos())
-                                .map(|nanos| -nanos),
-                        }
-                        .map_err(io::Error::other)?;
-                        i64::try_from(nanos).map_err(io::Error::other)
-                    });
-                file_result(result, dir, name, I64)
+                file_result(modified_nanos(io, dir, name), dir, name, I64)
             }
             (Self::Latest, Some(dir), [Str(prefix), Str(suffix)]) => {
                 read_result(io.latest(dir, prefix, suffix), dir, "")
             }
             (Self::XmlChild, None, [Str(text), Str(name), I32(index)]) => {
-                let found = usize::try_from(*index)
-                    .ok()
-                    .and_then(|row| xml_value(text, XmlQuery::Child(name, row)));
+                let mut found = None;
+                if let Ok(row) = usize::try_from(*index) {
+                    found = xml_value(text, XmlQuery::Child(name, row));
+                }
                 optional(found, Str)
             }
             (Self::XmlAttribute, None, [Str(text), Str(name)]) => {
                 optional(xml_value(text, XmlQuery::Attribute(name)), Str)
             }
             (Self::XmlName, None, [Str(text)]) => optional(xml_value(text, XmlQuery::Name), Str),
-            (Self::XmlEscape, None, [Str(text)]) => vec![
-                Bool(true),
-                Str(quick_xml::escape::escape(text).into_owned()),
-            ],
+            (Self::XmlEscape, None, [Str(text)]) => {
+                let escaped = quick_xml::escape::escape(text);
+                vec![Bool(true), Str(escaped.into_owned())]
+            }
             (Self::Parse, None, [Str(text)]) => optional(text.parse::<i32>().ok(), I32),
             (Self::Length, None, [Str(text)]) => optional(i32::try_from(text.len()).ok(), I32),
-            (Self::Digit, None, [Str(text), I32(index)]) => {
-                let found = usize::try_from(*index)
-                    .ok()
-                    .and_then(|at| text.as_bytes().get(at))
-                    .filter(|byte| byte.is_ascii_digit())
-                    .map(|byte| i32::from(byte - b'0'));
-                optional(found, I32)
-            }
+            (Self::Digit, None, [Str(text), I32(index)]) => optional(digit_at(text, *index), I32),
             _ => unreachable!("the checker validates builtin arguments"),
         }
     }
+}
+
+fn read_file(io: &mut dyn Io, directory: &Path, name: &str) -> io::Result<String> {
+    file_path(directory, name)?;
+    let text = io.read(directory, name)?;
+    check_text(&text)?;
+    Ok(text)
+}
+
+fn write_file(io: &mut dyn Io, directory: &Path, name: &str, text: &str) -> io::Result<()> {
+    file_path(directory, name)?;
+    check_text(text)?;
+    io.write(directory, name, text)
+}
+
+fn modified_nanos(io: &mut dyn Io, directory: &Path, name: &str) -> io::Result<i64> {
+    file_path(directory, name)?;
+    let time = io.modified(directory, name)?;
+    let nanos = match time.duration_since(UNIX_EPOCH) {
+        Ok(after_epoch) => i128::try_from(after_epoch.as_nanos()).map_err(io::Error::other)?,
+        Err(before_epoch) => {
+            let before = before_epoch.duration().as_nanos();
+            -i128::try_from(before).map_err(io::Error::other)?
+        }
+    };
+    i64::try_from(nanos).map_err(io::Error::other)
+}
+
+fn digit_at(text: &str, index: i32) -> Option<i32> {
+    let at = usize::try_from(index).ok()?;
+    let byte = *text.as_bytes().get(at)?;
+    if !byte.is_ascii_digit() {
+        return None;
+    }
+    Some(i32::from(byte - b'0'))
 }
 
 fn optional<T: Default>(value: Option<T>, wrap: fn(T) -> Value) -> Vec<Value> {
@@ -289,7 +324,10 @@ fn optional<T: Default>(value: Option<T>, wrap: fn(T) -> Value) -> Vec<Value> {
 }
 
 fn has_error_kind<T>(result: &io::Result<T>, kind: io::ErrorKind) -> bool {
-    result.as_ref().is_err_and(|error| error.kind() == kind)
+    match result {
+        Ok(_) => false,
+        Err(error) => error.kind() == kind,
+    }
 }
 
 fn read_result(result: io::Result<String>, directory: &Path, name: &str) -> Vec<Value> {
@@ -351,7 +389,8 @@ fn xml_value(text: &str, query: XmlQuery<'_>) -> Option<String> {
                         .normalized_value(quick_xml::XmlVersion::Implicit1_0)
                         .ok()?;
                     if depth == 0
-                        && matches!(query, XmlQuery::Attribute(name) if attribute.key.as_ref() == name)
+                        && let XmlQuery::Attribute(name) = query
+                        && attribute.key.as_ref() == name
                     {
                         value = Some(decoded.into_owned());
                     }
@@ -369,7 +408,9 @@ fn xml_value(text: &str, query: XmlQuery<'_>) -> Option<String> {
                     }
                     matches += 1;
                 }
-                depth += usize::from(matches!(event, Event::Start(_)));
+                if let Event::Start(_) = event {
+                    depth += 1;
+                }
             }
             Event::End(_) => {
                 depth = depth.checked_sub(1)?;
@@ -380,11 +421,7 @@ fn xml_value(text: &str, query: XmlQuery<'_>) -> Option<String> {
                 }
             }
             Event::Text(content) if depth == 0 => {
-                if !content
-                    .as_ref()
-                    .bytes()
-                    .all(|byte| byte.is_ascii_whitespace())
-                {
+                if !is_blank(content.as_ref()) {
                     return None;
                 }
             }
@@ -392,7 +429,12 @@ fn xml_value(text: &str, query: XmlQuery<'_>) -> Option<String> {
                 return None;
             }
             Event::Decl(_) if before != 0 => return None,
-            Event::Eof => return if root && depth == 0 { value } else { None },
+            Event::Eof => {
+                if root && depth == 0 {
+                    return value;
+                }
+                return None;
+            }
             Event::Text(_)
             | Event::CData(_)
             | Event::GeneralRef(_)
@@ -402,6 +444,15 @@ fn xml_value(text: &str, query: XmlQuery<'_>) -> Option<String> {
             Event::DocType(_) => return None,
         }
     }
+}
+
+fn is_blank(text: &str) -> bool {
+    for byte in text.bytes() {
+        if !byte.is_ascii_whitespace() {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]
