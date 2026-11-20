@@ -1,9 +1,10 @@
 use crate::Diagnostic;
-use crate::value::{Compare, Kind, Value};
+use crate::ast::Section;
+use crate::value::{Compare, Conversion, Kind, Operation, Value};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Tok<'input> {
-    BosonogaMain,
+    Section(Section),
     Di,
     Do,
     Info,
@@ -15,7 +16,26 @@ pub enum Tok<'input> {
     Val,
     Is,
     Set,
-    Operation(crate::value::Operation),
+    Operation(Operation),
+    Conversion(Conversion),
+    Const,
+    Pub,
+    Mod,
+    Def,
+    Ret,
+    RetVoid,
+    Of,
+    With,
+    At,
+    Array,
+    Row,
+    While,
+    AwaitNextFrame,
+    GfxClear,
+    GfxDrawRectangle,
+    GfxDrawHex,
+    GfxDrawCircle,
+    GfxDrawText,
     If,
     Else,
     And,
@@ -36,62 +56,13 @@ pub enum Tok<'input> {
 pub type Spanned<'input> = Result<(usize, Tok<'input>, usize), Diagnostic>;
 
 const RESERVED: &[&str] = &[
-    "set",
     "unset",
     "new",
-    "with",
-    "to_add",
-    "to_subtract",
-    "to_multiply",
-    "to_divide",
-    "const",
     "io_raw_import",
-    "mod",
-    "pub",
-    "to_f64",
-    "math_to_log",
-    "math_to_log10",
-    "math_to_log1p",
-    "math_to_expm1",
-    "math_to_hypot",
-    "math_to_exp",
-    "math_to_asin",
-    "math_to_acos",
-    "math_to_tan",
-    "to_f32",
-    "to_i32",
-    "to_i64",
-    "to_u32",
-    "to_u64",
-    "math_to_sin",
-    "math_to_cos",
-    "math_to_atan2",
-    "math_to_sqrt",
-    "math_to_pow",
-    "math_to_abs",
-    "math_to_min",
-    "math_to_max",
-    "math_to_floor",
-    "math_to_ceil",
-    "math_to_round",
     "sleep_ms",
-    "gfx_await_next_frame",
-    "gfx_init",
-    "gfx_frame",
-    "gfx_main",
-    "gfx_cleanup",
-    "gfx_clear",
-    "gfx_draw_rectangle",
-    "gfx_draw_hex",
-    "gfx_draw_circle",
-    "gfx_draw_text",
     "gfx_draw_icon",
-    "gfx_key_down",
-    "bosonoga_global",
-    "while",
     "break",
     "continue",
-    "to_mod",
     "to_join",
     "io_read",
     "io_write",
@@ -99,20 +70,12 @@ const RESERVED: &[&str] = &[
     "xml_child",
     "xml_attribute",
     "str_parse",
-    "def",
-    "ret",
     "call",
-    "to",
-    "array",
-    "row",
     "with_len_col",
     "len_col",
     "len_row",
     "expect",
-    "at",
-    "of",
     "as",
-    "ret_void",
 ];
 
 const INDEXED_TYPES: &[&str] = &[
@@ -129,6 +92,7 @@ const INDEXED_TYPES: &[&str] = &[
 
 pub struct Lexer<'input> {
     source: &'input str,
+    base: usize,
     cursor: usize,
     ended: bool,
 }
@@ -136,14 +100,15 @@ pub struct Lexer<'input> {
 impl<'input> Lexer<'input> {
     #[must_use]
     pub fn new(source: &'input str) -> Self {
-        Self::starting_at(source, 0)
+        Self::starting_at(source, 0, 0)
     }
 
     #[must_use]
-    pub fn starting_at(source: &'input str, cursor: usize) -> Self {
+    pub fn starting_at(source: &'input str, base: usize, offset: usize) -> Self {
         Lexer {
             source,
-            cursor,
+            base,
+            cursor: offset - base,
             ended: false,
         }
     }
@@ -205,7 +170,7 @@ impl<'input> Lexer<'input> {
         self.consume_digits();
         if self.byte(self.cursor) == Some(b'.') {
             return Err(Diagnostic::new(
-                start,
+                self.base + start,
                 "the decimal separator is the letter d, as in 1d5_f32",
             ));
         }
@@ -215,7 +180,7 @@ impl<'input> Lexer<'input> {
             self.cursor += 1;
             if !self.at_digit() {
                 return Err(Diagnostic::new(
-                    start,
+                    self.base + start,
                     "expected a digit after the decimal separator d",
                 ));
             }
@@ -224,12 +189,12 @@ impl<'input> Lexer<'input> {
         let number = &self.source[start..self.cursor];
         let suffix = self.consume_word();
         let Some(name) = suffix.strip_prefix('_') else {
-            return Err(suffix_error(start));
+            return Err(suffix_error(self.base + start));
         };
         if INDEXED_TYPES.contains(&name) {
             if has_fraction || number.starts_with('-') {
                 return Err(Diagnostic::new(
-                    start,
+                    self.base + start,
                     "an index is digits and a type, like 1_str",
                 ));
             }
@@ -242,10 +207,13 @@ impl<'input> Lexer<'input> {
             "u64" => Kind::U64,
             "f32" => Kind::F32,
             "f64" => Kind::F64,
-            _ => return Err(suffix_error(start)),
+            _ => return Err(suffix_error(self.base + start)),
         };
         if kind.is_integer() && has_fraction {
-            return Err(Diagnostic::new(start, "an integer cannot have a fraction"));
+            return Err(Diagnostic::new(
+                self.base + start,
+                "an integer cannot have a fraction",
+            ));
         }
         let value = if kind.is_integer() {
             number
@@ -261,7 +229,7 @@ impl<'input> Lexer<'input> {
         };
         value.map(Tok::Literal).ok_or_else(|| {
             Diagnostic::new(
-                start,
+                self.base + start,
                 format!("the number is outside the {} range", kind.name()),
             )
         })
@@ -272,14 +240,21 @@ impl<'input> Lexer<'input> {
         let text_start = self.cursor;
         loop {
             match self.byte(self.cursor) {
-                None | Some(b'\n') => return Err(Diagnostic::new(start, "unterminated string")),
+                None | Some(b'\n') => {
+                    return Err(Diagnostic::new(self.base + start, "unterminated string"));
+                }
                 Some(b'\\') => {
                     return Err(Diagnostic::new(
-                        self.cursor,
+                        self.base + self.cursor,
                         "escape sequences are not supported",
                     ));
                 }
-                Some(0) => return Err(Diagnostic::new(self.cursor, "NUL byte in string")),
+                Some(0) => {
+                    return Err(Diagnostic::new(
+                        self.base + self.cursor,
+                        "NUL byte in string",
+                    ));
+                }
                 Some(b'"') => break,
                 Some(_) => self.cursor += 1,
             }
@@ -288,7 +263,7 @@ impl<'input> Lexer<'input> {
         self.cursor += 1;
         if self.consume_word() != "_str" {
             return Err(Diagnostic::new(
-                start,
+                self.base + start,
                 "a string must have the suffix _str, as in \"text\"_str",
             ));
         }
@@ -317,8 +292,16 @@ fn word(text: &str) -> Tok<'_> {
     if let Some(compare) = Compare::named(text) {
         return Tok::Compare(compare);
     }
+    if let Some(section) = Section::named(text) {
+        return Tok::Section(section);
+    }
+    if let Some(operation) = Operation::named(text) {
+        return Tok::Operation(operation);
+    }
+    if let Some(conversion) = Conversion::named(text) {
+        return Tok::Conversion(conversion);
+    }
     match text {
-        "bosonoga_main" => Tok::BosonogaMain,
         "di" => Tok::Di,
         "do" => Tok::Do,
         "info" => Tok::Info,
@@ -327,14 +310,24 @@ fn word(text: &str) -> Tok<'_> {
         "exit_success" => Tok::ExitSuccess,
         "exit_failure" => Tok::ExitFailure,
         "set" => Tok::Set,
-        "to" => Tok::Operation(crate::value::Operation::Copy),
-        "to_add" => Tok::Operation(crate::value::Operation::Add),
-        "to_subtract" => Tok::Operation(crate::value::Operation::Subtract),
-        "to_multiply" => Tok::Operation(crate::value::Operation::Multiply),
-        "to_divide" => Tok::Operation(crate::value::Operation::Divide),
-        "to_mod" => Tok::Operation(crate::value::Operation::Modulo),
-        "math_to_pow" => Tok::Operation(crate::value::Operation::Pow),
-        "math_to_sqrt" => Tok::Operation(crate::value::Operation::Sqrt),
+        "const" => Tok::Const,
+        "pub" => Tok::Pub,
+        "mod" => Tok::Mod,
+        "def" => Tok::Def,
+        "ret" => Tok::Ret,
+        "ret_void" => Tok::RetVoid,
+        "of" => Tok::Of,
+        "with" => Tok::With,
+        "at" => Tok::At,
+        "array" => Tok::Array,
+        "row" => Tok::Row,
+        "while" => Tok::While,
+        "gfx_await_next_frame" => Tok::AwaitNextFrame,
+        "gfx_clear" => Tok::GfxClear,
+        "gfx_draw_rectangle" => Tok::GfxDrawRectangle,
+        "gfx_draw_hex" => Tok::GfxDrawHex,
+        "gfx_draw_circle" => Tok::GfxDrawCircle,
+        "gfx_draw_text" => Tok::GfxDrawText,
         "var" => Tok::Var,
         "val" => Tok::Val,
         "is" => Tok::Is,
@@ -373,11 +366,11 @@ impl<'input> Iterator for Lexer<'input> {
             Some(b'"') => self.lex_string(start),
             Some(_) if self.at_number() => self.lex_number(start),
             Some(b) if b.is_ascii_alphabetic() || b == b'_' => Ok(word(self.consume_word())),
-            Some(_) => Err(Diagnostic::new(start, "unexpected character")),
+            Some(_) => Err(Diagnostic::new(self.base + start, "unexpected character")),
         };
         if token.is_err() {
             self.ended = true;
         }
-        Some(token.map(|t| (start, t, self.cursor)))
+        Some(token.map(|t| (self.base + start, t, self.base + self.cursor)))
     }
 }

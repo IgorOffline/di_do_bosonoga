@@ -1,6 +1,8 @@
 use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter};
 
+const WHOLE_REAL_MAX: f64 = 36_893_488_147_419_103_232.0;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     I32,
@@ -10,9 +12,27 @@ pub enum Kind {
     F32,
     F64,
     Flags,
-    Bool,
+    Color,
     Str,
+    Bool,
+    InputKey,
+    Font,
 }
+
+const KINDS: [Kind; 12] = [
+    Kind::I32,
+    Kind::I64,
+    Kind::U32,
+    Kind::U64,
+    Kind::F32,
+    Kind::F64,
+    Kind::Flags,
+    Kind::Color,
+    Kind::Str,
+    Kind::Bool,
+    Kind::InputKey,
+    Kind::Font,
+];
 
 impl Kind {
     #[must_use]
@@ -25,9 +45,17 @@ impl Kind {
             Kind::F32 => "f32",
             Kind::F64 => "f64",
             Kind::Flags => "flags",
-            Kind::Bool => "bool",
+            Kind::Color => "color",
             Kind::Str => "str",
+            Kind::Bool => "bool",
+            Kind::InputKey => "input_key",
+            Kind::Font => "font",
         }
+    }
+
+    #[must_use]
+    pub fn named(name: &str) -> Option<Kind> {
+        KINDS.into_iter().find(|kind| kind.name() == name)
     }
 
     #[must_use]
@@ -38,6 +66,11 @@ impl Kind {
     #[must_use]
     pub fn is_real(self) -> bool {
         matches!(self, Kind::F32 | Kind::F64)
+    }
+
+    #[must_use]
+    pub fn is_number(self) -> bool {
+        self.is_integer() || self.is_real()
     }
 }
 
@@ -50,8 +83,11 @@ pub enum Value {
     F32(f32),
     F64(f64),
     Flags(u32),
-    Bool(bool),
+    Color(u32),
     Str(String),
+    Bool(bool),
+    InputKey(u32),
+    Font { index: usize, text: String },
 }
 
 impl Value {
@@ -65,8 +101,11 @@ impl Value {
             Value::F32(_) => Kind::F32,
             Value::F64(_) => Kind::F64,
             Value::Flags(_) => Kind::Flags,
-            Value::Bool(_) => Kind::Bool,
+            Value::Color(_) => Kind::Color,
             Value::Str(_) => Kind::Str,
+            Value::Bool(_) => Kind::Bool,
+            Value::InputKey(_) => Kind::InputKey,
+            Value::Font { .. } => Kind::Font,
         }
     }
 
@@ -77,7 +116,14 @@ impl Value {
             Kind::I64 => i64::try_from(whole).ok().map(Value::I64),
             Kind::U32 => u32::try_from(whole).ok().map(Value::U32),
             Kind::U64 => u64::try_from(whole).ok().map(Value::U64),
-            Kind::F32 | Kind::F64 | Kind::Flags | Kind::Bool | Kind::Str => None,
+            Kind::F32
+            | Kind::F64
+            | Kind::Flags
+            | Kind::Color
+            | Kind::Str
+            | Kind::Bool
+            | Kind::InputKey
+            | Kind::Font => None,
         }
     }
 
@@ -93,24 +139,40 @@ impl Value {
             | Kind::F32
             | Kind::F64
             | Kind::Flags
+            | Kind::Color
+            | Kind::Str
             | Kind::Bool
-            | Kind::Str => None,
+            | Kind::InputKey
+            | Kind::Font => None,
         }
     }
 
-    fn as_whole(&self) -> Option<i128> {
+    fn one(kind: Kind, one: bool) -> Option<Value> {
+        if kind.is_integer() {
+            Value::whole(kind, i128::from(one))
+        } else {
+            Value::real(kind, f64::from(u8::from(one)))
+        }
+    }
+
+    pub(crate) fn as_whole(&self) -> Option<i128> {
         match *self {
             Value::I32(v) => Some(v.into()),
             Value::I64(v) => Some(v.into()),
             Value::U32(v) => Some(v.into()),
             Value::U64(v) => Some(v.into()),
-            Value::F32(_) | Value::F64(_) | Value::Flags(_) | Value::Bool(_) | Value::Str(_) => {
-                None
-            }
+            Value::F32(_)
+            | Value::F64(_)
+            | Value::Flags(_)
+            | Value::Color(_)
+            | Value::Str(_)
+            | Value::Bool(_)
+            | Value::InputKey(_)
+            | Value::Font { .. } => None,
         }
     }
 
-    fn as_real(&self) -> Option<f64> {
+    pub(crate) fn as_real(&self) -> Option<f64> {
         match *self {
             Value::F32(v) => Some(v.into()),
             Value::F64(v) => Some(v),
@@ -119,9 +181,52 @@ impl Value {
             | Value::U32(_)
             | Value::U64(_)
             | Value::Flags(_)
+            | Value::Color(_)
+            | Value::Str(_)
             | Value::Bool(_)
-            | Value::Str(_) => None,
+            | Value::InputKey(_)
+            | Value::Font { .. } => None,
         }
+    }
+
+    pub(crate) fn as_f32(&self) -> f32 {
+        match *self {
+            Value::F32(v) => v,
+            Value::I32(_)
+            | Value::I64(_)
+            | Value::U32(_)
+            | Value::U64(_)
+            | Value::F64(_)
+            | Value::Flags(_)
+            | Value::Color(_)
+            | Value::Str(_)
+            | Value::Bool(_)
+            | Value::InputKey(_)
+            | Value::Font { .. } => 0.0,
+        }
+    }
+
+    pub(crate) fn as_color(&self) -> u32 {
+        match *self {
+            Value::Color(v) => v,
+            Value::I32(_)
+            | Value::I64(_)
+            | Value::U32(_)
+            | Value::U64(_)
+            | Value::F32(_)
+            | Value::F64(_)
+            | Value::Flags(_)
+            | Value::Str(_)
+            | Value::Bool(_)
+            | Value::InputKey(_)
+            | Value::Font { .. } => 0,
+        }
+    }
+
+    fn as_number(&self) -> f64 {
+        self.as_real()
+            .or_else(|| self.as_whole().map(whole_to_real))
+            .unwrap_or(0.0)
     }
 
     fn order(&self, other: &Value) -> Option<Ordering> {
@@ -164,6 +269,8 @@ impl Value {
         match (self, other) {
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::InputKey(a), Value::InputKey(b)) => a == b,
+            (Value::Font { index: a, .. }, Value::Font { index: b, .. }) => a == b,
             _ => self.order(other) == Some(Ordering::Equal),
         }
     }
@@ -172,10 +279,28 @@ impl Value {
 #[expect(
     clippy::as_conversions,
     clippy::cast_possible_truncation,
-    reason = "archive_d narrows a parsed double to f32 with a C cast"
+    reason = "archive_d narrows a double to f32 with a C cast"
 )]
 fn narrow(real: f64) -> f32 {
     real as f32
+}
+
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_precision_loss,
+    reason = "archive_d widens an integer to a double with a C cast"
+)]
+fn whole_to_real(whole: i128) -> f64 {
+    whole as f64
+}
+
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    reason = "the real is whole and below 2 to the 65"
+)]
+fn real_to_whole(real: f64) -> i128 {
+    real as i128
 }
 
 impl Display for Value {
@@ -187,13 +312,15 @@ impl Display for Value {
             Value::U64(v) => write!(f, "{v}"),
             Value::F32(v) => f.write_str(&general(f64::from(*v), 6)),
             Value::F64(v) => f.write_str(&general(*v, 17)),
+            Value::Color(v) => write!(f, "{v:06X}"),
             Value::Bool(v) => f.write_str(if *v { "true" } else { "false" }),
-            Value::Str(v) => f.write_str(v),
+            Value::Str(v) | Value::Font { text: v, .. } => f.write_str(v),
+            Value::InputKey(v) => f.write_str(crate::key::name(*v).unwrap_or_default()),
         }
     }
 }
 
-fn general(real: f64, precision: i32) -> String {
+pub(crate) fn general(real: f64, precision: i32) -> String {
     let digits = usize::try_from(precision - 1).unwrap_or(0);
     let scientific = format!("{real:.digits$e}");
     let (mantissa, exponent_text) = scientific
@@ -265,58 +392,68 @@ pub enum Operation {
     Multiply,
     Divide,
     Modulo,
-    Pow,
-    Sqrt,
 }
 
 impl Operation {
-    pub(crate) fn accepts(self, kind: Kind, count: usize) -> bool {
+    #[must_use]
+    pub fn named(word: &str) -> Option<Operation> {
+        Some(match word {
+            "to" => Self::Copy,
+            "to_add" => Self::Add,
+            "to_subtract" => Self::Subtract,
+            "to_multiply" => Self::Multiply,
+            "to_divide" => Self::Divide,
+            "to_mod" => Self::Modulo,
+            _ => return None,
+        })
+    }
+
+    pub(crate) fn identity(self, kind: Kind) -> Option<Value> {
         match self {
-            Self::Copy => count == 1,
-            Self::Pow => kind.is_real() && count == 2,
-            Self::Sqrt => kind.is_real() && count == 1,
-            Self::Add | Self::Subtract | Self::Multiply | Self::Divide | Self::Modulo => {
-                (kind.is_integer() || kind.is_real()) && count >= 2
-            }
+            Self::Subtract => Value::one(kind, false),
+            Self::Divide => Value::one(kind, true),
+            Self::Copy | Self::Add | Self::Multiply | Self::Modulo => None,
         }
     }
 
-    pub(crate) fn evaluate(self, values: &[&Value]) -> Result<Value, &'static str> {
+    pub(crate) fn evaluate(self, values: &[&Value]) -> Result<Value, String> {
         let Some((first, rest)) = values.split_first() else {
-            return Err("arithmetic needs operands");
+            return Err("arithmetic needs operands".to_owned());
         };
         if self == Self::Copy {
             return Ok((*first).clone());
         }
         let kind = first.kind();
+        let outside = || format!("the result is outside the {} range", kind.name());
         if let Some(mut whole) = first.as_whole() {
             for value in rest {
                 let right = value.as_whole().ok_or("expected an integer")?;
                 if matches!(self, Self::Divide | Self::Modulo) && right == 0 {
-                    return Err("division by zero");
+                    return Err("division by zero".to_owned());
                 }
                 whole = match self {
                     Self::Add => whole.checked_add(right),
                     Self::Subtract => whole.checked_sub(right),
                     Self::Multiply => whole.checked_mul(right),
+                    Self::Divide if right == -1 => whole.checked_neg(),
+                    Self::Modulo if right == -1 => Some(0),
                     Self::Divide => whole.checked_div(right),
                     Self::Modulo => whole.checked_rem(right),
-                    Self::Copy | Self::Pow | Self::Sqrt => None,
+                    Self::Copy => None,
                 }
-                .ok_or("arithmetic overflow")?;
+                .ok_or_else(outside)?;
             }
-            return Value::whole(kind, whole).ok_or("arithmetic result is out of range");
+            return Value::whole(kind, whole).ok_or_else(|| {
+                format!("the result ({whole}) is outside the {} range", kind.name())
+            });
         }
         let mut real = first.as_real().ok_or("expected a real number")?;
-        if self == Self::Sqrt {
-            real = real.sqrt();
-        }
         for value in rest {
             let right = value.as_real().ok_or("expected a real number")?;
             if matches!(self, Self::Divide | Self::Modulo)
                 && right.classify() == std::num::FpCategory::Zero
             {
-                return Err("division by zero");
+                return Err("division by zero".to_owned());
             }
             real = match self {
                 Self::Add => real + right,
@@ -324,10 +461,223 @@ impl Operation {
                 Self::Multiply => real * right,
                 Self::Divide => real / right,
                 Self::Modulo => real % right,
-                Self::Pow => real.powf(right),
-                Self::Copy | Self::Sqrt => return Err("invalid arithmetic operation"),
+                Self::Copy => right,
             };
         }
-        Value::real(kind, real).ok_or("arithmetic result is out of range")
+        Value::real(kind, real).ok_or_else(|| {
+            format!(
+                "the result ({}) is outside the {} range",
+                general(real, 6),
+                kind.name()
+            )
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Conversion {
+    ToI32,
+    ToI64,
+    ToU32,
+    ToU64,
+    ToF32,
+    ToF64,
+    Abs,
+    Min,
+    Max,
+    Sin,
+    Cos,
+    Atan2,
+    Sqrt,
+    Pow,
+    Floor,
+    Ceil,
+    Round,
+    Log,
+    Log10,
+    Exp,
+    Asin,
+    Acos,
+    Tan,
+    Log1p,
+    Expm1,
+    Hypot,
+}
+
+const CONVERSIONS: [(&str, Conversion); 26] = [
+    ("to_i32", Conversion::ToI32),
+    ("to_i64", Conversion::ToI64),
+    ("to_u32", Conversion::ToU32),
+    ("to_u64", Conversion::ToU64),
+    ("to_f32", Conversion::ToF32),
+    ("to_f64", Conversion::ToF64),
+    ("math_to_abs", Conversion::Abs),
+    ("math_to_min", Conversion::Min),
+    ("math_to_max", Conversion::Max),
+    ("math_to_sin", Conversion::Sin),
+    ("math_to_cos", Conversion::Cos),
+    ("math_to_atan2", Conversion::Atan2),
+    ("math_to_sqrt", Conversion::Sqrt),
+    ("math_to_pow", Conversion::Pow),
+    ("math_to_floor", Conversion::Floor),
+    ("math_to_ceil", Conversion::Ceil),
+    ("math_to_round", Conversion::Round),
+    ("math_to_log", Conversion::Log),
+    ("math_to_log10", Conversion::Log10),
+    ("math_to_exp", Conversion::Exp),
+    ("math_to_asin", Conversion::Asin),
+    ("math_to_acos", Conversion::Acos),
+    ("math_to_tan", Conversion::Tan),
+    ("math_to_log1p", Conversion::Log1p),
+    ("math_to_expm1", Conversion::Expm1),
+    ("math_to_hypot", Conversion::Hypot),
+];
+
+impl Conversion {
+    #[must_use]
+    pub fn named(word: &str) -> Option<Conversion> {
+        CONVERSIONS
+            .into_iter()
+            .find(|(name, _)| *name == word)
+            .map(|(_, conversion)| conversion)
+    }
+
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        CONVERSIONS
+            .into_iter()
+            .find(|(_, conversion)| *conversion == self)
+            .map_or("", |(name, _)| name)
+    }
+
+    pub(crate) fn is_binary(self) -> bool {
+        matches!(
+            self,
+            Self::Min | Self::Max | Self::Atan2 | Self::Pow | Self::Hypot
+        )
+    }
+
+    pub(crate) fn accepts_integer(self) -> bool {
+        self.target().is_some() || matches!(self, Self::Abs | Self::Min | Self::Max)
+    }
+
+    fn target(self) -> Option<Kind> {
+        match self {
+            Self::ToI32 => Some(Kind::I32),
+            Self::ToI64 => Some(Kind::I64),
+            Self::ToU32 => Some(Kind::U32),
+            Self::ToU64 => Some(Kind::U64),
+            Self::ToF32 => Some(Kind::F32),
+            Self::ToF64 => Some(Kind::F64),
+            Self::Abs
+            | Self::Min
+            | Self::Max
+            | Self::Sin
+            | Self::Cos
+            | Self::Atan2
+            | Self::Sqrt
+            | Self::Pow
+            | Self::Floor
+            | Self::Ceil
+            | Self::Round
+            | Self::Log
+            | Self::Log10
+            | Self::Exp
+            | Self::Asin
+            | Self::Acos
+            | Self::Tan
+            | Self::Log1p
+            | Self::Expm1
+            | Self::Hypot => None,
+        }
+    }
+
+    pub(crate) fn result_kind(self, source: Kind) -> Kind {
+        self.target().unwrap_or(source)
+    }
+
+    pub(crate) fn evaluate(self, left: &Value, right: Option<&Value>) -> Result<Value, String> {
+        if let Some(kind) = self.target() {
+            let converted = if kind.is_real() {
+                Value::real(kind, left.as_number())
+            } else if let Some(whole) = left.as_whole() {
+                Value::whole(kind, whole)
+            } else {
+                let whole = left.as_number().trunc();
+                if whole.abs() < WHOLE_REAL_MAX {
+                    Value::whole(kind, real_to_whole(whole))
+                } else {
+                    None
+                }
+            };
+            return converted
+                .ok_or_else(|| format!("the value is outside the {} range", kind.name()));
+        }
+        let kind = left.kind();
+        let outside = || format!("the result is outside the {} range", kind.name());
+        if let Some(a) = left.as_whole() {
+            let b = right.and_then(Value::as_whole).unwrap_or(0);
+            let whole = if self == Self::Min {
+                a.min(b)
+            } else if self == Self::Max {
+                a.max(b)
+            } else {
+                a.abs()
+            };
+            return Value::whole(kind, whole).ok_or_else(outside);
+        }
+        let a = left.as_number();
+        let b = right.and_then(Value::as_real).unwrap_or(0.0);
+        if let Some(domain) = self.domain_error(a, b) {
+            return Err(domain.to_owned());
+        }
+        Value::real(kind, self.real(a, b)).ok_or_else(outside)
+    }
+
+    fn domain_error(self, a: f64, b: f64) -> Option<&'static str> {
+        let zero = |x: f64| x.classify() == std::num::FpCategory::Zero;
+        if self == Self::Asin && !(-1.0..=1.0).contains(&a) {
+            Some("math_to_asin needs a value from -1 to 1")
+        } else if self == Self::Acos && !(-1.0..=1.0).contains(&a) {
+            Some("math_to_acos needs a value from -1 to 1")
+        } else if self == Self::Sqrt && a < 0.0 {
+            Some("math_to_sqrt of a negative number")
+        } else if self == Self::Pow && a < 0.0 && !zero(b.fract()) {
+            Some("math_to_pow of a negative number to a fractional power")
+        } else if self == Self::Pow && zero(a) && b < 0.0 {
+            Some("math_to_pow of zero to a negative power is division by zero")
+        } else if matches!(self, Self::Log | Self::Log10) && a <= 0.0 {
+            Some("logarithms need a positive value")
+        } else if self == Self::Log1p && a <= -1.0 {
+            Some("math_to_log1p needs a value greater than -1")
+        } else {
+            None
+        }
+    }
+
+    fn real(self, a: f64, b: f64) -> f64 {
+        match self {
+            Self::Abs => a.abs(),
+            Self::Min => a.min(b),
+            Self::Max => a.max(b),
+            Self::Floor => a.floor(),
+            Self::Ceil => a.ceil(),
+            Self::Round => a.round(),
+            Self::Sin => a.sin(),
+            Self::Cos => a.cos(),
+            Self::Tan => a.tan(),
+            Self::Asin => a.asin(),
+            Self::Acos => a.acos(),
+            Self::Atan2 => a.atan2(b),
+            Self::Sqrt => a.sqrt(),
+            Self::Pow => a.powf(b),
+            Self::Log => a.ln(),
+            Self::Log10 => a.log10(),
+            Self::Exp => a.exp(),
+            Self::Log1p => a.ln_1p(),
+            Self::Expm1 => a.exp_m1(),
+            Self::Hypot => a.hypot(b),
+            Self::ToI32 | Self::ToI64 | Self::ToU32 | Self::ToU64 | Self::ToF32 | Self::ToF64 => a,
+        }
     }
 }

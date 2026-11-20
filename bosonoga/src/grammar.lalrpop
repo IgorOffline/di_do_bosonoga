@@ -1,9 +1,12 @@
 use lalrpop_util::ParseError;
 
 use crate::Diagnostic;
-use crate::ast::{Block, Comparison, Condition, ExitStatus, Main, Operand, Span, Statement, Term};
+use crate::ast::{
+    Arguments, Block, Call, Comparison, Condition, Draw, ExitStatus, File, Initial, Item, Named,
+    Operand, Results, Section, Span, Statement, Term,
+};
 use crate::lexer::Tok;
-use crate::value::{Compare, Value};
+use crate::value::{Compare, Conversion, Operation, Value};
 
 grammar<'input>;
 
@@ -12,7 +15,7 @@ extern {
     type Error = Diagnostic;
 
     enum Tok<'input> {
-        "bosonoga_main" => Tok::BosonogaMain,
+        "section" => Tok::Section(<Section>),
         "di" => Tok::Di,
         "do" => Tok::Do,
         "info" => Tok::Info,
@@ -24,7 +27,26 @@ extern {
         "val" => Tok::Val,
         "is" => Tok::Is,
         "set" => Tok::Set,
-        "operation" => Tok::Operation(<crate::value::Operation>),
+        "operation" => Tok::Operation(<Operation>),
+        "conversion" => Tok::Conversion(<Conversion>),
+        "const" => Tok::Const,
+        "pub" => Tok::Pub,
+        "mod" => Tok::Mod,
+        "def" => Tok::Def,
+        "ret" => Tok::Ret,
+        "ret_void" => Tok::RetVoid,
+        "of" => Tok::Of,
+        "with" => Tok::With,
+        "at" => Tok::At,
+        "array" => Tok::Array,
+        "row" => Tok::Row,
+        "while" => Tok::While,
+        "gfx_await_next_frame" => Tok::AwaitNextFrame,
+        "gfx_clear" => Tok::GfxClear,
+        "gfx_draw_rectangle" => Tok::GfxDrawRectangle,
+        "gfx_draw_hex" => Tok::GfxDrawHex,
+        "gfx_draw_circle" => Tok::GfxDrawCircle,
+        "gfx_draw_text" => Tok::GfxDrawText,
         "if" => Tok::If,
         "else" => Tok::Else,
         "and" => Tok::And,
@@ -43,8 +65,38 @@ extern {
     }
 }
 
-pub Main: Main<'input> =
-    "bosonoga_main" <statements:Block> <end:@L> "end" => Main { statements, end };
+pub File: File<'input> = <items:Item*> <end:@L> "end" => File { items, end };
+
+Item: Item<'input> = {
+    "mod" <start:@L> <name:"literal"> <end:@R> =>? match name {
+        Value::Str(text) => Ok(Item::Mod(Span { start, end }, text)),
+        _ => Err(ParseError::User {
+            error: Diagnostic::new(start, "expected a file name, as in mod \"lorem.bosonoga\"_str"),
+        }),
+    },
+    <public:Public?> "const" <name:Named> "is" <value:Operand> => Item::Const { public, name, value },
+    <public:Public?> "def" <name:Named> <parameters:Named*> <results:Results> <block:Block> =>
+        Item::Def { public, name, parameters, results, block },
+    <public:Public?> "val" <name:Named> "is" "array" <kinds:Indexed+> "di" <rows:Row+> "do" =>
+        Item::Array { public, name, kinds, rows },
+    <start:@L> <section:"section"> <end:@R> <block:Block> <after:@R> =>
+        Item::Section(Span { start, end }, section, block, after),
+};
+
+Public: Span = <start:@L> "pub" <end:@R> => Span { start, end };
+
+Results: (Span, Results) = {
+    <start:@L> "ret" <end:@R> <kinds:Indexed+> => (Span { start, end }, Results::Indexed(kinds)),
+    <start:@L> "ret_void" <end:@R> => (Span { start, end }, Results::Void),
+};
+
+Indexed: Span = {
+    <start:@L> "literal" <end:@R> => Span { start, end },
+    <start:@L> "indexed_type" <end:@R> => Span { start, end },
+};
+
+Row: (Span, Vec<Operand<'input>>) =
+    <start:@L> "row" <end:@R> <values:Operand+> => (Span { start, end }, values);
 
 Block: Block<'input> =
     <opening:@L> "di" <statements:Statement*> "do" =>? {
@@ -59,25 +111,67 @@ Block: Block<'input> =
 
 Statement: Statement<'input> = {
     "info" <values:Operand+> => Statement::Info(values),
-    "set" <name:Named> <start:@L> <operation:"operation"> <end:@R> <values:Operand+> =>
-        Statement::Set { name, operation: (Span { start, end }, operation), values },
-    <declaration:Declaration> "is" <initial:Operand> <shift_or:ShiftOr*> =>
-        Statement::Declare { name: declaration.0, mutable: declaration.1, initial, shift_or },
+    "set" <name:Named> <operation:Spanned<"operation">> <values:Operand+> =>
+        Statement::Set { name, operation, values },
+    "set" <name:Named> <conversion:Spanned<"conversion">> <values:Operand+> =>
+        Statement::SetConversion { name, conversion, values },
+    "set" <name:Named> <operation:Spanned<"operation">> <call:Call> => Statement::SetCall { name, operation, call },
+    <declaration:Declaration> "is" <initial:Initial> =>
+        Statement::Declare { name: declaration.0, mutable: declaration.1, initial },
     "if" <condition:Condition> <block:Block> <tail:Else> => {
         let (mut branches, otherwise) = tail;
         branches.insert(0, (condition, block));
         Statement::If { branches, otherwise }
     },
+    <start:@L> "while" <end:@R> <condition:Condition> <block:Block> =>
+        Statement::While(Span { start, end }, condition, block),
+    <start:@L> "gfx_await_next_frame" <end:@R> => Statement::AwaitNextFrame(Span { start, end }),
+    <start:@L> "gfx_clear" <end:@R> <color:Operand> =>
+        Statement::Draw { span: Span { start, end }, draw: Draw::Clear, aligns: None, values: vec![color] },
+    <start:@L> "gfx_draw_rectangle" <end:@R> <x:Operand> <y:Operand> <width:Operand> <height:Operand> <color:Operand> =>
+        Statement::Draw {
+            span: Span { start, end },
+            draw: Draw::Rectangle,
+            aligns: None,
+            values: vec![x, y, width, height, color],
+        },
+    <start:@L> "gfx_draw_hex" <end:@R> <x:Operand> <y:Operand> <radius:Operand> <color:Operand> =>
+        Statement::Draw { span: Span { start, end }, draw: Draw::Hex, aligns: None, values: vec![x, y, radius, color] },
+    <start:@L> "gfx_draw_circle" <end:@R> <x:Operand> <y:Operand> <radius:Operand> <color:Operand> =>
+        Statement::Draw { span: Span { start, end }, draw: Draw::Circle, aligns: None, values: vec![x, y, radius, color] },
+    <start:@L> "gfx_draw_text" <end:@R> <horizontal:Named> <vertical:Named> <x:Operand> <y:Operand>
+        <font:Operand> <size:Operand> <color:Operand> <text:Operand+> => {
+        let mut values = vec![x, y, font, size, color];
+        values.extend(text);
+        Statement::Draw { span: Span { start, end }, draw: Draw::Text, aligns: Some((horizontal, vertical)), values }
+    },
     "nihil" => Statement::Nihil,
-    "return" <status:Status> => Statement::Return(status),
+    <start:@L> "return" <end:@R> <status:Status> => Statement::Return(Span { start, end }, status),
+    <start:@L> "return" <end:@R> <values:Operand*> => Statement::ReturnValues(Span { start, end }, values),
 };
 
-Declaration: ((Span, &'input str), bool) = {
+Spanned<T>: (Span, T) = <start:@L> <value:T> <end:@R> => (Span { start, end }, value);
+
+Declaration: (Named<'input>, bool) = {
     "var" <name:Named> => (name, true),
     "val" <name:Named> => (name, false),
 };
 
-Named: (Span, &'input str) = <start:@L> <name:"name"> <end:@R> => (Span { start, end }, name);
+Initial: Initial<'input> = {
+    <value:Operand> <shift_or:ShiftOr*> => Initial::Value { value, shift_or },
+    <conversion:Spanned<"conversion">> <values:Operand+> => Initial::Conversion(conversion, values),
+    <call:Call> => Initial::Call(call),
+};
+
+Call: Call<'input> = {
+    <name:Named> <start:@L> "of" <end:@R> <values:Operand+> "with" "ret" <taken:Indexed> =>
+        Call { name, arguments: Arguments::Of(Span { start, end }, values), taken },
+    <name:Named> <start:@L> "at" <end:@R> <index:Operand> "with" "ret" <taken:Indexed> =>
+        Call { name, arguments: Arguments::At(Span { start, end }, index), taken },
+    <name:Named> "with" "ret" <taken:Indexed> => Call { name, arguments: Arguments::None, taken },
+};
+
+Named: Named<'input> = <start:@L> <name:"name"> <end:@R> => (Span { start, end }, name);
 
 ShiftOr: (Span, Operand<'input>) =
     <start:@L> "shift_or" <end:@R> <value:Operand> => (Span { start, end }, value);

@@ -1,0 +1,17 @@
+// loop.bosonoga
+
+bosonoga_main
+di
+  var count is 0_i32
+  var sum is 0_i32
+  while count lt 10_i32
+  di
+    set count to_add count 1_i32
+    set sum to_add sum count
+  do
+  if sum eq 55_i32
+  di
+    return exit_success
+  do
+  return exit_failure
+do
