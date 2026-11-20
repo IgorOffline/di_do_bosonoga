@@ -19,6 +19,9 @@ extern {
         "di" => Tok::Di,
         "do" => Tok::Do,
         "info" => Tok::Info,
+        "given_operation" => Tok::Given(<crate::io::Builtin>),
+        "to_join" => Tok::Join,
+        "as" => Tok::As,
         "nihil" => Tok::Nihil,
         "return" => Tok::Return,
         "exit_success" => Tok::ExitSuccess,
@@ -118,6 +121,9 @@ Block: Block<'input> =
 
 Statement: Statement<'input> = {
     "info" <values:Operand+> => Statement::Info(values),
+    "set" <name:Named> "to_join" <values:Operand+> => Statement::Join(name, values),
+    <operation:Spanned<"given_operation">> <values:Operand+> "with" "ret"
+        <results:GivenResult+> <block:Block> => Statement::Given { operation, values, results, block },
     "set" <name:Named> <operation:Spanned<"operation">> <values:Operand+> =>
         Statement::Set { name, operation, values },
     "set" <name:Named> <conversion:Spanned<"conversion">> <values:Operand+> =>
@@ -173,6 +179,8 @@ Statement: Statement<'input> = {
     <start:@L> "return" <end:@R> <status:Status> => Statement::Return(Span { start, end }, status),
     <start:@L> "return" <end:@R> <values:Operand*> => Statement::ReturnValues(Span { start, end }, values),
 };
+
+GivenResult: (Span, Named<'input>) = <index:Indexed> "as" <name:Named> => (index, name);
 
 Spanned<T>: (Span, T) = <start:@L> <value:T> <end:@R> => (Span { start, end }, value);
 

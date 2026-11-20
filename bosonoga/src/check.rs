@@ -4,6 +4,7 @@ use crate::ast::{
     self, Arguments, ExitStatus, Initial, Item, Named, Results, Rows, Section, Span, Term,
 };
 use crate::gfx::{Align, Horizontal, Vertical};
+use crate::io::Builtin;
 use crate::lexer::{Lexer, Tok};
 use crate::program::{
     self, Array, Callee, Comparison, Condition, Draw, Operand, Program, Statement, VarArray,
@@ -1039,6 +1040,25 @@ impl<'a, 'input> Checker<'a, 'input> {
                     .map(|value| self.value(value).map(|(operand, _)| operand))
                     .collect::<Result<_, _>>()?,
             ),
+            ast::Statement::Join(name, values) => {
+                let (slot, kind) = self.target(*name)?;
+                if kind != Kind::Str {
+                    return Self::fail(name.0.start, "to_join needs a str variable");
+                }
+                Statement::Join(
+                    slot,
+                    values
+                        .iter()
+                        .map(|value| self.value(value).map(|(operand, _)| operand))
+                        .collect::<Result<_, _>>()?,
+                )
+            }
+            ast::Statement::Given {
+                operation,
+                values,
+                results,
+                block,
+            } => self.given(*operation, values, results, block)?,
             ast::Statement::Set {
                 name,
                 operation,
@@ -1111,6 +1131,66 @@ impl<'a, 'input> Checker<'a, 'input> {
             ast::Statement::Nihil => return Ok(None),
             ast::Statement::Return(span, status) => self.return_status(*span, *status)?,
             ast::Statement::ReturnValues(span, values) => self.return_values(*span, values)?,
+        }))
+    }
+
+    fn given(
+        &mut self,
+        (span, builtin): (Span, Builtin),
+        values: &[ast::Operand<'input>],
+        results: &[(Span, Named<'input>)],
+        block: &ast::Block<'input>,
+    ) -> Result<Statement, Diagnostic> {
+        let word = self.text(span);
+        let (parameters, kinds) = builtin.signature();
+        if values.len() != parameters.len() + usize::from(builtin.uses_directory()) {
+            return Self::fail(span.start, format!("wrong number of arguments for {word}"));
+        }
+        let (directory, operands) = if let Some((first, rest)) =
+            values.split_first().filter(|_| builtin.uses_directory())
+        {
+            let text = self.text(first.span);
+            let directory = text
+                .strip_prefix("dir_")
+                .and_then(|key| self.settings.dir(key))
+                .ok_or_else(|| {
+                    Diagnostic::new(first.span.start, "expected a configured dir_ name")
+                })?;
+            (Some(directory.path.clone()), rest)
+        } else {
+            (None, values)
+        };
+        let arguments = operands
+            .iter()
+            .zip(parameters)
+            .map(|(value, kind)| self.value_of_kind(value, *kind, word))
+            .collect::<Result<_, _>>()?;
+        let visible = self.variables.len();
+        let mut slots = Vec::new();
+        for (result, name) in results {
+            let text = self.text(*result);
+            let Some((index, kind)) =
+                split_indexed(text).filter(|(index, kind)| kinds.get(*index) == Some(kind))
+            else {
+                return Self::fail(result.start, format!("{word} has no result {text}"));
+            };
+            if slots.iter().any(|(known, _)| *known == index) {
+                return Self::fail(result.start, format!("{text} is already taken"));
+            }
+            self.new_name(*name)?;
+            let slot = self.allocate();
+            self.declare(*name, kind, slot, false);
+            slots.push((index, slot));
+        }
+        let checked = self.block(block)?;
+        self.check_variables_used(visible)?;
+        self.variables.truncate(visible);
+        Ok(Statement::Given(program::Given {
+            builtin,
+            directory,
+            arguments,
+            slots,
+            block: checked,
         }))
     }
 

@@ -3,6 +3,7 @@ use std::mem;
 use crate::Diagnostic;
 use crate::ast::ExitStatus;
 use crate::gfx::{Align, Input, Scene, Shape, Window};
+use crate::io::{Builtin, FileIo, Io};
 use crate::settings::Asset;
 use crate::sources::Sources;
 use crate::value::{Compare, Conversion, Operation, Value};
@@ -57,8 +58,19 @@ pub(crate) enum Draw {
 }
 
 #[derive(Debug)]
+pub(crate) struct Given {
+    pub(crate) builtin: Builtin,
+    pub(crate) directory: Option<std::path::PathBuf>,
+    pub(crate) arguments: Vec<Operand>,
+    pub(crate) slots: Vec<(usize, usize)>,
+    pub(crate) block: Vec<Statement>,
+}
+
+#[derive(Debug)]
 pub(crate) enum Statement {
     Info(Vec<Operand>),
+    Join(usize, Vec<Operand>),
+    Given(Given),
     Calculate {
         slot: usize,
         operation: Operation,
@@ -204,18 +216,20 @@ struct Execution<'a> {
     output: String,
     window: Option<&'a mut dyn Window>,
     scene: Scene,
+    io: &'a mut dyn Io,
     in_main: bool,
     steps: usize,
 }
 
 impl<'a> Execution<'a> {
-    fn new(program: &'a Program, window: Option<&'a mut dyn Window>) -> Self {
+    fn new(program: &'a Program, window: Option<&'a mut dyn Window>, io: &'a mut dyn Io) -> Self {
         Execution {
             program,
             frames: vec![vec![Value::Bool(false); program.slot_count]],
             output: String::new(),
             window,
             scene: Scene::default(),
+            io,
             in_main: false,
             steps: 0,
         }
@@ -477,6 +491,33 @@ impl<'a> Execution<'a> {
         Ok(Flow::Next)
     }
 
+    fn given(&mut self, given: &Given) -> Result<Flow, Diagnostic> {
+        let values = self.values(&given.arguments);
+        let mut results = given
+            .builtin
+            .evaluate(given.directory.as_deref(), &values, self.io);
+        for (index, slot) in &given.slots {
+            if let Some(value) = results.get_mut(*index) {
+                self.set(*slot, mem::replace(value, Value::Bool(false)));
+            }
+        }
+        let flow = self.block(&given.block);
+        for (_, slot) in &given.slots {
+            self.set(*slot, Value::Bool(false));
+        }
+        flow
+    }
+
+    fn repeat(&mut self, condition: &Condition, block: &[Statement]) -> Result<Flow, Diagnostic> {
+        while self.holds(condition) {
+            let flow = self.block(block)?;
+            if !matches!(flow, Flow::Next) {
+                return Ok(flow);
+            }
+        }
+        Ok(Flow::Next)
+    }
+
     fn statement(&mut self, statement: &Statement) -> Result<Flow, Diagnostic> {
         match statement {
             Statement::Info(values) => {
@@ -486,6 +527,14 @@ impl<'a> Execution<'a> {
                 }
                 self.output.push('\n');
             }
+            Statement::Join(slot, values) => {
+                let joined = values
+                    .iter()
+                    .map(|value| self.get(value).to_string())
+                    .collect();
+                self.set(*slot, Value::Str(joined));
+            }
+            Statement::Given(given) => return self.given(given),
             Statement::Calculate {
                 slot,
                 operation,
@@ -563,14 +612,7 @@ impl<'a> Execution<'a> {
                     return self.block(block);
                 }
             }
-            Statement::While(condition, block) => {
-                while self.holds(condition) {
-                    let flow = self.block(block)?;
-                    if !matches!(flow, Flow::Next) {
-                        return Ok(flow);
-                    }
-                }
-            }
+            Statement::While(condition, block) => return self.repeat(condition, block),
             Statement::AwaitNextFrame => return self.next_frame(),
             Statement::Draw { draw, offset } => self.draw(draw, *offset)?,
             Statement::Return(status) => return Ok(Flow::Exit(*status)),
@@ -607,7 +649,8 @@ impl Program {
     }
 
     pub fn run(&self) -> Result<(String, ExitStatus), (String, Diagnostic)> {
-        let mut execution = Execution::new(self, None);
+        let mut io = FileIo;
+        let mut execution = Execution::new(self, None, &mut io);
         let flow = if self.is_gfx {
             Err(Diagnostic::new(0, "a gfx program runs in a window"))
         } else {
@@ -638,8 +681,12 @@ impl Program {
         }
     }
 
-    pub(crate) fn run_gfx(&self, window: &mut dyn Window) -> Result<ExitStatus, String> {
-        let mut execution = Execution::new(self, Some(window));
+    pub(crate) fn run_gfx(
+        &self,
+        window: &mut dyn Window,
+        io: &mut dyn Io,
+    ) -> Result<ExitStatus, String> {
+        let mut execution = Execution::new(self, Some(window), io);
         execution.set_section_slot(self.delta_time_slot, Value::F32(FIRST_DELTA_TIME));
         let result = self.run_window(&mut execution);
         let cleanup = execution.section(&self.sections.cleanup);

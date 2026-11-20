@@ -80,8 +80,16 @@ pub trait Window {
 }
 
 pub fn run(program: &Program, window: &mut dyn Window) -> Result<ExitStatus, String> {
+    run_with_io(program, window, &mut crate::io::FileIo)
+}
+
+pub fn run_with_io(
+    program: &Program,
+    window: &mut dyn Window,
+    io: &mut dyn crate::io::Io,
+) -> Result<ExitStatus, String> {
     if !program.is_gfx() {
         return Err(format!("{}: a gfx app needs gfx_main", program.path()));
     }
-    program.run_gfx(window)
+    program.run_gfx(window, io)
 }

@@ -1,0 +1,439 @@
+//! Configured-directory I/O for Bosonoga programs.
+//!
+//! File operations take a `dir_*` setting and a single filename, or a filename
+//! prefix and suffix for `io_latest`. Use `with ret INDEX_TYPE as NAME` to bind
+//! whichever results the following block uses.
+//!
+//! All file operations return success at index 0 and an error message at index
+//! 2. Index 1 is the text, name, timestamp, or (for create-only writes) whether
+//! the filename was already taken. Reads and lookup also return true at index 3
+//! when the file is missing. Timestamps are signed Unix nanoseconds.
+
+use std::fs::{self, File};
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use quick_xml::{Reader, events::Event};
+
+use crate::value::{Kind, Value};
+
+const TEXT_LIMIT: u64 = 1024 * 1024;
+static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+
+pub trait Io {
+    fn read(&mut self, directory: &Path, name: &str) -> io::Result<String>;
+    fn write(&mut self, directory: &Path, name: &str, text: &str) -> io::Result<()>;
+    fn modified(&mut self, directory: &Path, name: &str) -> io::Result<SystemTime>;
+    fn latest(&mut self, directory: &Path, prefix: &str, suffix: &str) -> io::Result<String>;
+}
+
+pub struct FileIo;
+
+fn regular_file(path: &Path) -> io::Result<fs::Metadata> {
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.is_file() {
+        Ok(metadata)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "expected a regular file",
+        ))
+    }
+}
+
+struct Staging(PathBuf);
+
+impl Staging {
+    fn create(directory: &Path) -> io::Result<Self> {
+        loop {
+            let serial = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
+            let path = directory.join(format!(".bosonoga-{}-{serial}", std::process::id()));
+            match fs::create_dir(&path) {
+                Ok(()) => return Ok(Self(path)),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error),
+            }
+        }
+    }
+}
+
+impl Drop for Staging {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(self.0.join("contents"));
+        let _ = fs::remove_dir(&self.0);
+    }
+}
+
+fn file_path(directory: &Path, name: &str) -> io::Result<PathBuf> {
+    if name.is_empty()
+        || name.len() > 255
+        || name == "."
+        || name == ".."
+        || name.contains(['/', '\\', ':'])
+        || name.chars().any(char::is_control)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "expected a single file name",
+        ));
+    }
+    Ok(directory.join(name))
+}
+
+fn check_text(text: &str) -> io::Result<()> {
+    if u64::try_from(text.len()).is_ok_and(|length| length > TEXT_LIMIT) || text.contains('\0') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "expected UTF-8 text up to 1 MiB without NUL bytes",
+        ));
+    }
+    Ok(())
+}
+
+impl Io for FileIo {
+    fn read(&mut self, directory: &Path, name: &str) -> io::Result<String> {
+        let path = file_path(directory, name)?;
+        regular_file(&path)?;
+        let mut text = String::new();
+        File::open(path)?
+            .take(TEXT_LIMIT + 1)
+            .read_to_string(&mut text)?;
+        check_text(&text)?;
+        Ok(text)
+    }
+
+    fn write(&mut self, directory: &Path, name: &str, text: &str) -> io::Result<()> {
+        let path = file_path(directory, name)?;
+        check_text(text)?;
+        match fs::symlink_metadata(&path) {
+            Ok(_) => return Err(io::ErrorKind::AlreadyExists.into()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        fs::create_dir_all(directory)?;
+        let staging = Staging::create(directory)?;
+        let staged = staging.0.join("contents");
+        {
+            let mut file = File::create_new(&staged)?;
+            file.write_all(text.as_bytes())?;
+            file.sync_all()?;
+        }
+        fs::hard_link(staged, path)
+    }
+
+    fn modified(&mut self, directory: &Path, name: &str) -> io::Result<SystemTime> {
+        regular_file(&file_path(directory, name)?)?.modified()
+    }
+
+    fn latest(&mut self, directory: &Path, prefix: &str, suffix: &str) -> io::Result<String> {
+        let mut latest = None;
+        for found in fs::read_dir(directory)? {
+            let entry = found?;
+            let Ok(name) = entry.file_name().into_string() else {
+                continue;
+            };
+            if !name.starts_with(prefix)
+                || !name.ends_with(suffix)
+                || file_path(directory, &name).is_err()
+                || !entry.file_type()?.is_file()
+            {
+                continue;
+            }
+            let candidate = (regular_file(&entry.path())?.modified()?, name);
+            if latest.as_ref().is_none_or(|known| candidate > *known) {
+                latest = Some(candidate);
+            }
+        }
+        latest
+            .map(|(_, name)| name)
+            .ok_or_else(|| io::ErrorKind::NotFound.into())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Builtin {
+    Read,
+    Write,
+    Modified,
+    Latest,
+    XmlChild,
+    XmlAttribute,
+    XmlName,
+    XmlEscape,
+    Parse,
+    Digit,
+    Length,
+}
+
+impl Builtin {
+    pub(crate) fn named(word: &str) -> Option<Self> {
+        Some(match word {
+            "io_read" => Self::Read,
+            "io_write" => Self::Write,
+            "io_modified" => Self::Modified,
+            "io_latest" => Self::Latest,
+            "xml_child" => Self::XmlChild,
+            "xml_attribute" => Self::XmlAttribute,
+            "xml_name" => Self::XmlName,
+            "xml_escape" => Self::XmlEscape,
+            "str_parse" => Self::Parse,
+            "str_digit" => Self::Digit,
+            "str_len" => Self::Length,
+            _ => return None,
+        })
+    }
+
+    pub(crate) fn uses_directory(self) -> bool {
+        matches!(
+            self,
+            Self::Read | Self::Write | Self::Modified | Self::Latest
+        )
+    }
+
+    pub(crate) fn signature(self) -> (&'static [Kind], &'static [Kind]) {
+        use Kind::{Bool, I32, I64, Str};
+        match self {
+            Self::Read => (&[Str], &[Bool, Str, Str, Bool]),
+            Self::Write => (&[Str, Str], &[Bool, Bool, Str]),
+            Self::Modified => (&[Str], &[Bool, I64, Str]),
+            Self::Latest => (&[Str, Str], &[Bool, Str, Str, Bool]),
+            Self::XmlChild => (&[Str, Str, I32], &[Bool, Str]),
+            Self::XmlAttribute => (&[Str, Str], &[Bool, Str]),
+            Self::XmlName | Self::XmlEscape => (&[Str], &[Bool, Str]),
+            Self::Parse | Self::Length => (&[Str], &[Bool, I32]),
+            Self::Digit => (&[Str, I32], &[Bool, I32]),
+        }
+    }
+
+    pub(crate) fn evaluate(
+        self,
+        directory: Option<&Path>,
+        values: &[Value],
+        io: &mut dyn Io,
+    ) -> Vec<Value> {
+        use Value::{Bool, I32, I64, Str};
+        match (self, directory, values) {
+            (Self::Read, Some(dir), [Str(name)]) => {
+                let result = file_path(dir, name)
+                    .and_then(|_| io.read(dir, name))
+                    .and_then(|text| {
+                        check_text(&text)?;
+                        Ok(text)
+                    });
+                read_result(result, dir, name)
+            }
+            (Self::Write, Some(dir), [Str(name), Str(text)]) => {
+                let result = file_path(dir, name)
+                    .and_then(|_| check_text(text))
+                    .and_then(|()| io.write(dir, name, text));
+                let taken = has_error_kind(&result, io::ErrorKind::AlreadyExists);
+                let mut returned = file_result(result.map(|()| false), dir, name, Bool);
+                if let Some(slot) = returned.get_mut(1) {
+                    *slot = Bool(taken);
+                }
+                returned
+            }
+            (Self::Modified, Some(dir), [Str(name)]) => {
+                let result = file_path(dir, name)
+                    .and_then(|_| io.modified(dir, name))
+                    .and_then(|time| {
+                        let nanos = match time.duration_since(UNIX_EPOCH) {
+                            Ok(duration) => i128::try_from(duration.as_nanos()),
+                            Err(before_epoch) => i128::try_from(before_epoch.duration().as_nanos())
+                                .map(|nanos| -nanos),
+                        }
+                        .map_err(io::Error::other)?;
+                        i64::try_from(nanos).map_err(io::Error::other)
+                    });
+                file_result(result, dir, name, I64)
+            }
+            (Self::Latest, Some(dir), [Str(prefix), Str(suffix)]) => {
+                read_result(io.latest(dir, prefix, suffix), dir, "")
+            }
+            (Self::XmlChild, None, [Str(text), Str(name), I32(index)]) => {
+                let found = usize::try_from(*index)
+                    .ok()
+                    .and_then(|row| xml_value(text, XmlQuery::Child(name, row)));
+                optional(found, Str)
+            }
+            (Self::XmlAttribute, None, [Str(text), Str(name)]) => {
+                optional(xml_value(text, XmlQuery::Attribute(name)), Str)
+            }
+            (Self::XmlName, None, [Str(text)]) => optional(xml_value(text, XmlQuery::Name), Str),
+            (Self::XmlEscape, None, [Str(text)]) => vec![
+                Bool(true),
+                Str(quick_xml::escape::escape(text).into_owned()),
+            ],
+            (Self::Parse, None, [Str(text)]) => optional(text.parse::<i32>().ok(), I32),
+            (Self::Length, None, [Str(text)]) => optional(i32::try_from(text.len()).ok(), I32),
+            (Self::Digit, None, [Str(text), I32(index)]) => {
+                let found = usize::try_from(*index)
+                    .ok()
+                    .and_then(|at| text.as_bytes().get(at))
+                    .filter(|byte| byte.is_ascii_digit())
+                    .map(|byte| i32::from(byte - b'0'));
+                optional(found, I32)
+            }
+            _ => unreachable!("the checker validates builtin arguments"),
+        }
+    }
+}
+
+fn optional<T: Default>(value: Option<T>, wrap: fn(T) -> Value) -> Vec<Value> {
+    vec![
+        Value::Bool(value.is_some()),
+        wrap(value.unwrap_or_default()),
+    ]
+}
+
+fn has_error_kind<T>(result: &io::Result<T>, kind: io::ErrorKind) -> bool {
+    result.as_ref().is_err_and(|error| error.kind() == kind)
+}
+
+fn read_result(result: io::Result<String>, directory: &Path, name: &str) -> Vec<Value> {
+    let missing = has_error_kind(&result, io::ErrorKind::NotFound);
+    let mut values = file_result(result, directory, name, Value::Str);
+    values.push(Value::Bool(missing));
+    values
+}
+
+fn file_result<T: Default>(
+    result: io::Result<T>,
+    directory: &Path,
+    name: &str,
+    wrap: fn(T) -> Value,
+) -> Vec<Value> {
+    match result {
+        Ok(value) => vec![Value::Bool(true), wrap(value), Value::Str(String::new())],
+        Err(error) => vec![
+            Value::Bool(false),
+            wrap(T::default()),
+            Value::Str(format!("{}: {error}", directory.join(name).display())),
+        ],
+    }
+}
+
+#[derive(Clone, Copy)]
+enum XmlQuery<'a> {
+    Name,
+    Attribute(&'a str),
+    Child(&'a str, usize),
+}
+
+// Scan the whole document so truncated or unbalanced input cannot yield a value.
+fn xml_value(text: &str, query: XmlQuery<'_>) -> Option<String> {
+    let mut reader = Reader::from_str(text);
+    let mut depth = 0_usize;
+    let mut root = false;
+    let mut matches = 0;
+    let mut child_start = None;
+    let mut value = None;
+    loop {
+        let before = usize::try_from(reader.buffer_position()).ok()?;
+        let event = reader.read_event().ok()?;
+        let after = usize::try_from(reader.buffer_position()).ok()?;
+        match event {
+            Event::Start(ref tag) | Event::Empty(ref tag) => {
+                if depth == 0 {
+                    if root {
+                        return None;
+                    }
+                    root = true;
+                    if matches!(query, XmlQuery::Name) {
+                        value = Some(tag.name().as_ref().to_owned());
+                    }
+                }
+                for parsed in tag.attributes() {
+                    let attribute = parsed.ok()?;
+                    let decoded = attribute
+                        .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                        .ok()?;
+                    if depth == 0
+                        && matches!(query, XmlQuery::Attribute(name) if attribute.key.as_ref() == name)
+                    {
+                        value = Some(decoded.into_owned());
+                    }
+                }
+                if let XmlQuery::Child(name, index) = query
+                    && depth == 1
+                    && (name.is_empty() || tag.name().as_ref() == name)
+                {
+                    if index == matches {
+                        if matches!(event, Event::Empty(_)) {
+                            value = Some(text.get(before..after)?.to_owned());
+                        } else {
+                            child_start = Some(before);
+                        }
+                    }
+                    matches += 1;
+                }
+                depth += usize::from(matches!(event, Event::Start(_)));
+            }
+            Event::End(_) => {
+                depth = depth.checked_sub(1)?;
+                if depth == 1
+                    && let Some(start) = child_start.take()
+                {
+                    value = Some(text.get(start..after)?.to_owned());
+                }
+            }
+            Event::Text(content) if depth == 0 => {
+                if !content
+                    .as_ref()
+                    .bytes()
+                    .all(|byte| byte.is_ascii_whitespace())
+                {
+                    return None;
+                }
+            }
+            Event::DocType(_) | Event::GeneralRef(_) | Event::CData(_) if depth == 0 => {
+                return None;
+            }
+            Event::Decl(_) if before != 0 => return None,
+            Event::Eof => return if root && depth == 0 { value } else { None },
+            Event::Text(_)
+            | Event::CData(_)
+            | Event::GeneralRef(_)
+            | Event::Decl(_)
+            | Event::PI(_)
+            | Event::Comment(_) => {}
+            Event::DocType(_) => return None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FileIo, Io, Staging};
+    use std::io::ErrorKind;
+
+    #[test]
+    fn file_io_publishes_once_and_reads_only_named_files() {
+        let workspace = Staging::create(&std::env::temp_dir()).unwrap();
+        let directory = &workspace.0;
+        let mut files = FileIo;
+        assert_eq!(
+            files.latest(directory, "", "").unwrap_err().kind(),
+            ErrorKind::NotFound
+        );
+        files.write(directory, "contents", "saved ✓").unwrap();
+        assert_eq!(files.read(directory, "contents").unwrap(), "saved ✓");
+        assert_eq!(files.latest(directory, "con", "ents").unwrap(), "contents");
+        assert!(files.modified(directory, "contents").is_ok());
+        assert_eq!(
+            files
+                .write(directory, "contents", "replacement")
+                .unwrap_err()
+                .kind(),
+            ErrorKind::AlreadyExists
+        );
+        assert_eq!(files.read(directory, "contents").unwrap(), "saved ✓");
+        assert_eq!(
+            files.read(directory, "../contents").unwrap_err().kind(),
+            ErrorKind::InvalidInput
+        );
+        assert_eq!(std::fs::read_dir(directory).unwrap().count(), 1);
+    }
+}

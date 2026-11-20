@@ -8,6 +8,9 @@ pub enum Tok<'input> {
     Di,
     Do,
     Info,
+    Given(crate::io::Builtin),
+    Join,
+    As,
     Nihil,
     Return,
     ExitSuccess,
@@ -64,18 +67,10 @@ const RESERVED: &[&str] = &[
     "sleep_ms",
     "break",
     "continue",
-    "to_join",
-    "io_read",
-    "io_write",
-    "io_modified",
-    "xml_child",
-    "xml_attribute",
-    "str_parse",
     "call",
     "len_col",
     "len_row",
     "expect",
-    "as",
 ];
 
 const INDEXED_TYPES: &[&str] = &[
@@ -301,7 +296,12 @@ fn word(text: &str) -> Tok<'_> {
     if let Some(conversion) = Conversion::named(text) {
         return Tok::Conversion(conversion);
     }
+    if let Some(builtin) = crate::io::Builtin::named(text) {
+        return Tok::Given(builtin);
+    }
     match text {
+        "to_join" => Tok::Join,
+        "as" => Tok::As,
         "di" => Tok::Di,
         "do" => Tok::Do,
         "info" => Tok::Info,

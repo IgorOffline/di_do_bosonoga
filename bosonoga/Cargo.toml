@@ -8,6 +8,7 @@ name = "interpreter"
 path = "test/interpreter.rs"
 
 [dependencies]
+quick-xml = { path = "../../../rust_vendor/quick-xml/current/quick-xml-0.42.0", default-features = false }
 lalrpop-util = "0.23.2"
 
 [build-dependencies]

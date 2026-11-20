@@ -1,6 +1,7 @@
 pub mod ast;
 mod check;
 pub mod gfx;
+pub mod io;
 pub mod key;
 pub mod lexer;
 mod program;

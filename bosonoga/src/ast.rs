@@ -122,6 +122,13 @@ pub enum Draw {
 #[derive(Debug, PartialEq)]
 pub enum Statement<'input> {
     Info(Vec<Operand<'input>>),
+    Join(Named<'input>, Vec<Operand<'input>>),
+    Given {
+        operation: (Span, crate::io::Builtin),
+        values: Vec<Operand<'input>>,
+        results: Vec<(Span, Named<'input>)>,
+        block: Block<'input>,
+    },
     Set {
         name: Named<'input>,
         operation: (Span, Operation),
