@@ -1,7 +1,9 @@
 *.bosonoga linguist-language=COBOL linguist-detectable
 
-/archive_a/** linguist-detectable=false
-/archive_b/** linguist-detectable=false
-/archive_c/** linguist-detectable=false
-/archive_d/** linguist-detectable=false
-/experiment_e/** linguist-detectable=false
+archive_a/** linguist-vendored linguist-generated
+archive_b/** linguist-vendored linguist-generated
+archive_c/** linguist-vendored linguist-generated
+archive_d/** linguist-vendored linguist-generated
+experiment_e/** linguist-vendored linguist-generated
+
+LICENSE linguist-documentation
