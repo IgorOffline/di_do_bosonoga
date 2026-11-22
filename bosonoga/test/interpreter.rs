@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use bosonoga::ast::ExitStatus;
+use bosonoga::gfx::{Input, Scene, Window};
 use bosonoga::settings::Settings;
 
 #[cfg(test)]
@@ -479,4 +480,121 @@ fn arithmetic_diagnostics() {
         (main("  set count to_add"), "test:5:3: expected"),
     ];
     assert_diagnostics(&cases);
+}
+
+// Every path of a def with values, and of a main block, ends in a return,
+// and nothing follows a statement that always returns.
+#[test]
+fn return_diagnostics() {
+    let main = "bosonoga_main\ndi\n  val one is f_fn of 1_i32 with ret 0_i32\n  info one\n  return exit_success\ndo\n";
+    let def = |body: &str| format!("def f_fn n_i32 ret 0_i32\ndi\n{body}\ndo\n{main}");
+    let cases = [
+        (
+            def("  if n_i32 gt 0_i32\n  di\n    return 1_i32\n  do"),
+            "test:1:5: 'f_fn' returns 0_i32, but can reach its end without a return",
+        ),
+        (
+            def("  while n_i32 gt 0_i32\n  di\n    return 1_i32\n  do"),
+            "test:1:5: 'f_fn' returns 0_i32, but can reach its end without a return",
+        ),
+        (
+            def(
+                "  if n_i32 gt 0_i32\n  di\n    return 1_i32\n  do\n  else if n_i32 lt 0_i32\n  di\n    return -1_i32\n  do",
+            ),
+            "test:1:5: 'f_fn' returns 0_i32, but can reach its end without a return",
+        ),
+        (
+            def("  return 1_i32\n  info n_i32"),
+            "test:4:3: this is never reached, as the statement before it always returns",
+        ),
+        (
+            def(
+                "  if n_i32 gt 0_i32\n  di\n    return 1_i32\n  do\n  else\n  di\n    return 0_i32\n  do\n  nihil",
+            ),
+            "test:11:3: this is never reached, as the statement before it always returns",
+        ),
+        (
+            def(
+                "  str_parse \"1\"_str with ret 1_i32 as parsed\n  di\n    return parsed\n  do\n  return n_i32",
+            ),
+            "test:7:3: this is never reached, as the statement before it always returns",
+        ),
+        (
+            "bosonoga_main\ndi\n  info 1_i32\ndo\n".to_owned(),
+            "test:1:1: bosonoga_main can reach its end without a return, which gives exit_success or exit_failure",
+        ),
+        (
+            def("  set n_i32 to_add 1_i32\n  return n_i32"),
+            "test:3:7: 'n_i32' is a parameter, which is a val and cannot be set, but a copy can, as in var n is n_i32",
+        ),
+        (
+            "def f_fn count_optional_i32 ret_void\ndi\n  set count_optional_i32 to nihil_i32\ndo\n"
+                .to_owned(),
+            "test:3:7: 'count_optional_i32' is a parameter, which is a val and cannot be set, but a copy can, as in var count is count_optional_i32",
+        ),
+    ];
+    assert_diagnostics(&cases);
+}
+
+#[test]
+fn every_path_returns() {
+    check_program(
+        "every_path_returns",
+        "def sign_fn n_i32 ret 0_i32\ndi\n  if n_i32 gt 0_i32\n  di\n    return 1_i32\n  do\n  else if n_i32 lt 0_i32\n  di\n    return -1_i32\n  do\n  else\n  di\n    return 0_i32\n  do\ndo\n\nbosonoga_main\ndi\n  val minus is sign_fn of -5_i32 with ret 0_i32\n  if minus eq -1_i32\n  di\n    return exit_success\n  do\n  else\n  di\n    return exit_failure\n  do\ndo\n",
+    );
+}
+
+#[cfg(test)]
+struct Frames(usize);
+
+impl Window for Frames {
+    fn info(&mut self, _text: &str) {}
+
+    fn show(&mut self, _scene: &Scene) -> Option<Input> {
+        self.0 += 1;
+        if self.0 > 1000 {
+            return None;
+        }
+        Some(Input {
+            keys: Vec::new(),
+            delta_time: 1.0 / 60.0,
+        })
+    }
+}
+
+#[cfg(test)]
+fn gfx_result(source: &str) -> Result<ExitStatus, String> {
+    let program = match bosonoga::parse(source) {
+        Ok(program) => program,
+        Err(diagnostic) => panic!("{}", diagnostic.located("test", source)),
+    };
+    bosonoga::gfx::run(&program, &mut Frames(0))
+}
+
+// A section of a gfx program runs at most 100000 statements before the next
+// frame, which gfx_main does not reach without gfx_await_next_frame.
+#[test]
+fn step_limit() {
+    let looping = |steps: &str, wait: &str| {
+        format!(
+            "gfx_main\ndi\n  var i is 0_i32\n  while i lt {steps}\n  di\n    set i to_add 1_i32\n{wait}  do\n  return exit_success\ndo\n"
+        )
+    };
+    let too_long = gfx_result(&looping("200000_i32", ""));
+    assert!(
+        too_long.as_ref().is_err_and(|message| message
+            .ends_with(":4:3: gfx_main ran 100000 statements without gfx_await_next_frame")),
+        "{too_long:?}"
+    );
+    let waiting = gfx_result(&looping("500_i32", "    gfx_await_next_frame\n"));
+    assert_eq!(waiting, Ok(ExitStatus::Success));
+    let frame = gfx_result(
+        "gfx_frame\ndi\n  var i is 0_i32\n  while i lt 200000_i32\n  di\n    set i to_add 1_i32\n  do\ndo\n\ngfx_main\ndi\n  gfx_await_next_frame\n  return exit_success\ndo\n",
+    );
+    assert!(
+        frame.as_ref().is_err_and(|message| message.ends_with(
+            ":4:3: gfx_frame ran 100000 statements, the most that a section of a gfx program runs before the next frame"
+        )),
+        "{frame:?}"
+    );
 }

@@ -219,6 +219,16 @@ impl<'input> Checker<'_, 'input> {
                 ),
             );
         }
+        if variable.origin == super::Origin::Parameter {
+            let suffix = format!("_{}", variable.kind.name());
+            let copy = shown.strip_suffix(&suffix).unwrap_or("copy");
+            return Self::fail(
+                span.start,
+                format!(
+                    "'{shown}' is a parameter, which is a val and cannot be set, but a copy can, as in var {copy} is {shown}"
+                ),
+            );
+        }
         if !variable.mutable {
             return Self::fail(span.start, format!("'{shown}' is a val and cannot be set"));
         }

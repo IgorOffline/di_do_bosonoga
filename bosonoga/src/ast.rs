@@ -92,7 +92,14 @@ pub struct Comparison<'input> {
 
 pub type Condition<'input> = Vec<Vec<Comparison<'input>>>;
 
-pub type Block<'input> = Vec<Statement<'input>>;
+// A statement and where it starts.
+#[derive(Debug, PartialEq)]
+pub struct Located<'input> {
+    pub start: usize,
+    pub statement: Statement<'input>,
+}
+
+pub type Block<'input> = Vec<Located<'input>>;
 
 #[derive(Debug, PartialEq)]
 pub enum Arguments<'input> {

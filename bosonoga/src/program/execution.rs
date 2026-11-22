@@ -11,6 +11,8 @@ use crate::value::Value;
 
 const CALL_DEPTH_MAX: usize = 10_000;
 const DRAW_TEXT_LENGTH_MAX: usize = 1024;
+// The most statements that a section of a gfx program runs before the next
+// frame, which gfx_main reaches with gfx_await_next_frame.
 const STEPS_PER_FRAME: usize = 100_000;
 const FIRST_DELTA_TIME: f32 = 1.0 / 60.0;
 
@@ -45,7 +47,7 @@ pub(super) fn run_window(
     let mut execution = Execution::new(program, Some(window), io);
     execution.set_section_slot(program.delta_time_slot, Value::F32(FIRST_DELTA_TIME));
     let result = execution.run_window();
-    let cleanup = execution.section(&program.sections.cleanup);
+    let cleanup = execution.section("gfx_cleanup", &program.sections.cleanup);
     execution.flush();
     let returned = match result {
         Ok(returned) => returned,
@@ -106,8 +108,11 @@ struct Execution<'a> {
     window: Option<&'a mut dyn Window>,
     scene: Scene,
     io: &'a mut dyn Io,
-    in_main: bool,
+    // The section that runs, its statements since its start or since
+    // gfx_await_next_frame, and the while or call that a step error names.
+    running: &'static str,
     steps: usize,
+    at: usize,
 }
 
 impl<'a> Execution<'a> {
@@ -119,8 +124,9 @@ impl<'a> Execution<'a> {
             window,
             scene: Scene::default(),
             io,
-            in_main: false,
+            running: "",
             steps: 0,
+            at: 0,
         }
     }
 
@@ -138,8 +144,8 @@ impl<'a> Execution<'a> {
 
     fn run_window(&mut self) -> Result<Option<ExitStatus>, Diagnostic> {
         let program = self.program;
-        self.block(&program.sections.global)?;
-        self.block(&program.sections.init)?;
+        self.section("bosonoga_global", &program.sections.global)?;
+        self.section("gfx_init", &program.sections.init)?;
         if let Flow::Closed = self.next_frame()? {
             return Ok(None);
         }
@@ -151,9 +157,13 @@ impl<'a> Execution<'a> {
         let Some((statements, end)) = &program.sections.main else {
             return Err(Diagnostic::new(0, "a program needs a bosonoga_main block"));
         };
-        self.in_main = true;
+        self.running = if program.is_gfx {
+            "gfx_main"
+        } else {
+            "bosonoga_main"
+        };
+        self.steps = 0;
         let flow = self.block(statements);
-        self.in_main = false;
         match flow? {
             Flow::Exit(status) => Ok(Some(status)),
             Flow::Closed => Ok(None),
@@ -237,11 +247,17 @@ impl<'a> Execution<'a> {
         true
     }
 
-    fn section(&mut self, statements: &[Statement]) -> Result<Flow, Diagnostic> {
+    fn section(
+        &mut self,
+        word: &'static str,
+        statements: &[Statement],
+    ) -> Result<Flow, Diagnostic> {
         let calls = self.frames.split_off(1);
-        let in_main = mem::replace(&mut self.in_main, false);
+        let running = mem::replace(&mut self.running, word);
+        let steps = mem::replace(&mut self.steps, 0);
         let flow = self.block(statements);
-        self.in_main = in_main;
+        self.running = running;
+        self.steps = steps;
         self.frames.extend(calls);
         flow
     }
@@ -262,7 +278,7 @@ impl<'a> Execution<'a> {
             clear: program.background,
             shapes: Vec::new(),
         };
-        self.section(&program.sections.frame)?;
+        self.section("gfx_frame", &program.sections.frame)?;
         self.flush();
         let mut shown = None;
         if let Some(window) = self.window.as_deref_mut() {
@@ -273,7 +289,7 @@ impl<'a> Execution<'a> {
         };
         for key in input.keys {
             self.set_section_slot(program.key_slot, Value::InputKey(key));
-            self.section(&program.sections.key_down)?;
+            self.section("gfx_key_down", &program.sections.key_down)?;
         }
         self.set_section_slot(program.delta_time_slot, Value::F32(input.delta_time));
         Ok(Flow::Next)
@@ -350,7 +366,9 @@ impl<'a> Execution<'a> {
         let mut frame = arguments;
         frame.resize(function.slot_count, Value::Bool(false));
         self.frames.push(frame);
+        let outer = mem::replace(&mut self.at, offset);
         let returned = self.block(&function.statements);
+        self.at = outer;
         self.frames.pop();
         let flow = returned?;
         if flow.is_next() && function.returns_values {
@@ -472,14 +490,25 @@ impl<'a> Execution<'a> {
         Ok(())
     }
 
+    // Counts a statement of a gfx program, whose sections each run at most
+    // STEPS_PER_FRAME before the next frame. A text program has no frames.
     fn step(&mut self) -> Result<Flow, Diagnostic> {
-        if self.in_main && self.window.is_some() {
-            self.steps += 1;
-            if self.steps >= STEPS_PER_FRAME {
-                return self.next_frame();
-            }
+        if self.window.is_none() {
+            return Ok(Flow::Next);
         }
-        Ok(Flow::Next)
+        self.steps += 1;
+        if self.steps <= STEPS_PER_FRAME {
+            return Ok(Flow::Next);
+        }
+        let message = if self.running == "gfx_main" {
+            format!("gfx_main ran {STEPS_PER_FRAME} statements without gfx_await_next_frame")
+        } else {
+            format!(
+                "{} ran {STEPS_PER_FRAME} statements, the most that a section of a gfx program runs before the next frame",
+                self.running
+            )
+        };
+        Err(Diagnostic::new(self.at, message))
     }
 
     fn block(&mut self, statements: &[Statement]) -> Result<Flow, Diagnostic> {
@@ -535,14 +564,22 @@ impl<'a> Execution<'a> {
         }
     }
 
-    fn repeat(&mut self, condition: &Condition, block: &[Statement]) -> Result<Flow, Diagnostic> {
+    fn repeat(
+        &mut self,
+        condition: &Condition,
+        block: &[Statement],
+        offset: usize,
+    ) -> Result<Flow, Diagnostic> {
+        let outer = mem::replace(&mut self.at, offset);
+        let mut flow = Ok(Flow::Next);
         while self.holds(condition) {
-            let flow = self.block(block)?;
-            if !flow.is_next() {
-                return Ok(flow);
+            flow = self.block(block);
+            if !matches!(flow, Ok(Flow::Next)) {
+                break;
             }
         }
-        Ok(Flow::Next)
+        self.at = outer;
+        flow
     }
 
     fn choose(
@@ -670,7 +707,11 @@ impl<'a> Execution<'a> {
                 branches,
                 otherwise,
             } => return self.choose(branches, otherwise.as_ref()),
-            Statement::While(condition, block) => return self.repeat(condition, block),
+            Statement::While {
+                condition,
+                block,
+                offset,
+            } => return self.repeat(condition, block, *offset),
             Statement::AwaitNextFrame => return self.next_frame(),
             Statement::Draw { draw, offset } => self.draw(draw, *offset)?,
             Statement::Return(status) => return Ok(Flow::Exit(*status)),

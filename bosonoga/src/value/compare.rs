@@ -69,13 +69,13 @@ impl Value {
         a.partial_cmp(&b)
     }
 
+    // Whether two reals are equal to 3 or 6 decimals, as eq_3 and eq_6 say:
+    // their difference is at most the tolerance, however large they are.
     fn close(&self, other: &Value, tolerance: f64) -> bool {
         let (Some(a), Some(b)) = (self.as_real(), other.as_real()) else {
             return false;
         };
-        let difference = (a - b).abs();
-        let largest = a.abs().max(b.abs());
-        difference <= tolerance || (largest > 0.0 && difference / largest <= tolerance)
+        (a - b).abs() <= tolerance
     }
 
     fn equal(&self, other: &Value) -> bool {

@@ -68,9 +68,13 @@ impl<'input> Checker<'_, 'input> {
                 branches,
                 otherwise,
             } => self.if_statement(branches, otherwise.as_ref())?,
-            ast::Statement::While(_, condition, block) => {
+            ast::Statement::While(span, condition, block) => {
                 let holds = self.condition(condition)?;
-                Statement::While(holds, self.block(block)?)
+                Statement::While {
+                    condition: holds,
+                    block: self.block(block)?,
+                    offset: span.start,
+                }
             }
             ast::Statement::AwaitNextFrame(span) => {
                 if self.section != Some(Section::GfxMain) || self.function.is_some() {

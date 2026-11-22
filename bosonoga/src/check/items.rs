@@ -1,8 +1,8 @@
 use std::mem;
 
 use super::{
-    Callable, Checker, FUNCTION_VALUES_MAX, Function, Scope, Variable, is_function_name,
-    split_indexed,
+    Callable, Checker, FUNCTION_VALUES_MAX, Function, Origin, Scope, Variable, block_returns,
+    is_function_name, kinds_named, split_indexed,
 };
 use crate::Diagnostic;
 use crate::ast::{self, Item, Named, Results, Section, Span};
@@ -127,7 +127,7 @@ impl<'input> Checker<'_, 'input> {
         &mut self,
         span: Span,
         section: Section,
-        block: &[ast::Statement<'input>],
+        block: &[ast::Located<'input>],
         after: usize,
     ) -> Result<(), Diagnostic> {
         let has_main = self.seen.contains(&Section::Main);
@@ -168,6 +168,15 @@ impl<'input> Checker<'_, 'input> {
         let checked = self.block(block);
         self.section = None;
         let statements = checked?;
+        if is_main && !block_returns(block) {
+            return Self::fail(
+                span.start,
+                format!(
+                    "{} can reach its end without a return, which gives exit_success or exit_failure",
+                    section.word()
+                ),
+            );
+        }
         let (end, _) = self.next_token(after);
         let sections = &mut self.program.sections;
         match section {
@@ -219,7 +228,7 @@ impl<'input> Checker<'_, 'input> {
         parameters: &[Named<'input>],
         globals: &[Named<'input>],
         results: &(Span, Results),
-        block: &[ast::Statement<'input>],
+        block: &[ast::Located<'input>],
     ) -> Result<(), Diagnostic> {
         let is_public = self.public(public)?;
         if self.is_reserved(name) {
@@ -270,7 +279,7 @@ impl<'input> Checker<'_, 'input> {
         // A global that the function reads is read, as its other uses are.
         let mut read = Vec::new();
         for variable in &self.variables {
-            if variable.captured && variable.declaration.used {
+            if variable.origin == Origin::Captured && variable.declaration.used {
                 read.push(variable.name);
             }
         }
@@ -298,7 +307,7 @@ impl<'input> Checker<'_, 'input> {
             return self.expected_at(span, "a variable of bosonoga_global");
         }
         if let Some(index) = self.variable_any(name) {
-            if self.variables[index].captured {
+            if self.variables[index].origin == Origin::Captured {
                 return Self::fail(
                     span.start,
                     format!("'{shown}' is already in with from_global"),
@@ -336,7 +345,7 @@ impl<'input> Checker<'_, 'input> {
             mutable: global.mutable,
             array: global.array.clone(),
             declaration: self.declaration(span, false),
-            captured: true,
+            origin: Origin::Captured,
             written: false,
         };
         self.variables.push(variable);
@@ -350,7 +359,7 @@ impl<'input> Checker<'_, 'input> {
         parameters: &[Named<'input>],
         (globals, outer): (&[Named<'input>], &[Variable<'input>]),
         results: &Results,
-        block: &[ast::Statement<'input>],
+        block: &[ast::Located<'input>],
     ) -> Result<(), Diagnostic> {
         let mut kinds = Vec::new();
         for parameter in parameters {
@@ -371,7 +380,10 @@ impl<'input> Checker<'_, 'input> {
             }
             self.new_name(*parameter)?;
             let slot = self.allocate();
-            self.declare(*parameter, kind, slot, true);
+            self.declare(*parameter, kind, slot, false);
+            if let Some(declared) = self.variables.last_mut() {
+                declared.origin = Origin::Parameter;
+            }
             kinds.push(kind);
         }
         for global in globals {
@@ -403,6 +415,19 @@ impl<'input> Checker<'_, 'input> {
         });
         let statements = self.block(block)?;
         self.check_variables_used(0)?;
+        if let Some(index) = self.function
+            && let Some(function) = self.functions.get(index)
+            && !function.results.is_empty()
+            && !block_returns(block)
+        {
+            return Self::fail(
+                span.start,
+                format!(
+                    "'{name}' returns {}, but can reach its end without a return",
+                    kinds_named(&function.results)
+                ),
+            );
+        }
         if let Some(function) = self.program.functions.get_mut(code) {
             function.statements = statements;
             function.slot_count = self.slot_count;

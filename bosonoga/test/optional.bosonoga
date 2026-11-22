@@ -57,6 +57,12 @@ di
   var ok is true_bool
   val seven is parsed_fn of "7"_str with ret 0_optional_i32
   val missing is parsed_fn of "seven"_str with ret 0_optional_i32
+  // A number has one form, so +7 is not one.
+  val plus is parsed_fn of "+7"_str with ret 0_optional_i32
+  if some plus
+  di
+    set ok to false_bool
+  do
   if some seven as number
   di
     info "seven "_str number

@@ -34,10 +34,18 @@ struct Variable<'input> {
     mutable: bool,
     array: Option<(usize, Vec<Kind>)>,
     declaration: Declaration,
+    origin: Origin,
+    written: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Origin {
+    Declared,
+    // A parameter of a def, which is a val.
+    Parameter,
     // A variable of bosonoga_global that a def lists in with from_global,
     // which is used once it is read or set.
-    captured: bool,
-    written: bool,
+    Captured,
 }
 
 struct Constant<'input> {
@@ -154,6 +162,52 @@ pub(crate) fn check(
 
 fn is_function_name(name: &str) -> bool {
     name.len() > "_fn".len() && name.ends_with("_fn")
+}
+
+// Whether a statement always returns, so that nothing after it runs: a
+// return, an if whose branches and else all return, or a call or a builtin
+// whose block returns, as that block always runs. A while may not run.
+pub(super) fn returns(statement: &ast::Statement<'_>) -> bool {
+    match statement {
+        ast::Statement::Return(..) | ast::Statement::ReturnValues(..) => true,
+        ast::Statement::If {
+            branches,
+            otherwise,
+        } => {
+            let mut all = otherwise.as_ref().is_some_and(|block| block_returns(block));
+            for (_, block) in branches {
+                all = all && block_returns(block);
+            }
+            all
+        }
+        ast::Statement::Call {
+            taking: Some(taking),
+            ..
+        } => block_returns(&taking.block),
+        ast::Statement::Given { block, .. } => block_returns(block),
+        ast::Statement::Info(_)
+        | ast::Statement::Call { taking: None, .. }
+        | ast::Statement::Join(..)
+        | ast::Statement::Set { .. }
+        | ast::Statement::SetConversion { .. }
+        | ast::Statement::SetCall { .. }
+        | ast::Statement::Declare { .. }
+        | ast::Statement::DeclareArray { .. }
+        | ast::Statement::SetAt { .. }
+        | ast::Statement::While(..)
+        | ast::Statement::AwaitNextFrame(_)
+        | ast::Statement::Draw { .. }
+        | ast::Statement::Nihil => false,
+    }
+}
+
+pub(super) fn block_returns(block: &[ast::Located<'_>]) -> bool {
+    for located in block {
+        if returns(&located.statement) {
+            return true;
+        }
+    }
+    false
 }
 
 fn split_indexed(text: &str) -> Option<(usize, Kind)> {
@@ -343,7 +397,7 @@ impl<'a, 'input> Checker<'a, 'input> {
             mutable,
             array: None,
             declaration,
-            captured: false,
+            origin: Origin::Declared,
             written: false,
         });
     }
@@ -365,7 +419,7 @@ impl<'a, 'input> Checker<'a, 'input> {
     fn check_variables_used(&self, first: usize) -> Result<(), Diagnostic> {
         for variable in self.variables.iter().skip(first) {
             let span = variable.declaration.span;
-            if variable.captured {
+            if variable.origin == Origin::Captured {
                 if !variable.declaration.used && !variable.written {
                     return Self::fail(
                         span.start,
@@ -403,12 +457,21 @@ impl<'a, 'input> Checker<'a, 'input> {
         self.check_variables_used(0)
     }
 
-    fn block(&mut self, block: &[ast::Statement<'input>]) -> Result<Vec<Statement>, Diagnostic> {
+    fn block(&mut self, block: &[ast::Located<'input>]) -> Result<Vec<Statement>, Diagnostic> {
         self.depth += 1;
         let visible = self.variables.len();
         let mut statements = Vec::new();
-        for statement in block {
-            match self.statement(statement) {
+        let mut returned = false;
+        for located in block {
+            if returned {
+                self.depth -= 1;
+                return Self::fail(
+                    located.start,
+                    "this is never reached, as the statement before it always returns",
+                );
+            }
+            returned = returns(&located.statement);
+            match self.statement(&located.statement) {
                 Ok(Some(checked)) => statements.push(checked),
                 Ok(None) => {}
                 Err(diagnostic) => {

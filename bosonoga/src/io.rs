@@ -8,6 +8,10 @@
 //! 2. Index 1 is the text, name, timestamp, or (for create-only writes) whether
 //! the filename was already taken. Reads and lookup also return true at index 3
 //! when the file is missing. Timestamps are signed Unix nanoseconds.
+//!
+//! Text is UTF-8, and `str_len` and `str_digit` count and index its bytes, not
+//! its characters, so `str_len "é"_str` is 2. `str_parse` takes digits with an
+//! optional `-`, and no `+` or spaces.
 
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
@@ -273,7 +277,7 @@ impl Builtin {
                 let escaped = quick_xml::escape::escape(text);
                 vec![Bool(true), Str(escaped.into_owned())]
             }
-            (Self::Parse, None, [Str(text)]) => optional(text.parse::<i32>().ok(), I32),
+            (Self::Parse, None, [Str(text)]) => optional(parse_i32(text), I32),
             (Self::Length, None, [Str(text)]) => optional(i32::try_from(text.len()).ok(), I32),
             (Self::Digit, None, [Str(text), I32(index)]) => optional(digit_at(text, *index), I32),
             _ => unreachable!("the checker validates builtin arguments"),
@@ -305,6 +309,15 @@ fn modified_nanos(io: &mut dyn Io, directory: &Path, name: &str) -> io::Result<i
         }
     };
     i64::try_from(nanos).map_err(io::Error::other)
+}
+
+// An i32 written as digits with an optional -, so that each number has one
+// form: Rust's parse also takes +7.
+fn parse_i32(text: &str) -> Option<i32> {
+    if text.starts_with('+') {
+        return None;
+    }
+    text.parse().ok()
 }
 
 fn digit_at(text: &str, index: i32) -> Option<i32> {

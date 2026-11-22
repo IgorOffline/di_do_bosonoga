@@ -150,7 +150,11 @@ pub(crate) enum Statement {
         branches: Vec<(Condition, Vec<Statement>)>,
         otherwise: Option<Vec<Statement>>,
     },
-    While(Condition, Vec<Statement>),
+    While {
+        condition: Condition,
+        block: Vec<Statement>,
+        offset: usize,
+    },
     AwaitNextFrame,
     Draw {
         draw: Draw,
