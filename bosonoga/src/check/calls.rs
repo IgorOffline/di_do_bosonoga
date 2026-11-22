@@ -1,7 +1,7 @@
 use super::{Callable, Checker, kinds_named, split_indexed, values_shown};
 use crate::Diagnostic;
-use crate::ast::{self, Arguments, Span};
-use crate::program::{self, Callee, Operand};
+use crate::ast::{self, Arguments, Named, Span};
+use crate::program::{self, Callee, Operand, Slot, Statement};
 use crate::value::Kind;
 
 struct Target {
@@ -9,6 +9,48 @@ struct Target {
     parameters: Vec<Kind>,
     results: Vec<Kind>,
     gives: &'static str,
+}
+
+impl Target {
+    // How a call of the target is written, as in double_fn of ... or rows at 0_i32.
+    fn example(&self, shown: &str) -> String {
+        match self.callable {
+            Callable::Array(_) | Callable::VarArray(_) => format!("{shown} at 0_i32"),
+            Callable::Function(_) if self.parameters.is_empty() => shown.to_owned(),
+            Callable::Function(_) => format!("{shown} of ..."),
+        }
+    }
+
+    fn needs_call_message(&self, shown: &str) -> String {
+        format!(
+            "'{shown}' {} {}, which call ... with ret takes for its block, each named, as in call {} with ret 0_{} as value di ... do",
+            self.gives,
+            kinds_named(&self.results),
+            self.example(shown),
+            self.results.first().map_or("i32", |kind| kind.name())
+        )
+    }
+
+    fn needs_val_message(&self, shown: &str) -> String {
+        let kind = self.results.first().map_or("i32", |kind| kind.name());
+        format!(
+            "'{shown}' {} {kind}, which val, var or set ... to takes, as in val value is {} with ret 0_{kind}",
+            self.gives,
+            self.example(shown)
+        )
+    }
+}
+
+// Where the arguments of a call end, or its name if it has none.
+fn arguments_end(name: Named<'_>, arguments: &Arguments<'_>) -> usize {
+    match arguments {
+        Arguments::None => name.0.end,
+        Arguments::Of(of, values) => match values.last() {
+            Some(last) => last.span.end,
+            None => of.end,
+        },
+        Arguments::At(_, index) => index.span.end,
+    }
 }
 
 impl<'input> Checker<'_, 'input> {
@@ -50,38 +92,51 @@ impl<'input> Checker<'_, 'input> {
         })
     }
 
+    // The callee and its checked arguments, of a call of either form.
+    fn callee(
+        &mut self,
+        name: Named<'input>,
+        arguments: &Arguments<'input>,
+    ) -> Result<(program::Call, Target), Diagnostic> {
+        let target = self.call_target(name.0, name.1)?;
+        let (callee, values) = match target.callable {
+            Callable::Array(array) => (Callee::Array(array), self.array_index(name, arguments)?),
+            Callable::VarArray(array) => {
+                (Callee::VarArray(array), self.array_index(name, arguments)?)
+            }
+            Callable::Function(code) => (
+                Callee::Function(code),
+                self.function_arguments(name, arguments, &target.parameters)?,
+            ),
+        };
+        let call = program::Call {
+            callee,
+            arguments: values,
+            offset: name.0.start,
+        };
+        Ok((call, target))
+    }
+
     pub(super) fn call(
         &mut self,
         call: &ast::Call<'input>,
     ) -> Result<(program::Call, Kind, &'static str), Diagnostic> {
-        let (span, name) = call.name;
+        let (span, _) = call.name;
         let shown = self.text(span);
-        let target = self.call_target(span, name)?;
-        let (callee, arguments) = match target.callable {
-            Callable::Array(array) => (Callee::Array(array), self.array_index(call)?),
-            Callable::VarArray(array) => (Callee::VarArray(array), self.array_index(call)?),
-            Callable::Function(code) => (
-                Callee::Function(code),
-                self.function_arguments(call, &target.parameters)?,
-            ),
-        };
+        let (checked, target) = self.callee(call.name, &call.arguments)?;
         let results = &target.results;
         let gives = target.gives;
         if results.is_empty() {
             return Self::fail(
                 span.start,
-                format!("'{shown}' returns no values, so it is called with call"),
+                format!(
+                    "'{shown}' returns no values, so it is called with call, as in call {}",
+                    target.example(shown)
+                ),
             );
         }
         if results.len() > 1 {
-            return Self::fail(
-                span.start,
-                format!(
-                    "'{shown}' {gives} {}, which call ... with ret takes for its block, each named, as in with ret 0_{} as value",
-                    kinds_named(results),
-                    results[0].name()
-                ),
-            );
+            return Self::fail(span.start, target.needs_call_message(shown));
         }
         let result = results[0];
         let text = self.text(call.taken);
@@ -95,21 +150,116 @@ impl<'input> Checker<'_, 'input> {
                 ),
             );
         }
-        let checked = program::Call {
-            callee,
-            arguments,
-            offset: span.start,
-        };
         Ok((checked, result, gives))
     }
 
-    fn array_index(&mut self, call: &ast::Call<'input>) -> Result<Vec<Operand>, Diagnostic> {
-        let (span, _) = call.name;
+    // A call statement, of a function of no values, or one that takes the
+    // values of a function or an array row of more than one for its block.
+    pub(super) fn call_statement(
+        &mut self,
+        span: Span,
+        name: Named<'input>,
+        arguments: &Arguments<'input>,
+        taken: Option<&ast::Taking<'input>>,
+    ) -> Result<Statement, Diagnostic> {
+        let shown = self.text(name.0);
+        let (call, target) = self.callee(name, arguments)?;
+        let Some(taking) = taken else {
+            if target.results.is_empty() {
+                return Ok(Statement::Invoke(program::Invoke {
+                    call,
+                    slots: Vec::new(),
+                    block: Vec::new(),
+                }));
+            }
+            if target.results.len() == 1 {
+                return Self::fail(span.start, target.needs_val_message(shown));
+            }
+            let (at, _) = self.next_token(arguments_end(name, arguments));
+            return Self::fail(at, target.needs_call_message(shown));
+        };
+        if target.results.is_empty() {
+            return Self::fail(
+                taking.with.start,
+                format!(
+                    "'{shown}' returns no values, so its call has neither with ret nor a block"
+                ),
+            );
+        }
+        if target.results.len() == 1 {
+            return Self::fail(span.start, target.needs_val_message(shown));
+        }
+        let visible = self.variables.len();
+        let slots = self.take_results(
+            &format!("'{shown}'"),
+            target.gives,
+            &target.results,
+            &taking.results,
+        )?;
+        let block = self.block(&taking.block)?;
+        self.check_variables_used(visible)?;
+        self.variables.truncate(visible);
+        Ok(Statement::Invoke(program::Invoke { call, slots, block }))
+    }
+
+    // Declares the values that with ret takes, each once by its index and
+    // type, by increasing index, and gives their (index, slot) pairs.
+    pub(super) fn take_results(
+        &mut self,
+        shown: &str,
+        gives: &str,
+        kinds: &[Kind],
+        results: &[(Span, Named<'input>)],
+    ) -> Result<Vec<(usize, Slot)>, Diagnostic> {
+        let mut slots: Vec<(usize, Slot)> = Vec::new();
+        let mut previous: Option<(usize, Kind)> = None;
+        for (result, name) in results {
+            let text = self.text(*result);
+            let mut matched = None;
+            if let Some((index, kind)) = split_indexed(text)
+                && kinds.get(index) == Some(&kind)
+            {
+                matched = Some((index, kind));
+            }
+            let Some((index, kind)) = matched else {
+                return Self::fail(
+                    result.start,
+                    format!(
+                        "{shown} {gives} {}, so it has no {text}",
+                        kinds_named(kinds)
+                    ),
+                );
+            };
+            if let Some((before, before_kind)) = previous
+                && index <= before
+            {
+                return Self::fail(
+                    result.start,
+                    format!(
+                        "the values are taken once each, by increasing index, so {text} cannot follow {before}_{}",
+                        before_kind.name()
+                    ),
+                );
+            }
+            previous = Some((index, kind));
+            self.new_name(*name)?;
+            let slot = self.allocate();
+            self.declare(*name, kind, slot, false);
+            slots.push((index, slot));
+        }
+        Ok(slots)
+    }
+
+    fn array_index(
+        &mut self,
+        (span, _): Named<'input>,
+        arguments: &Arguments<'input>,
+    ) -> Result<Vec<Operand>, Diagnostic> {
         let shown = self.text(span);
         let how = format!(
             "'{shown}' is an array, which is read at one i32 index, as in {shown} at 0_i32"
         );
-        match &call.arguments {
+        match arguments {
             Arguments::At(_, operand) => {
                 let context = format!("the index of '{shown}'");
                 let index = self.value_of_kind(operand, Kind::I32, &context)?;
@@ -125,13 +275,13 @@ impl<'input> Checker<'_, 'input> {
 
     fn function_arguments(
         &mut self,
-        call: &ast::Call<'input>,
+        (span, _): Named<'input>,
+        arguments: &Arguments<'input>,
         parameters: &[Kind],
     ) -> Result<Vec<Operand>, Diagnostic> {
-        let (span, _) = call.name;
         let shown = self.text(span);
         let taken = values_shown(parameters);
-        let values: &[ast::Operand<'input>] = match &call.arguments {
+        let values: &[ast::Operand<'input>] = match arguments {
             Arguments::At(at, _) => {
                 return Self::fail(
                     at.start,

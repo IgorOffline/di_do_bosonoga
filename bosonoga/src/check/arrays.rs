@@ -1,7 +1,7 @@
 use super::{ARRAY_VALUES_MAX, Checker, values_shown};
 use crate::Diagnostic;
 use crate::ast::{self, Named, Rows, Span, Term};
-use crate::program::{Operand, Statement, VarArray};
+use crate::program::{Operand, Slot, Statement, VarArray};
 use crate::value::{Kind, Operation, Value};
 
 fn zero_value(kind: Kind) -> Option<Value> {
@@ -150,7 +150,7 @@ impl<'input> Checker<'_, 'input> {
             Some(per_repeat) => per_repeat * repeat,
             None => 0,
         };
-        let slot = self.slot_count;
+        let slot = Slot::new(self.slot_count, self.in_global());
         self.slot_count += row_count * columns;
         let index = self.program.var_arrays.len();
         self.program.var_arrays.push(VarArray {
@@ -200,10 +200,14 @@ impl<'input> Checker<'_, 'input> {
         (operation_span, operation): (Span, Operation),
         values: &[ast::Operand<'input>],
     ) -> Result<Statement, Diagnostic> {
-        let found = match self.variable(name) {
-            Some(variable) => self.variables[variable].array.clone(),
-            None => None,
-        };
+        let mut found = None;
+        if let Some(at) = self.variable(name) {
+            let variable = &mut self.variables[at];
+            if variable.array.is_some() {
+                variable.written = true;
+            }
+            found.clone_from(&variable.array);
+        }
         let Some((array, kinds)) = found else {
             self.target((span, name))?;
             return self.expected(

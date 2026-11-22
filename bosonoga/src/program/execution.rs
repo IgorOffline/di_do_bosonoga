@@ -1,6 +1,8 @@
 use std::mem;
 
-use super::{Call, Callee, Comparison, Condition, Draw, Given, Operand, Program, Statement};
+use super::{
+    Call, Callee, Comparison, Condition, Draw, Given, Invoke, Operand, Program, Slot, Statement,
+};
 use crate::Diagnostic;
 use crate::ast::ExitStatus;
 use crate::gfx::{Scene, Shape, Window};
@@ -164,13 +166,21 @@ impl<'a> Execution<'a> {
         match operand {
             Operand::Literal(value) => value,
             Operand::Slot(slot) => {
-                if let Some(frame) = self.frames.last()
-                    && let Some(value) = frame.get(*slot)
+                if let Some(frame) = self.frame(*slot)
+                    && let Some(value) = frame.get(slot.index())
                 {
                     return value;
                 }
                 &Value::Bool(false)
             }
+        }
+    }
+
+    // The frame of a slot: of the running function or section, or the first.
+    fn frame(&self, slot: Slot) -> Option<&Vec<Value>> {
+        match slot {
+            Slot::Local(_) => self.frames.last(),
+            Slot::Global(_) => self.frames.first(),
         }
     }
 
@@ -182,20 +192,25 @@ impl<'a> Execution<'a> {
         values
     }
 
-    fn set(&mut self, slot: usize, value: Value) {
-        if let Some(frame) = self.frames.last_mut()
-            && let Some(place) = frame.get_mut(slot)
+    fn set(&mut self, slot: Slot, value: Value) {
+        let frame = match slot {
+            Slot::Local(_) => self.frames.last_mut(),
+            Slot::Global(_) => self.frames.first_mut(),
+        };
+        if let Some(found) = frame
+            && let Some(place) = found.get_mut(slot.index())
         {
             *place = value;
         }
     }
 
-    fn set_section_slot(&mut self, slot: Option<usize>, value: Value) {
+    // Sets gfx_key or gfx_delta_time, of a section, which runs in the first frame.
+    fn set_section_slot(&mut self, slot: Option<Slot>, value: Value) {
         let Some(at) = slot else {
             return;
         };
         if let Some(frame) = self.frames.first_mut()
-            && let Some(place) = frame.get_mut(at)
+            && let Some(place) = frame.get_mut(at.index())
         {
             *place = value;
         }
@@ -305,9 +320,9 @@ impl<'a> Execution<'a> {
             return Ok(Flow::Next);
         };
         let row = row_start(&array.name, array.rows, at, offset)?;
-        let start = array.slot + row * array.columns;
+        let start = array.slot.index() + row * array.columns;
         let mut values = Vec::new();
-        if let Some(frame) = self.frames.last()
+        if let Some(frame) = self.frame(array.slot)
             && let Some(row_values) = frame.get(start..start + array.columns)
         {
             values = row_values.to_vec();
@@ -448,10 +463,10 @@ impl<'a> Execution<'a> {
             return Ok(());
         };
         let row = row_start(&target.name, target.rows, self.get(index), offset)?;
-        let start = target.slot + row * target.columns;
+        let start = target.slot.after(row * target.columns);
         let values = self.values(operands);
         for (column, value) in values.into_iter().enumerate() {
-            self.set(start + column, value);
+            self.set(start.after(column), value);
         }
         Ok(())
     }
@@ -484,17 +499,39 @@ impl<'a> Execution<'a> {
         let values = self.values(&given.arguments);
         let directory = given.directory.as_deref();
         let mut results = given.builtin.evaluate(directory, &values, self.io);
-        for (index, slot) in &given.slots {
+        self.take(&mut results, &given.slots);
+        let flow = self.block(&given.block);
+        self.release(&given.slots);
+        flow
+    }
+
+    fn invoke(&mut self, invoke: &Invoke) -> Result<Flow, Diagnostic> {
+        let mut results = match self.call(&invoke.call)? {
+            Flow::Values(values) => values,
+            Flow::Next => Vec::new(),
+            flow @ (Flow::Exit(_) | Flow::Closed) => return Ok(flow),
+        };
+        self.take(&mut results, &invoke.slots);
+        let flow = self.block(&invoke.block);
+        self.release(&invoke.slots);
+        flow
+    }
+
+    // Moves the taken values into their slots, for a block to read.
+    fn take(&mut self, results: &mut [Value], slots: &[(usize, Slot)]) {
+        for (index, slot) in slots {
             if let Some(value) = results.get_mut(*index) {
                 let taken = mem::replace(value, Value::Bool(false));
                 self.set(*slot, taken);
             }
         }
-        let flow = self.block(&given.block);
-        for (_, slot) in &given.slots {
+    }
+
+    // Frees the taken values after their block, as a str can be long.
+    fn release(&mut self, slots: &[(usize, Slot)]) {
+        for (_, slot) in slots {
             self.set(*slot, Value::Bool(false));
         }
-        flow
     }
 
     fn repeat(&mut self, condition: &Condition, block: &[Statement]) -> Result<Flow, Diagnostic> {
@@ -531,7 +568,7 @@ impl<'a> Execution<'a> {
         self.output.push('\n');
     }
 
-    fn join(&mut self, slot: usize, operands: &[Operand]) {
+    fn join(&mut self, slot: Slot, operands: &[Operand]) {
         let mut joined = String::new();
         for operand in operands {
             joined.push_str(&self.get(operand).to_string());
@@ -539,7 +576,7 @@ impl<'a> Execution<'a> {
         self.set(slot, Value::Str(joined));
     }
 
-    fn assign(&mut self, slot: usize, initial: &Operand, shift_or: &[Operand]) {
+    fn assign(&mut self, slot: Slot, initial: &Operand, shift_or: &[Operand]) {
         let mut value = self.get(initial).clone();
         for flags in shift_or {
             if let Value::Flags(bits) = &mut value
@@ -551,11 +588,11 @@ impl<'a> Execution<'a> {
         self.set(slot, value);
     }
 
-    fn init_array(&mut self, slot: usize, values: &[Value], repeat: usize) {
+    fn init_array(&mut self, slot: Slot, values: &[Value], repeat: usize) {
         for row in 0..repeat {
-            let start = slot + row * values.len();
+            let start = slot.after(row * values.len());
             for (column, value) in values.iter().enumerate() {
-                self.set(start + column, value.clone());
+                self.set(start.after(column), value.clone());
             }
         }
     }
@@ -565,6 +602,7 @@ impl<'a> Execution<'a> {
             Statement::Info(operands) => self.info(operands),
             Statement::Join(slot, operands) => self.join(*slot, operands),
             Statement::Given(given) => return self.given(given),
+            Statement::Invoke(invoke) => return self.invoke(invoke),
             Statement::Calculate {
                 slot,
                 operation,

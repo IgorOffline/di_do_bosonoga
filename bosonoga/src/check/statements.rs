@@ -1,8 +1,8 @@
-use super::{Checker, split_indexed, values_shown};
+use super::{Checker, values_shown};
 use crate::Diagnostic;
 use crate::ast::{self, ExitStatus, Initial, Named, Section, Span};
 use crate::io::Builtin;
-use crate::program::{self, Operand, Statement};
+use crate::program::{self, Operand, Slot, Statement};
 use crate::value::{Conversion, Kind, Operation};
 
 impl<'input> Checker<'_, 'input> {
@@ -12,6 +12,12 @@ impl<'input> Checker<'_, 'input> {
     ) -> Result<Option<Statement>, Diagnostic> {
         let checked = match statement {
             ast::Statement::Info(values) => Statement::Info(self.operands(values)?),
+            ast::Statement::Call {
+                span,
+                name,
+                arguments,
+                taking,
+            } => self.call_statement(*span, *name, arguments, taking.as_ref())?,
             ast::Statement::Join(name, values) => {
                 let (slot, kind) = self.target(*name)?;
                 if kind != Kind::Str {
@@ -153,28 +159,7 @@ impl<'input> Checker<'_, 'input> {
             arguments.push(self.value_of_kind(value, *kind, word)?);
         }
         let visible = self.variables.len();
-        let mut slots: Vec<(usize, usize)> = Vec::new();
-        for (result, name) in results {
-            let text = self.text(*result);
-            let mut matched = None;
-            if let Some((index, kind)) = split_indexed(text)
-                && kinds.get(index) == Some(&kind)
-            {
-                matched = Some((index, kind));
-            }
-            let Some((index, kind)) = matched else {
-                return Self::fail(result.start, format!("{word} has no result {text}"));
-            };
-            for (known, _) in &slots {
-                if *known == index {
-                    return Self::fail(result.start, format!("{text} is already taken"));
-                }
-            }
-            self.new_name(*name)?;
-            let slot = self.allocate();
-            self.declare(*name, kind, slot, false);
-            slots.push((index, slot));
-        }
+        let slots = self.take_results(&format!("'{word}'"), "gives", kinds, results)?;
         let checked = self.block(block)?;
         self.check_variables_used(visible)?;
         self.variables.truncate(visible);
@@ -402,7 +387,7 @@ impl<'input> Checker<'_, 'input> {
 
     fn conversion(
         &mut self,
-        slot: usize,
+        slot: Slot,
         (span, conversion): (Span, Conversion),
         values: &[ast::Operand<'input>],
     ) -> Result<(Statement, Kind), Diagnostic> {

@@ -1,0 +1,49 @@
+// from_global.bosonoga
+
+bosonoga_global
+di
+  var total is 0_i32
+  var count is 0_i32
+  var history is array 0_i32 with_len_col 4_i32
+  val step is 10_i32
+do
+
+// Adds to the total and keeps it in the history.
+def add_fn amount_i32 with from_global total count history step ret 0_i32
+di
+  set total to_add total amount_i32 step
+  set history at count to total
+  set count to_add count 1_i32
+  return total
+do
+
+def recorded_fn index_i32 with from_global history ret 0_i32
+di
+  val value is history at index_i32 with ret 0_i32
+  return value
+do
+
+// The globals are the same in each frame of a recursion.
+def fill_fn times_i32 with from_global count ret_void
+di
+  if times_i32 gt 0_i32
+  di
+    val added is add_fn of 1_i32 with ret 0_i32
+    info "added "_str added " as "_str count
+    var less is times_i32
+    set less to_subtract less 1_i32
+    call fill_fn of less
+  do
+do
+
+bosonoga_main
+di
+  call fill_fn of 2_i32
+  val first is recorded_fn of 0_i32 with ret 0_i32
+  val second is recorded_fn of 1_i32 with ret 0_i32
+  if total eq 22_i32 and count eq 2_i32 and first eq 11_i32 and second eq 22_i32
+  di
+    return exit_success
+  do
+  return exit_failure
+do

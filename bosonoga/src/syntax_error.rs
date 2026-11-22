@@ -71,6 +71,13 @@ fn wanted(expected: &[String], before: &[Tok<'_>]) -> String {
     }
     let literal = has(expected, "literal");
     let indexed_type = has(expected, "indexed_type");
+    // After with ret 0_bool as found, which another taken value or the block follows.
+    if has(expected, "di")
+        && indexed_type
+        && let [.., Tok::As, Tok::Name(_)] = before
+    {
+        return "another value to take, like 1_i32 as count, or di".to_owned();
+    }
     if has(expected, "di") && !literal && !indexed_type {
         return "di".to_owned();
     }

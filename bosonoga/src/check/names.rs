@@ -1,6 +1,7 @@
 use super::{Checker, Declaration, is_function_name};
 use crate::Diagnostic;
 use crate::ast::{Named, Span};
+use crate::program::Slot;
 use crate::settings::Asset;
 use crate::value::{Kind, Value};
 
@@ -182,7 +183,10 @@ impl<'input> Checker<'_, 'input> {
         Ok(())
     }
 
-    pub(super) fn target(&self, (span, name): Named<'input>) -> Result<(usize, Kind), Diagnostic> {
+    pub(super) fn target(
+        &mut self,
+        (span, name): Named<'input>,
+    ) -> Result<(Slot, Kind), Diagnostic> {
         if self.is_reserved(name) {
             return self.expected_at(span, "a variable name");
         }
@@ -218,6 +222,8 @@ impl<'input> Checker<'_, 'input> {
         if !variable.mutable {
             return Self::fail(span.start, format!("'{shown}' is a val and cannot be set"));
         }
-        Ok((variable.slot, variable.kind))
+        let found = (variable.slot, variable.kind);
+        self.variables[index].written = true;
+        Ok(found)
     }
 }

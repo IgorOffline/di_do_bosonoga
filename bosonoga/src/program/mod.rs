@@ -8,10 +8,47 @@ use crate::settings::Asset;
 use crate::sources::Sources;
 use crate::value::{Compare, Conversion, Operation, Value};
 
+// Where a variable lives: in the frame of the running function or section,
+// or, for a variable of bosonoga_global, in the first frame, which a def
+// reaches with from_global.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Slot {
+    Local(usize),
+    Global(usize),
+}
+
+impl Slot {
+    pub(crate) fn new(index: usize, global: bool) -> Self {
+        if global {
+            Slot::Global(index)
+        } else {
+            Slot::Local(index)
+        }
+    }
+
+    pub(crate) fn is_global(self) -> bool {
+        matches!(self, Slot::Global(_))
+    }
+
+    pub(crate) fn index(self) -> usize {
+        match self {
+            Slot::Local(index) | Slot::Global(index) => index,
+        }
+    }
+
+    // The slot that is offset after this one, in the same frame.
+    pub(crate) fn after(self, offset: usize) -> Self {
+        match self {
+            Slot::Local(index) => Slot::Local(index + offset),
+            Slot::Global(index) => Slot::Global(index + offset),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum Operand {
     Literal(Value),
-    Slot(usize),
+    Slot(Slot),
 }
 
 #[derive(Debug)]
@@ -57,39 +94,49 @@ pub(crate) struct Given {
     pub(crate) builtin: Builtin,
     pub(crate) directory: Option<std::path::PathBuf>,
     pub(crate) arguments: Vec<Operand>,
-    pub(crate) slots: Vec<(usize, usize)>,
+    pub(crate) slots: Vec<(usize, Slot)>,
+    pub(crate) block: Vec<Statement>,
+}
+
+// A call statement: the values it takes by (index, slot), then its block.
+// A function of no values takes none and has no block.
+#[derive(Debug)]
+pub(crate) struct Invoke {
+    pub(crate) call: Call,
+    pub(crate) slots: Vec<(usize, Slot)>,
     pub(crate) block: Vec<Statement>,
 }
 
 #[derive(Debug)]
 pub(crate) enum Statement {
     Info(Vec<Operand>),
-    Join(usize, Vec<Operand>),
+    Invoke(Invoke),
+    Join(Slot, Vec<Operand>),
     Given(Given),
     Calculate {
-        slot: usize,
+        slot: Slot,
         operation: Operation,
         values: Vec<Operand>,
         offset: usize,
     },
     Convert {
-        slot: usize,
+        slot: Slot,
         conversion: Conversion,
         left: Operand,
         right: Option<Operand>,
         offset: usize,
     },
     Assign {
-        slot: usize,
+        slot: Slot,
         initial: Operand,
         shift_or: Vec<Operand>,
     },
     Call {
-        slot: usize,
+        slot: Slot,
         call: Call,
     },
     ArrayInit {
-        slot: usize,
+        slot: Slot,
         values: Vec<Value>,
         repeat: usize,
     },
@@ -131,7 +178,7 @@ pub(crate) struct Array {
 #[derive(Debug)]
 pub(crate) struct VarArray {
     pub(crate) name: String,
-    pub(crate) slot: usize,
+    pub(crate) slot: Slot,
     pub(crate) columns: usize,
     pub(crate) rows: usize,
 }
@@ -152,8 +199,8 @@ pub struct Program {
     pub(crate) sections: Sections,
     pub(crate) is_gfx: bool,
     pub(crate) slot_count: usize,
-    pub(crate) key_slot: Option<usize>,
-    pub(crate) delta_time_slot: Option<usize>,
+    pub(crate) key_slot: Option<Slot>,
+    pub(crate) delta_time_slot: Option<Slot>,
     pub(crate) functions: Vec<Function>,
     pub(crate) arrays: Vec<Array>,
     pub(crate) var_arrays: Vec<VarArray>,

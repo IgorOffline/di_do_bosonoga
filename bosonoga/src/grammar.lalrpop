@@ -3,7 +3,7 @@ use lalrpop_util::ParseError;
 use crate::Diagnostic;
 use crate::ast::{
     Arguments, Block, Call, Comparison, Condition, Draw, ExitStatus, File, Initial, Item, Named,
-    Operand, Results, Rows, Section, Span, Statement, Term,
+    Operand, Results, Rows, Section, Span, Statement, Taking, Term,
 };
 use crate::lexer::Tok;
 use crate::value::{Compare, Conversion, Operation, Value};
@@ -19,6 +19,7 @@ extern {
         "di" => Tok::Di,
         "do" => Tok::Do,
         "info" => Tok::Info,
+        "call" => Tok::Call,
         "given_operation" => Tok::Given(<crate::io::Builtin>),
         "to_join" => Tok::Join,
         "as" => Tok::As,
@@ -36,6 +37,7 @@ extern {
         "pub" => Tok::Pub,
         "mod" => Tok::Mod,
         "def" => Tok::Def,
+        "from_global" => Tok::FromGlobal,
         "ret" => Tok::Ret,
         "ret_void" => Tok::RetVoid,
         "of" => Tok::Of,
@@ -80,13 +82,17 @@ Item: Item<'input> = {
         }),
     },
     <public:Public?> "const" <name:Named> "is" <value:Operand> => Item::Const { public, name, value },
-    <public:Public?> "def" <name:Named> <parameters:Named*> <results:Results> <block:Block> =>
-        Item::Def { public, name, parameters, results, block },
+    <public:Public?> "def" <name:Named> <parameters:Named*> <globals:FromGlobal?> <results:Results>
+        <block:Block> =>
+        Item::Def { public, name, parameters, globals: globals.unwrap_or_default(), results, block },
     <public:Public?> "val" <name:Named> "is" "array" <kinds:Indexed+> "di" <rows:Row+> "do" =>
         Item::Array { public, name, kinds, rows },
     <start:@L> <section:"section"> <end:@R> <block:Block> <after:@R> =>
         Item::Section(Span { start, end }, section, block, after),
 };
+
+// The variables of bosonoga_global that a def reads or sets.
+FromGlobal: Vec<Named<'input>> = "with" "from_global" <Named+>;
 
 Public: Span = <start:@L> "pub" <end:@R> => Span { start, end };
 
@@ -121,6 +127,8 @@ Block: Block<'input> =
 
 Statement: Statement<'input> = {
     "info" <values:Operand+> => Statement::Info(values),
+    <start:@L> "call" <end:@R> <name:Named> <arguments:CallArguments> <taking:Taking?> =>
+        Statement::Call { span: Span { start, end }, name, arguments, taking },
     "set" <name:Named> "to_join" <values:Operand+> => Statement::Join(name, values),
     <operation:Spanned<"given_operation">> <values:Operand+> "with" "ret"
         <results:GivenResult+> <block:Block> => Statement::Given { operation, values, results, block },
@@ -179,6 +187,16 @@ Statement: Statement<'input> = {
     <start:@L> "return" <end:@R> <status:Status> => Statement::Return(Span { start, end }, status),
     <start:@L> "return" <end:@R> <values:Operand*> => Statement::ReturnValues(Span { start, end }, values),
 };
+
+CallArguments: Arguments<'input> = {
+    => Arguments::None,
+    <start:@L> "of" <end:@R> <values:Operand+> => Arguments::Of(Span { start, end }, values),
+    <start:@L> "at" <end:@R> <index:Operand> => Arguments::At(Span { start, end }, index),
+};
+
+Taking: Taking<'input> =
+    <start:@L> "with" <end:@R> "ret" <results:GivenResult+> <block:Block> =>
+        Taking { with: Span { start, end }, results, block };
 
 GivenResult: (Span, Named<'input>) = <index:Indexed> "as" <name:Named> => (index, name);
 

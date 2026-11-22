@@ -99,6 +99,15 @@ pub struct Call<'input> {
     pub taken: Span,
 }
 
+// The values of a call statement, taken for its block, as in
+// with ret 0_bool as found 1_i32 as number di ... do.
+#[derive(Debug, PartialEq)]
+pub struct Taking<'input> {
+    pub with: Span,
+    pub results: Vec<(Span, Named<'input>)>,
+    pub block: Block<'input>,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Initial<'input> {
     Value {
@@ -122,6 +131,12 @@ pub enum Draw {
 #[derive(Debug, PartialEq)]
 pub enum Statement<'input> {
     Info(Vec<Operand<'input>>),
+    Call {
+        span: Span,
+        name: Named<'input>,
+        arguments: Arguments<'input>,
+        taking: Option<Taking<'input>>,
+    },
     Join(Named<'input>, Vec<Operand<'input>>),
     Given {
         operation: (Span, crate::io::Builtin),
@@ -203,6 +218,7 @@ pub enum Item<'input> {
         public: Option<Span>,
         name: Named<'input>,
         parameters: Vec<Named<'input>>,
+        globals: Vec<Named<'input>>,
         results: (Span, Results),
         block: Block<'input>,
     },

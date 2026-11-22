@@ -8,7 +8,7 @@ mod values;
 
 use crate::ast::{self, Section, Span};
 use crate::lexer::{Lexer, Tok};
-use crate::program::{Program, Statement};
+use crate::program::{Program, Slot, Statement};
 use crate::settings::Settings;
 use crate::sources::Sources;
 use crate::value::{Kind, Value};
@@ -30,10 +30,14 @@ struct Declaration {
 struct Variable<'input> {
     name: &'input str,
     kind: Kind,
-    slot: usize,
+    slot: Slot,
     mutable: bool,
     array: Option<(usize, Vec<Kind>)>,
     declaration: Declaration,
+    // A variable of bosonoga_global that a def lists in with from_global,
+    // which is used once it is read or set.
+    captured: bool,
+    written: bool,
 }
 
 struct Constant<'input> {
@@ -320,18 +324,17 @@ impl<'a, 'input> Checker<'a, 'input> {
         }
     }
 
-    fn allocate(&mut self) -> usize {
-        self.slot_count += 1;
-        self.slot_count - 1
+    // Whether a declaration here is a variable of bosonoga_global.
+    fn in_global(&self) -> bool {
+        self.section == Some(Section::Global) && self.function.is_none()
     }
 
-    fn declare(
-        &mut self,
-        (span, name): ast::Named<'input>,
-        kind: Kind,
-        slot: usize,
-        mutable: bool,
-    ) {
+    fn allocate(&mut self) -> Slot {
+        self.slot_count += 1;
+        Slot::new(self.slot_count - 1, self.in_global())
+    }
+
+    fn declare(&mut self, (span, name): ast::Named<'input>, kind: Kind, slot: Slot, mutable: bool) {
         let declaration = self.declaration(span, false);
         self.variables.push(Variable {
             name,
@@ -340,6 +343,8 @@ impl<'a, 'input> Checker<'a, 'input> {
             mutable,
             array: None,
             declaration,
+            captured: false,
+            written: false,
         });
     }
 
@@ -359,8 +364,18 @@ impl<'a, 'input> Checker<'a, 'input> {
 
     fn check_variables_used(&self, first: usize) -> Result<(), Diagnostic> {
         for variable in self.variables.iter().skip(first) {
-            if !variable.declaration.used {
-                let span = variable.declaration.span;
+            let span = variable.declaration.span;
+            if variable.captured {
+                if !variable.declaration.used && !variable.written {
+                    return Self::fail(
+                        span.start,
+                        format!(
+                            "'{}' is in with from_global, but the function never uses it",
+                            self.text(span)
+                        ),
+                    );
+                }
+            } else if !variable.declaration.used {
                 return Self::fail(span.start, format!("'{}' is never read", self.text(span)));
             }
         }

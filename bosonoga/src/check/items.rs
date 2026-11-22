@@ -1,7 +1,8 @@
 use std::mem;
 
 use super::{
-    Callable, Checker, FUNCTION_VALUES_MAX, Function, Scope, is_function_name, split_indexed,
+    Callable, Checker, FUNCTION_VALUES_MAX, Function, Scope, Variable, is_function_name,
+    split_indexed,
 };
 use crate::Diagnostic;
 use crate::ast::{self, Item, Named, Results, Section, Span};
@@ -52,9 +53,10 @@ impl<'input> Checker<'_, 'input> {
                     public,
                     name,
                     parameters,
+                    globals,
                     results,
                     block,
-                } => self.def(*public, *name, parameters, results, block)?,
+                } => self.def(*public, *name, parameters, globals, results, block)?,
                 Item::Array {
                     public,
                     name,
@@ -205,6 +207,7 @@ impl<'input> Checker<'_, 'input> {
         public: Option<Span>,
         (span, name): Named<'input>,
         parameters: &[Named<'input>],
+        globals: &[Named<'input>],
         results: &(Span, Results),
         block: &[ast::Statement<'input>],
     ) -> Result<(), Diagnostic> {
@@ -246,12 +249,88 @@ impl<'input> Checker<'_, 'input> {
         let outer_variables = mem::take(&mut self.variables);
         let outer_slot_count = mem::replace(&mut self.slot_count, 0);
         let outer_section = self.section.take();
-        let checked = self.function_body((span, name), is_public, parameters, &results.1, block);
+        let checked = self.function_body(
+            (span, name),
+            is_public,
+            parameters,
+            (globals, &outer_variables),
+            &results.1,
+            block,
+        );
+        // A global that the function reads is read, as its other uses are.
+        let mut read = Vec::new();
+        for variable in &self.variables {
+            if variable.captured && variable.declaration.used {
+                read.push(variable.name);
+            }
+        }
         self.section = outer_section;
         self.slot_count = outer_slot_count;
         self.variables = outer_variables;
         self.function = None;
+        for global in read {
+            if let Some(index) = self.variable_any(global) {
+                self.variables[index].declaration.used = true;
+            }
+        }
         checked
+    }
+
+    // Declares a variable of bosonoga_global that with from_global lists, in
+    // its first frame, which the function reads and sets.
+    fn capture(
+        &mut self,
+        (span, name): Named<'input>,
+        outer: &[Variable<'input>],
+    ) -> Result<(), Diagnostic> {
+        let shown = self.text(span);
+        if self.is_reserved(name) {
+            return self.expected_at(span, "a variable of bosonoga_global");
+        }
+        if let Some(index) = self.variable_any(name) {
+            if self.variables[index].captured {
+                return Self::fail(
+                    span.start,
+                    format!("'{shown}' is already in with from_global"),
+                );
+            }
+            return Self::fail(
+                span.start,
+                format!("'{shown}' is a parameter, so it is not also in with from_global"),
+            );
+        }
+        let mut found = None;
+        for variable in outer {
+            if variable.name == name
+                && variable.slot.is_global()
+                && self.visible(&variable.declaration)
+            {
+                found = Some(variable);
+            }
+        }
+        let Some(global) = found else {
+            let before = if self.seen.contains(&Section::Global) {
+                ""
+            } else {
+                ", and with from_global needs bosonoga_global before the function"
+            };
+            return Self::fail(
+                span.start,
+                format!("'{shown}' is not a variable of bosonoga_global{before}"),
+            );
+        };
+        let variable = Variable {
+            name,
+            kind: global.kind,
+            slot: global.slot,
+            mutable: global.mutable,
+            array: global.array.clone(),
+            declaration: self.declaration(span, false),
+            captured: true,
+            written: false,
+        };
+        self.variables.push(variable);
+        Ok(())
     }
 
     fn function_body(
@@ -259,6 +338,7 @@ impl<'input> Checker<'_, 'input> {
         (span, name): Named<'input>,
         public: bool,
         parameters: &[Named<'input>],
+        (globals, outer): (&[Named<'input>], &[Variable<'input>]),
         results: &Results,
         block: &[ast::Statement<'input>],
     ) -> Result<(), Diagnostic> {
@@ -280,6 +360,9 @@ impl<'input> Checker<'_, 'input> {
             let slot = self.allocate();
             self.declare(*parameter, kind, slot, true);
             kinds.push(kind);
+        }
+        for global in globals {
+            self.capture(*global, outer)?;
         }
         let result_kinds = match results {
             Results::Void => Vec::new(),
