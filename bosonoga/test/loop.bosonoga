@@ -6,8 +6,8 @@ di
   var sum is 0_i32
   while count lt 10_i32
   di
-    set count to_add count 1_i32
-    set sum to_add sum count
+    set count to_add 1_i32
+    set sum to_add count
   do
   if sum eq 55_i32
   di

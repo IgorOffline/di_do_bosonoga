@@ -11,9 +11,9 @@ do
 // Adds to the total and keeps it in the history.
 def add_fn amount_i32 with from_global total count history step ret 0_i32
 di
-  set total to_add total amount_i32 step
+  set total to_add amount_i32 step
   set history at count to total
-  set count to_add count 1_i32
+  set count to_add 1_i32
   return total
 do
 
@@ -31,7 +31,7 @@ di
     val added is add_fn of 1_i32 with ret 0_i32
     info "added "_str added " as "_str count
     var less is times_i32
-    set less to_subtract less 1_i32
+    set less to_subtract 1_i32
     call fill_fn of less
   do
 do

@@ -90,11 +90,9 @@ impl Conversion {
                 Kind::Color => "to_optional_color",
                 Kind::Str => "to_optional_str",
                 Kind::Bool => "to_optional_bool",
-                Kind::Flags
-                | Kind::InputKey
-                | Kind::Font
-                | Kind::Icon
-                | Kind::Optional(_) => "to_optional",
+                Kind::Flags | Kind::InputKey | Kind::Font | Kind::Icon | Kind::Optional(_) => {
+                    "to_optional"
+                }
             };
         }
         for (name, conversion) in CONVERSIONS {

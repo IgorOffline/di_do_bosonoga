@@ -433,21 +433,21 @@ impl<'input> Checker<'_, 'input> {
                 ),
             );
         }
-        let mut operands = Vec::new();
+        // As += of C, set count to_add 1_i32 2_i32 adds 1 and 2 to count, so
+        // the operation starts from the variable, which is not repeated.
+        let mut operands = vec![Operand::Slot(slot)];
         for value in values {
+            if let ast::Term::Name(given) = value.term
+                && given == name.1
+            {
+                return Self::fail(
+                    value.span.start,
+                    format!(
+                        "set {shown} {word} starts from '{shown}', so '{shown}' is not repeated, as in set {shown} {word} 1_i32"
+                    ),
+                );
+            }
             operands.push(self.value_of_kind(value, kind, word)?);
-        }
-        if operands.len() == 1 {
-            if operation == Operation::Modulo {
-                let mut after = span.end;
-                if let Some(first) = values.first() {
-                    after = first.span.end;
-                }
-                return self.expected(after, "a value to divide by");
-            }
-            if let Some(identity) = operation.identity(kind) {
-                operands.insert(0, Operand::Literal(identity));
-            }
         }
         Ok(Statement::Calculate {
             slot,

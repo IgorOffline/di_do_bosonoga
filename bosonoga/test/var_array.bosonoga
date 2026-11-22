@@ -9,8 +9,8 @@ di
   while index lt 4_i32
   di
     val count is counts at index with ret 0_i32
-    set total to_add total count
-    set index to_add index 1_i32
+    set total to_add count
+    set index to_add 1_i32
   do
   var pairs is array 0_i32
   di
@@ -19,7 +19,7 @@ di
   do
   var last is 0_i32
   set last to pairs at 1_i32 with ret 0_i32
-  set total to_add total last
+  set total to_add last
   if total eq 12_i32
   di
     return exit_success

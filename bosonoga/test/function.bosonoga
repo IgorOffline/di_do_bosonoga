@@ -5,7 +5,7 @@ const board_radius is 4_i32
 def in_bounds_fn q_i32 r_i32 ret 0_bool
 di
   var s is 0_i32
-  set s to_subtract s q_i32 r_i32
+  set s to_subtract q_i32 r_i32
   var steps is math_to_abs q_i32
   var r_steps is math_to_abs r_i32
   var s_steps is math_to_abs s
@@ -25,10 +25,10 @@ di
     return 1_i64
   do
   var smaller is n_i64
-  set smaller to_subtract smaller 1_i64
+  set smaller to_subtract 1_i64
   val rest is factorial_fn of smaller with ret 0_i64
   var product is n_i64
-  set product to_multiply product rest
+  set product to_multiply rest
   return product
 do
 

@@ -71,7 +71,10 @@ impl<'input> Checker<'_, 'input> {
         {
             return format!("so write {present}");
         }
-        format!("so convert it first, as in val present is to_{} {shown}", kind.name())
+        format!(
+            "so convert it first, as in val present is to_{} {shown}",
+            kind.name()
+        )
     }
 
     // A value that info, to_join or gfx_draw_text shows, which an optional is not.

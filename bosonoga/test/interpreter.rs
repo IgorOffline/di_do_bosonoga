@@ -458,3 +458,25 @@ fn optional_make_diagnostics() {
     ];
     assert_diagnostics(&cases);
 }
+
+// An operation starts from its variable, which is not repeated.
+#[test]
+fn arithmetic_diagnostics() {
+    let main = |body: &str| {
+        format!(
+            "bosonoga_main\ndi\n  var count is 1_i32\n{body}\n  info count\n  return exit_success\ndo\n"
+        )
+    };
+    let cases = [
+        (
+            main("  set count to_add count 1_i32"),
+            "test:4:20: set count to_add starts from 'count', so 'count' is not repeated, as in set count to_add 1_i32",
+        ),
+        (
+            main("  set count to_multiply 2_i32 count"),
+            "test:4:31: set count to_multiply starts from 'count', so 'count' is not repeated",
+        ),
+        (main("  set count to_add"), "test:5:3: expected"),
+    ];
+    assert_diagnostics(&cases);
+}

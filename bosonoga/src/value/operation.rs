@@ -26,14 +26,6 @@ impl Operation {
         })
     }
 
-    pub(crate) fn identity(self, kind: Kind) -> Option<Value> {
-        match self {
-            Self::Subtract => Value::one(kind, false),
-            Self::Divide => Value::one(kind, true),
-            Self::Copy | Self::Add | Self::Multiply | Self::Modulo => None,
-        }
-    }
-
     fn divides(self) -> bool {
         self == Self::Divide || self == Self::Modulo
     }

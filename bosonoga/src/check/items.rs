@@ -9,8 +9,7 @@ use crate::ast::{self, Item, Named, Results, Section, Span};
 use crate::program::{self, Array, Operand};
 use crate::value::Kind;
 
-const OPTIONAL_TYPES: &str =
-    "optional_ and i32, i64, u32, u64, f32, f64, bool, str or color, as in 0_optional_i32 or count_optional_i32";
+const OPTIONAL_TYPES: &str = "optional_ and i32, i64, u32, u64, f32, f64, bool, str or color, as in 0_optional_i32 or count_optional_i32";
 
 fn parameter_kind(name: &str) -> Option<Kind> {
     let bytes = name.as_bytes();

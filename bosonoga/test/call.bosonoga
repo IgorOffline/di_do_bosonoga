@@ -9,9 +9,9 @@ do
 def divide_fn dividend_i32 divisor_i32 ret 0_i32 1_i32
 di
   var quotient is dividend_i32
-  set quotient to_divide dividend_i32 divisor_i32
+  set quotient to_divide divisor_i32
   var remainder is dividend_i32
-  set remainder to_mod dividend_i32 divisor_i32
+  set remainder to_mod divisor_i32
   return quotient remainder
 do
 
@@ -42,7 +42,7 @@ di
       if has_second
       di
         var sum is first
-        set sum to_add sum second
+        set sum to_add second
         return true_bool sum
       do
     do
@@ -56,7 +56,7 @@ di
   if from_i32 gt 0_i32
   di
     var next is from_i32
-    set next to_subtract next 1_i32
+    set next to_subtract 1_i32
     call countdown_fn of next
   do
 do

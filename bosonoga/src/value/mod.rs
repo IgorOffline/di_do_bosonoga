@@ -78,11 +78,9 @@ impl Kind {
             Kind::Color => "optional_color",
             Kind::Str => "optional_str",
             Kind::Bool => "optional_bool",
-            Kind::Flags
-            | Kind::InputKey
-            | Kind::Font
-            | Kind::Icon
-            | Kind::Optional(_) => "optional",
+            Kind::Flags | Kind::InputKey | Kind::Font | Kind::Icon | Kind::Optional(_) => {
+                "optional"
+            }
         }
     }
 
@@ -158,8 +156,14 @@ pub enum Value {
     Str(String),
     Bool(bool),
     InputKey(u32),
-    Font { index: usize, text: String },
-    Icon { index: usize, text: String },
+    Font {
+        index: usize,
+        text: String,
+    },
+    Icon {
+        index: usize,
+        text: String,
+    },
     // An optional of the kind inner, absent as nihil_i32 or present, as 7_optional_i32.
     Optional {
         inner: Kind,
@@ -251,14 +255,6 @@ impl Value {
             | Kind::Font
             | Kind::Icon
             | Kind::Optional(_) => None,
-        }
-    }
-
-    fn one(kind: Kind, one: bool) -> Option<Value> {
-        if kind.is_integer() {
-            Value::whole(kind, i128::from(one))
-        } else {
-            Value::real(kind, f64::from(u8::from(one)))
         }
     }
 
