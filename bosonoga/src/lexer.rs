@@ -73,7 +73,6 @@ const RESERVED: &[&str] = &[
     "len_col",
     "len_row",
     "expect",
-    "none",
     "optional",
 ];
 
@@ -330,22 +329,26 @@ fn is_result_name(text: &str) -> bool {
     }
 }
 
-// An absent optional, as none_optional_i32.
-fn none_literal(text: &str, start: usize) -> Result<Option<Value>, Diagnostic> {
-    let Some(name) = text.strip_prefix("none_") else {
+// An absent optional, as nihil_i32 of optional_i32. The word nihil says
+// optional, so its suffix is the type of the value that is absent.
+fn nihil_literal(text: &str, start: usize) -> Result<Option<Value>, Diagnostic> {
+    let Some(name) = text.strip_prefix("nihil_") else {
         return Ok(None);
     };
-    if !name.starts_with("optional_") {
-        return Ok(None);
+    if let Some(inner) = name.strip_prefix("optional_") {
+        return Err(Diagnostic::new(
+            start,
+            format!("nihil is always optional, so it is written nihil_{inner}, not {text}"),
+        ));
     }
-    match Kind::named(name) {
+    match Kind::named(name).and_then(Kind::optional) {
         Some(Kind::Optional(inner)) => Ok(Some(Value::Optional {
             inner: *inner,
             value: None,
         })),
         Some(_) | None => Err(Diagnostic::new(
             start,
-            "none is optional_ and i32, i64, u32, u64, f32, f64, bool, str or color, as in none_optional_i32",
+            "nihil is followed by the type that is absent, i32, i64, u32, u64, f32, f64, bool, str or color, as in nihil_i32",
         )),
     }
 }
@@ -439,8 +442,8 @@ impl<'input> Iterator for Lexer<'input> {
             Some(_) if self.at_number() => self.lex_number(start),
             Some(b) if b.is_ascii_alphabetic() || b == b'_' => {
                 let text = self.consume_word();
-                match none_literal(text, self.base + start) {
-                    Ok(Some(none)) => Ok(Tok::Literal(none)),
+                match nihil_literal(text, self.base + start) {
+                    Ok(Some(nihil)) => Ok(Tok::Literal(nihil)),
                     Ok(None) => Ok(word(text)),
                     Err(diagnostic) => Err(diagnostic),
                 }

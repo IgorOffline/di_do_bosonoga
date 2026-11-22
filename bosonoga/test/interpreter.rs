@@ -364,8 +364,20 @@ fn optional_read_diagnostics() {
             "test:9:16: set ... to needs optional_i32, but '1_i64' is i64",
         ),
         (
-            main("  if some count as n di\n info n\n do\n  val x is none_optional_flags"),
-            "test:11:12: none is optional_ and i32, i64, u32, u64, f32, f64, bool, str or color, as in none_optional_i32",
+            main("  if some count as n di\n info n\n do\n  val x is nihil_flags"),
+            "test:11:12: nihil is followed by the type that is absent, i32, i64, u32, u64, f32, f64, bool, str or color, as in nihil_i32",
+        ),
+        (
+            main("  val x is nihil_optional_i32\n  info count"),
+            "test:8:12: nihil is always optional, so it is written nihil_i32, not nihil_optional_i32",
+        ),
+        (
+            main("  val nihil_count is 1_i32\n  info nihil_count count"),
+            "test:8:7: nihil is followed by the type that is absent",
+        ),
+        (
+            "def f_fn ret 0_i32\ndi\n  return nihil_i32\ndo\n".to_owned(),
+            "test:3:10: return needs i32, but 'nihil_i32' is optional_i32, as nihil_i32 is an absent optional_i32",
         ),
         (
             main("  var rows is array 0_optional_i32 with_len_col 2_i32\n  info count"),

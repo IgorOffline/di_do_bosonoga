@@ -2,10 +2,10 @@
 
 bosonoga_global
 di
-  var best is none_optional_i32
+  var best is nihil_i32
 do
 
-const no_name is none_optional_str
+const no_name is nihil_str
 const default_ratio is 1d5_optional_f32
 
 // A number that may be missing, as Rust's Option<i32>.
@@ -19,7 +19,7 @@ di
       return found
     do
   do
-  return none_optional_i32
+  return nihil_i32
 do
 
 // An optional parameter, given a present literal, none or an optional.
@@ -86,9 +86,9 @@ di
   val also_seven is or_zero_fn of seven with ret 0_i32
   val three is or_zero_fn of 3_optional_i32 with ret 0_i32
   val negative is or_zero_fn of -4_optional_i32 with ret 0_i32
-  val none_given is or_zero_fn of none_optional_i32 with ret 0_i32
+  val absent_given is or_zero_fn of nihil_i32 with ret 0_i32
   if zero not_eq 0_i32 or also_seven not_eq 7_i32 or three not_eq 3_i32
-    or negative not_eq -4_i32 or none_given not_eq 0_i32
+    or negative not_eq -4_i32 or absent_given not_eq 0_i32
   di
     set ok to false_bool
   do
@@ -130,7 +130,7 @@ di
       set ok to false_bool
     do
   do
-  set label to none_optional_str
+  set label to nihil_str
   if some label
   di
     set ok to false_bool

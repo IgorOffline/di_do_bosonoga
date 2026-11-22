@@ -160,7 +160,7 @@ pub enum Value {
     InputKey(u32),
     Font { index: usize, text: String },
     Icon { index: usize, text: String },
-    // An optional of the kind inner, absent as none_optional_i32 or present.
+    // An optional of the kind inner, absent as nihil_i32 or present, as 7_optional_i32.
     Optional {
         inner: Kind,
         value: Option<Box<Value>>,
@@ -392,7 +392,7 @@ impl Display for Value {
             }
             Value::InputKey(v) => f.write_str(crate::key::name(*v).unwrap_or_default()),
             Value::Optional { value: Some(v), .. } => write!(f, "{v}"),
-            Value::Optional { value: None, .. } => f.write_str("none"),
+            Value::Optional { value: None, .. } => f.write_str("nihil"),
         }
     }
 }

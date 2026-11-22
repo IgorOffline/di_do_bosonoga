@@ -44,12 +44,17 @@ impl<'input> Checker<'_, 'input> {
             );
         }
         if actual != kind {
+            let shown = self.text(operand.span);
+            // nihil_i32 says i32, but is an optional_i32 that is absent.
+            let mut nihil = String::new();
+            if let Term::Literal(Value::Optional { value: None, .. }) = operand.term {
+                nihil = format!(", as {shown} is an absent {}", actual.name());
+            }
             return Self::fail(
                 operand.span.start,
                 format!(
-                    "{context} needs {}, but '{}' is {}",
+                    "{context} needs {}, but '{shown}' is {}{nihil}",
                     kind.name(),
-                    self.text(operand.span),
                     actual.name()
                 ),
             );
