@@ -3,7 +3,7 @@ use crate::Diagnostic;
 use crate::ast::{self, ExitStatus, Initial, Named, Section, Span};
 use crate::io::Builtin;
 use crate::program::{self, Operand, Slot, Statement};
-use crate::value::{Conversion, Kind, Operation};
+use crate::value::{Compare, Conversion, Kind, Operation, Value};
 
 impl<'input> Checker<'_, 'input> {
     pub(super) fn statement(
@@ -11,7 +11,7 @@ impl<'input> Checker<'_, 'input> {
         statement: &ast::Statement<'input>,
     ) -> Result<Option<Statement>, Diagnostic> {
         let checked = match statement {
-            ast::Statement::Info(values) => Statement::Info(self.operands(values)?),
+            ast::Statement::Info(values) => Statement::Info(self.operands(values, "info")?),
             ast::Statement::Call {
                 span,
                 name,
@@ -23,7 +23,7 @@ impl<'input> Checker<'_, 'input> {
                 if kind != Kind::Str {
                     return Self::fail(name.0.start, "to_join needs a str variable");
                 }
-                Statement::Join(slot, self.operands(values)?)
+                Statement::Join(slot, self.operands(values, "to_join")?)
             }
             ast::Statement::Given {
                 operation,
@@ -94,11 +94,14 @@ impl<'input> Checker<'_, 'input> {
         Ok(Some(checked))
     }
 
-    fn operands(&mut self, values: &[ast::Operand<'input>]) -> Result<Vec<Operand>, Diagnostic> {
+    fn operands(
+        &mut self,
+        values: &[ast::Operand<'input>],
+        word: &str,
+    ) -> Result<Vec<Operand>, Diagnostic> {
         let mut operands = Vec::new();
         for value in values {
-            let (operand, _) = self.value(value)?;
-            operands.push(operand);
+            operands.push(self.shown_value(value, word)?);
         }
         Ok(operands)
     }
@@ -110,9 +113,7 @@ impl<'input> Checker<'_, 'input> {
     ) -> Result<Statement, Diagnostic> {
         let mut checked = Vec::new();
         for (condition, block) in branches {
-            let holds = self.condition(condition)?;
-            let statements = self.block(block)?;
-            checked.push((holds, statements));
+            checked.push(self.branch(condition, block)?);
         }
         let mut checked_otherwise = None;
         if let Some(block) = otherwise {
@@ -122,6 +123,44 @@ impl<'input> Checker<'_, 'input> {
             branches: checked,
             otherwise: checked_otherwise,
         })
+    }
+
+    // A branch of an if. Its condition can be some count as number alone,
+    // which names the value of the optional count for the block.
+    fn branch(
+        &mut self,
+        condition: &ast::Condition<'input>,
+        block: &ast::Block<'input>,
+    ) -> Result<(program::Condition, Vec<Statement>), Diagnostic> {
+        let mut bound = None;
+        if let [conjunction] = condition.as_slice()
+            && let [comparison] = conjunction.as_slice()
+            && let Some(presence) = &comparison.presence
+            && let Some(binding) = presence.binding
+            && !comparison.negate
+        {
+            bound = Some((comparison, presence.span, binding));
+        }
+        let Some((comparison, some, binding)) = bound else {
+            let holds = self.condition(condition)?;
+            return Ok((holds, self.block(block)?));
+        };
+        let (optional, inner) = self.optional_value(some, &comparison.left)?;
+        let holds = vec![vec![program::Comparison {
+            negate: false,
+            left: optional.clone(),
+            compare: Compare::NotEq,
+            right: Operand::Literal(Value::Optional { inner, value: None }),
+        }]];
+        let visible = self.variables.len();
+        self.new_name(binding)?;
+        let slot = self.allocate();
+        self.declare(binding, inner, slot, false);
+        let mut statements = vec![Statement::Unwrap { slot, optional }];
+        statements.extend(self.block(block)?);
+        self.check_variables_used(visible)?;
+        self.variables.truncate(visible);
+        Ok((holds, statements))
     }
 
     fn given(
@@ -205,6 +244,23 @@ impl<'input> Checker<'_, 'input> {
             return self.fail_unknown_variable(call.name.0, call.name.1);
         }
         let (checked, result_kind, gives) = self.call(call)?;
+        if let Kind::Optional(inner) = kind
+            && result_kind == *inner
+        {
+            let called = self.text(call.name.0);
+            return Self::fail(
+                name.0.start,
+                format!(
+                    "'{}' is {}, but '{called}' {gives} {}, so take it first, as in val found is {called} ... with ret 0_{}, then set {} {} found",
+                    self.text(name.0),
+                    kind.name(),
+                    result_kind.name(),
+                    result_kind.name(),
+                    self.text(name.0),
+                    Conversion::ToOptional(*inner).word()
+                ),
+            );
+        }
         if result_kind != kind {
             return Self::fail(
                 name.0.start,
@@ -338,6 +394,22 @@ impl<'input> Checker<'_, 'input> {
             let Some(first) = values.first() else {
                 return self.expected(span.end, "a value");
             };
+            if let Kind::Optional(inner) = kind
+                && self.value(first)?.1 == *inner
+                && !matches!(first.term, ast::Term::Literal(_))
+            {
+                return Self::fail(
+                    first.span.start,
+                    format!(
+                        "'{shown}' is {}, but '{}' is {}, so convert it, as in set {shown} {} {}",
+                        kind.name(),
+                        self.text(first.span),
+                        inner.name(),
+                        Conversion::ToOptional(*inner).word(),
+                        self.text(first.span)
+                    ),
+                );
+            }
             let initial = self.value_of_kind(first, kind, "set ... to")?;
             if let Some(extra) = values.get(1) {
                 return Self::fail(
@@ -385,6 +457,40 @@ impl<'input> Checker<'_, 'input> {
         })
     }
 
+    // to_optional_i32 of an i32 variable, which a literal does not need, as
+    // it is written 7_optional_i32.
+    fn optional_conversion(
+        &mut self,
+        slot: Slot,
+        (span, inner): (Span, Kind),
+        first: &ast::Operand<'input>,
+        extra: Option<&ast::Operand<'input>>,
+    ) -> Result<(Statement, Kind), Diagnostic> {
+        let conversion = Conversion::ToOptional(inner);
+        let word = conversion.word();
+        let shown = self.text(first.span);
+        if let ast::Term::Literal(_) = first.term
+            && let Some(present) = super::values::present_literal(shown)
+        {
+            return Self::fail(
+                first.span.start,
+                format!("a literal needs no {word}, write {present}"),
+            );
+        }
+        let left = self.value_of_kind(first, inner, word)?;
+        if let Some(more) = extra {
+            return self.expected_at(more.span, "a statement");
+        }
+        let statement = Statement::Convert {
+            slot,
+            conversion,
+            left,
+            right: None,
+            offset: span.start,
+        };
+        Ok((statement, conversion.result_kind(inner)))
+    }
+
     fn conversion(
         &mut self,
         slot: Slot,
@@ -395,6 +501,9 @@ impl<'input> Checker<'_, 'input> {
         let Some(first) = values.first() else {
             return self.expected(span.end, "a value");
         };
+        if let Conversion::ToOptional(inner) = conversion {
+            return self.optional_conversion(slot, (span, inner), first, values.get(1));
+        }
         let (left, source) = self.value(first)?;
         let accepts_integer = conversion.accepts_integer();
         if !(source.is_real() || (accepts_integer && source.is_integer())) {

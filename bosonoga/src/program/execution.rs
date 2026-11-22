@@ -76,7 +76,8 @@ fn asset_index(value: &Value) -> usize {
         | Value::Color(_)
         | Value::Str(_)
         | Value::Bool(_)
-        | Value::InputKey(_) => 0,
+        | Value::InputKey(_)
+        | Value::Optional { .. } => 0,
     }
 }
 
@@ -674,6 +675,16 @@ impl<'a> Execution<'a> {
             Statement::Draw { draw, offset } => self.draw(draw, *offset)?,
             Statement::Return(status) => return Ok(Flow::Exit(*status)),
             Statement::ReturnValues(operands) => return Ok(Flow::Values(self.values(operands))),
+            Statement::Unwrap { slot, optional } => {
+                if let Value::Optional {
+                    value: Some(present),
+                    ..
+                } = self.get(optional)
+                {
+                    let value = Value::clone(present);
+                    self.set(*slot, value);
+                }
+            }
         }
         Ok(Flow::Next)
     }

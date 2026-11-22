@@ -25,6 +25,9 @@ pub enum Kind {
     InputKey,
     Font,
     Icon,
+    // A value that may be absent, as Rust's Option, of a kind that
+    // Kind::optional allows, as in optional_i32.
+    Optional(&'static Kind),
 }
 
 const KINDS: [Kind; 13] = [
@@ -60,11 +63,64 @@ impl Kind {
             Kind::InputKey => "input_key",
             Kind::Font => "font",
             Kind::Icon => "icon",
+            Kind::Optional(inner) => inner.optional_name(),
         }
+    }
+
+    fn optional_name(self) -> &'static str {
+        match self {
+            Kind::I32 => "optional_i32",
+            Kind::I64 => "optional_i64",
+            Kind::U32 => "optional_u32",
+            Kind::U64 => "optional_u64",
+            Kind::F32 => "optional_f32",
+            Kind::F64 => "optional_f64",
+            Kind::Color => "optional_color",
+            Kind::Str => "optional_str",
+            Kind::Bool => "optional_bool",
+            Kind::Flags
+            | Kind::InputKey
+            | Kind::Font
+            | Kind::Icon
+            | Kind::Optional(_) => "optional",
+        }
+    }
+
+    // The optional kind of a kind, as optional_i32 of i32. A number, bool,
+    // str or color can be optional, but an optional or a handle cannot.
+    #[must_use]
+    pub fn optional(self) -> Option<Kind> {
+        let inner: &'static Kind = match self {
+            Kind::I32 => &Kind::I32,
+            Kind::I64 => &Kind::I64,
+            Kind::U32 => &Kind::U32,
+            Kind::U64 => &Kind::U64,
+            Kind::F32 => &Kind::F32,
+            Kind::F64 => &Kind::F64,
+            Kind::Color => &Kind::Color,
+            Kind::Str => &Kind::Str,
+            Kind::Bool => &Kind::Bool,
+            Kind::Flags | Kind::InputKey | Kind::Font | Kind::Icon | Kind::Optional(_) => {
+                return None;
+            }
+        };
+        Some(Kind::Optional(inner))
+    }
+
+    #[must_use]
+    pub fn is_optional(self) -> bool {
+        matches!(self, Kind::Optional(_))
     }
 
     #[must_use]
     pub fn named(name: &str) -> Option<Kind> {
+        if let Some(inner) = name.strip_prefix("optional_") {
+            return Kind::named_plain(inner)?.optional();
+        }
+        Kind::named_plain(name)
+    }
+
+    fn named_plain(name: &str) -> Option<Kind> {
         for kind in KINDS {
             if kind.name() == name {
                 return Some(kind);
@@ -104,6 +160,11 @@ pub enum Value {
     InputKey(u32),
     Font { index: usize, text: String },
     Icon { index: usize, text: String },
+    // An optional of the kind inner, absent as none_optional_i32 or present.
+    Optional {
+        inner: Kind,
+        value: Option<Box<Value>>,
+    },
 }
 
 impl Value {
@@ -123,6 +184,19 @@ impl Value {
             Value::InputKey(_) => Kind::InputKey,
             Value::Font { .. } => Kind::Font,
             Value::Icon { .. } => Kind::Icon,
+            Value::Optional { inner, .. } => match inner.optional() {
+                Some(kind) => kind,
+                None => *inner,
+            },
+        }
+    }
+
+    // A present optional of a value, as an i32 given where optional_i32 is.
+    #[must_use]
+    pub fn present(value: Value) -> Value {
+        Value::Optional {
+            inner: value.kind(),
+            value: Some(Box::new(value)),
         }
     }
 
@@ -153,7 +227,8 @@ impl Value {
             | Kind::Bool
             | Kind::InputKey
             | Kind::Font
-            | Kind::Icon => None,
+            | Kind::Icon
+            | Kind::Optional(_) => None,
         }
     }
 
@@ -174,7 +249,8 @@ impl Value {
             | Kind::Bool
             | Kind::InputKey
             | Kind::Font
-            | Kind::Icon => None,
+            | Kind::Icon
+            | Kind::Optional(_) => None,
         }
     }
 
@@ -200,7 +276,8 @@ impl Value {
             | Value::Bool(_)
             | Value::InputKey(_)
             | Value::Font { .. }
-            | Value::Icon { .. } => None,
+            | Value::Icon { .. }
+            | Value::Optional { .. } => None,
         }
     }
 
@@ -218,7 +295,8 @@ impl Value {
             | Value::Bool(_)
             | Value::InputKey(_)
             | Value::Font { .. }
-            | Value::Icon { .. } => None,
+            | Value::Icon { .. }
+            | Value::Optional { .. } => None,
         }
     }
 
@@ -236,7 +314,8 @@ impl Value {
             | Value::Bool(_)
             | Value::InputKey(_)
             | Value::Font { .. }
-            | Value::Icon { .. } => 0.0,
+            | Value::Icon { .. }
+            | Value::Optional { .. } => 0.0,
         }
     }
 
@@ -254,7 +333,8 @@ impl Value {
             | Value::Bool(_)
             | Value::InputKey(_)
             | Value::Font { .. }
-            | Value::Icon { .. } => 0,
+            | Value::Icon { .. }
+            | Value::Optional { .. } => 0,
         }
     }
 
@@ -311,6 +391,8 @@ impl Display for Value {
                 f.write_str(v)
             }
             Value::InputKey(v) => f.write_str(crate::key::name(*v).unwrap_or_default()),
+            Value::Optional { value: Some(v), .. } => write!(f, "{v}"),
+            Value::Optional { value: None, .. } => f.write_str("none"),
         }
     }
 }

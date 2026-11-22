@@ -16,7 +16,7 @@ fn zero_value(kind: Kind) -> Option<Value> {
         Kind::Color => Some(Value::Color(0)),
         Kind::Str => Some(Value::Str(String::new())),
         Kind::Bool => Some(Value::Bool(false)),
-        Kind::InputKey | Kind::Font | Kind::Icon => None,
+        Kind::InputKey | Kind::Font | Kind::Icon | Kind::Optional(_) => None,
     }
 }
 

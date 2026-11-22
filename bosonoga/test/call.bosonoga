@@ -15,7 +15,7 @@ di
   return quotient remainder
 do
 
-// A number that may be missing, as Rust's Option<i32>.
+// A number and whether it was parsed, two values that call takes.
 def parsed_fn text_str ret 0_bool 1_i32
 di
   str_parse text_str with ret 0_bool as parsed 1_i32 as number

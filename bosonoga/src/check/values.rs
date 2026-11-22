@@ -4,6 +4,12 @@ use crate::ast::{self, Section, Span, Term};
 use crate::program::{Comparison, Condition, Operand};
 use crate::value::{Compare, Kind, Value};
 
+// The present literal of a literal, as 7_optional_i32 of 7_i32.
+pub(super) fn present_literal(text: &str) -> Option<String> {
+    let (value, kind) = text.rsplit_once('_')?;
+    Some(format!("{value}_optional_{kind}"))
+}
+
 fn shift_bit(word: &str) -> Option<u32> {
     let digits = word.strip_prefix("shift_")?;
     let Ok(bit) = digits.parse::<u64>() else {
@@ -23,6 +29,20 @@ impl<'input> Checker<'_, 'input> {
         context: &str,
     ) -> Result<Operand, Diagnostic> {
         let (checked, actual) = self.value(operand)?;
+        if let Kind::Optional(inner) = kind
+            && actual == *inner
+        {
+            let shown = self.text(operand.span);
+            return Self::fail(
+                operand.span.start,
+                format!(
+                    "{context} needs {}, but '{shown}' is {}, {}",
+                    kind.name(),
+                    actual.name(),
+                    self.present_hint(operand, kind)
+                ),
+            );
+        }
         if actual != kind {
             return Self::fail(
                 operand.span.start,
@@ -31,6 +51,38 @@ impl<'input> Checker<'_, 'input> {
                     kind.name(),
                     self.text(operand.span),
                     actual.name()
+                ),
+            );
+        }
+        Ok(checked)
+    }
+
+    // How a value of the kind inside an optional becomes one: a literal is
+    // written as a present literal, and a variable is converted.
+    pub(super) fn present_hint(&self, operand: &ast::Operand<'input>, kind: Kind) -> String {
+        let shown = self.text(operand.span);
+        if let Term::Literal(_) = operand.term
+            && let Some(present) = present_literal(shown)
+        {
+            return format!("so write {present}");
+        }
+        format!("so convert it first, as in val present is to_{} {shown}", kind.name())
+    }
+
+    // A value that info, to_join or gfx_draw_text shows, which an optional is not.
+    pub(super) fn shown_value(
+        &mut self,
+        operand: &ast::Operand<'input>,
+        word: &str,
+    ) -> Result<Operand, Diagnostic> {
+        let (checked, kind) = self.value(operand)?;
+        if kind.is_optional() {
+            let shown = self.text(operand.span);
+            return Self::fail(
+                operand.span.start,
+                format!(
+                    "'{shown}' is {}, which {word} cannot show, but its value can, as in if some {shown} as value",
+                    kind.name()
                 ),
             );
         }
@@ -125,7 +177,32 @@ impl<'input> Checker<'_, 'input> {
         &mut self,
         comparison: &ast::Comparison<'input>,
     ) -> Result<Comparison, Diagnostic> {
+        if let Some(presence) = &comparison.presence {
+            if presence.binding.is_some() {
+                return Self::fail(
+                    presence.span.start,
+                    "some ... as ... names the value for the block of an if or else if, so it is the whole condition, without not, and or or",
+                );
+            }
+            let (left, inner) = self.optional_value(presence.span, &comparison.left)?;
+            return Ok(Comparison {
+                negate: comparison.negate,
+                left,
+                compare: Compare::NotEq,
+                right: Operand::Literal(Value::Optional { inner, value: None }),
+            });
+        }
         let (left, left_kind) = self.value(&comparison.left)?;
+        if left_kind.is_optional() && comparison.right.is_none() {
+            let shown = self.text(comparison.left.span);
+            return Self::fail(
+                comparison.left.span.start,
+                format!(
+                    "'{shown}' is {}, which is tested with some, as in if some {shown} or if some {shown} as value",
+                    left_kind.name()
+                ),
+            );
+        }
         let (compare, right) = match &comparison.right {
             Some((span, given, value)) => {
                 let (checked, right_kind) = self.value(value)?;
@@ -152,6 +229,16 @@ impl<'input> Checker<'_, 'input> {
     ) -> Result<(), Diagnostic> {
         let word = self.text(span);
         let at = span.start;
+        if left.is_optional() || right.is_optional() {
+            let optional = if left.is_optional() { left } else { right };
+            return Self::fail(
+                at,
+                format!(
+                    "{} cannot be compared, but its value can, as in if some count as value",
+                    optional.name()
+                ),
+            );
+        }
         if compare == Compare::ShiftHas {
             if left == Kind::Flags && right == Kind::Flags {
                 return Ok(());
@@ -211,5 +298,25 @@ impl<'input> Checker<'_, 'input> {
             );
         }
         Ok(())
+    }
+
+    // The optional that some tests, and the kind of its value.
+    pub(super) fn optional_value(
+        &mut self,
+        some: Span,
+        operand: &ast::Operand<'input>,
+    ) -> Result<(Operand, Kind), Diagnostic> {
+        let (checked, kind) = self.value(operand)?;
+        let Kind::Optional(inner) = kind else {
+            return Self::fail(
+                some.start,
+                format!(
+                    "some tests an optional, like optional_i32, but '{}' is {}",
+                    self.text(operand.span),
+                    kind.name()
+                ),
+            );
+        };
+        Ok((checked, *inner))
     }
 }

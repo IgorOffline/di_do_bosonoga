@@ -74,9 +74,18 @@ pub struct Operand<'input> {
 
 pub type Named<'input> = (Span, &'input str);
 
+// The some of a comparison, as in some count, or some count as number,
+// which names the value of the optional for the block of an if.
+#[derive(Debug, PartialEq)]
+pub struct Presence<'input> {
+    pub span: Span,
+    pub binding: Option<Named<'input>>,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Comparison<'input> {
     pub negate: bool,
+    pub presence: Option<Presence<'input>>,
     pub left: Operand<'input>,
     pub right: Option<(Span, Compare, Operand<'input>)>,
 }

@@ -9,15 +9,23 @@ use crate::ast::{self, Item, Named, Results, Section, Span};
 use crate::program::{self, Array, Operand};
 use crate::value::Kind;
 
+const OPTIONAL_TYPES: &str =
+    "optional_ and i32, i64, u32, u64, f32, f64, bool, str or color, as in 0_optional_i32 or count_optional_i32";
+
 fn parameter_kind(name: &str) -> Option<Kind> {
     let bytes = name.as_bytes();
     for start in 2..name.len() {
         if bytes[start - 1] != b'_' {
             continue;
         }
-        if let Some(suffix) = name.get(start..)
-            && let Some(kind) = Kind::named(suffix)
-        {
+        let Some(suffix) = name.get(start..) else {
+            continue;
+        };
+        // count_optional_flags is not a flags parameter, but a mistake.
+        if suffix.starts_with("optional_") {
+            return Kind::named(suffix);
+        }
+        if let Some(kind) = Kind::named(suffix) {
             return Some(kind);
         }
     }
@@ -179,9 +187,12 @@ impl<'input> Checker<'_, 'input> {
         for span in spans {
             let text = self.text(*span);
             let Some((index, kind)) = split_indexed(text) else {
+                if text.contains("_optional_") {
+                    return self.expected_at(*span, OPTIONAL_TYPES);
+                }
                 return self.expected_at(
                     *span,
-                    "a type with its index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bool",
+                    "a type with its index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bool, or optional_ and one of these but flags",
                 );
             };
             if kinds.len() == FUNCTION_VALUES_MAX {
@@ -345,6 +356,9 @@ impl<'input> Checker<'_, 'input> {
         let mut kinds = Vec::new();
         for parameter in parameters {
             let Some(kind) = parameter_kind(parameter.1) else {
+                if parameter.1.contains("_optional_") {
+                    return self.expected_at(parameter.0, OPTIONAL_TYPES);
+                }
                 return self.expected_at(
                     parameter.0,
                     "a parameter whose name ends with its type, like count_i32",
@@ -425,9 +439,18 @@ impl<'input> Checker<'_, 'input> {
     }
 
     pub(super) fn array_kinds(&self, spans: &[Span]) -> Result<Vec<Kind>, Diagnostic> {
-        self.types(
+        let kinds = self.types(
             spans,
             &format!("a row of an array has at most {FUNCTION_VALUES_MAX} values"),
-        )
+        )?;
+        for (span, kind) in spans.iter().zip(&kinds) {
+            if kind.is_optional() {
+                return Self::fail(
+                    span.start,
+                    format!("an array cannot have {}, but a variable can", kind.name()),
+                );
+            }
+        }
+        Ok(kinds)
     }
 }

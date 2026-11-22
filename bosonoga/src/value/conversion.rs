@@ -30,6 +30,8 @@ pub enum Conversion {
     Log1p,
     Expm1,
     Hypot,
+    // A present optional of a value of the kind, as to_optional_i32 of i32.
+    ToOptional(Kind),
 }
 
 const CONVERSIONS: [(&str, Conversion); 26] = [
@@ -69,11 +71,32 @@ impl Conversion {
                 return Some(conversion);
             }
         }
+        if let Some(Kind::Optional(inner)) = word.strip_prefix("to_").and_then(Kind::named) {
+            return Some(Conversion::ToOptional(*inner));
+        }
         None
     }
 
     #[must_use]
     pub fn word(self) -> &'static str {
+        if let Conversion::ToOptional(inner) = self {
+            return match inner {
+                Kind::I32 => "to_optional_i32",
+                Kind::I64 => "to_optional_i64",
+                Kind::U32 => "to_optional_u32",
+                Kind::U64 => "to_optional_u64",
+                Kind::F32 => "to_optional_f32",
+                Kind::F64 => "to_optional_f64",
+                Kind::Color => "to_optional_color",
+                Kind::Str => "to_optional_str",
+                Kind::Bool => "to_optional_bool",
+                Kind::Flags
+                | Kind::InputKey
+                | Kind::Font
+                | Kind::Icon
+                | Kind::Optional(_) => "to_optional",
+            };
+        }
         for (name, conversion) in CONVERSIONS {
             if conversion == self {
                 return name;
@@ -120,15 +143,22 @@ impl Conversion {
             | Self::Tan
             | Self::Log1p
             | Self::Expm1
-            | Self::Hypot => None,
+            | Self::Hypot
+            | Self::ToOptional(_) => None,
         }
     }
 
     pub(crate) fn result_kind(self, source: Kind) -> Kind {
+        if let Self::ToOptional(inner) = self {
+            return inner.optional().unwrap_or(inner);
+        }
         self.target().unwrap_or(source)
     }
 
     pub(crate) fn evaluate(self, left: &Value, right: Option<&Value>) -> Result<Value, String> {
+        if let Self::ToOptional(_) = self {
+            return Ok(Value::present(left.clone()));
+        }
         if let Some(kind) = self.target() {
             return convert(kind, left);
         }
@@ -210,7 +240,13 @@ impl Conversion {
             Self::Log1p => a.ln_1p(),
             Self::Expm1 => a.exp_m1(),
             Self::Hypot => a.hypot(b),
-            Self::ToI32 | Self::ToI64 | Self::ToU32 | Self::ToU64 | Self::ToF32 | Self::ToF64 => a,
+            Self::ToI32
+            | Self::ToI64
+            | Self::ToU32
+            | Self::ToU64
+            | Self::ToF32
+            | Self::ToF64
+            | Self::ToOptional(_) => a,
         }
     }
 }

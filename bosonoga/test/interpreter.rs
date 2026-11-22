@@ -274,3 +274,175 @@ fn from_global_diagnostics() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+#[test]
+fn optionals() {
+    let source = include_str!("optional.bosonoga");
+    let path = "test/optional.bosonoga";
+    let program = match bosonoga::parse(source) {
+        Ok(program) => program,
+        Err(diagnostic) => panic!("{}", diagnostic.located(path, source)),
+    };
+    let (output, status) = match bosonoga::run(&program) {
+        Ok(ran) => ran,
+        Err((_, diagnostic)) => panic!("{}", diagnostic.located(path, source)),
+    };
+    assert_eq!(output, "seven 7\nonly seven\nfirst\nbest 9\n");
+    assert_eq!(status, ExitStatus::Success);
+}
+
+#[cfg(test)]
+fn assert_diagnostics(cases: &[(String, &str)]) {
+    let mut failures = Vec::new();
+    for (source, expected) in cases {
+        let got = diagnostic(source);
+        if !got.starts_with(expected) {
+            failures.push(format!("got:      {got}\nexpected: {expected}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[cfg(test)]
+fn optional_main(body: &str) -> String {
+    format!(
+        "def maybe_fn ret 0_optional_i32\ndi\n  return 1_optional_i32\ndo\nbosonoga_main\ndi\n  val count is maybe_fn with ret 0_optional_i32\n{body}\n  return exit_success\ndo\n"
+    )
+}
+
+// How an optional is read, with if some, and what cannot read it.
+#[test]
+fn optional_read_diagnostics() {
+    let main = optional_main;
+    let cases = [
+        (
+            main("  info count"),
+            "test:8:8: 'count' is optional_i32, which info cannot show, but its value can, as in if some count as value",
+        ),
+        (
+            main("  var text is \"\"_str\n  set text to_join count"),
+            "test:9:20: 'count' is optional_i32, which to_join cannot show",
+        ),
+        (
+            main("  if count eq 1_i32 di\n nihil\n do"),
+            "test:8:12: optional_i32 cannot be compared, but its value can, as in if some count as value",
+        ),
+        (
+            main("  if count di\n nihil\n do"),
+            "test:8:6: 'count' is optional_i32, which is tested with some, as in if some count or if some count as value",
+        ),
+        (
+            main("  if some count as n and true_bool di\n info n\n do"),
+            "test:8:6: some ... as ... names the value for the block of an if or else if, so it is the whole condition, without not, and or or",
+        ),
+        (
+            main("  if not some count as n di\n info n\n do"),
+            "test:8:10: some ... as ... names the value for the block of an if or else if",
+        ),
+        (
+            main("  while some count as n di\n info n\n do"),
+            "test:8:9: some ... as ... names the value for the block of an if or else if",
+        ),
+        (
+            main("  val n is 1_i32\n  if some n di\n info count\n do"),
+            "test:9:6: some tests an optional, like optional_i32, but 'n' is i32",
+        ),
+        (
+            main("  if some count as n di\n nihil\n do"),
+            "test:8:20: 'n' is never read",
+        ),
+        (
+            main("  if some count as count di\n info count\n do"),
+            "test:8:20: variable 'count' already exists",
+        ),
+        (
+            main("  var other is count\n  set other to_add other 1_i32"),
+            "test:9:13: 'other' is optional_i32, which cannot be used in arithmetic",
+        ),
+        (
+            main("  var other is count\n  set other to 1_i64\n  info other"),
+            "test:9:16: set ... to needs optional_i32, but '1_i64' is i64",
+        ),
+        (
+            main("  if some count as n di\n info n\n do\n  val x is none_optional_flags"),
+            "test:11:12: none is optional_ and i32, i64, u32, u64, f32, f64, bool, str or color, as in none_optional_i32",
+        ),
+        (
+            main("  var rows is array 0_optional_i32 with_len_col 2_i32\n  info count"),
+            "test:8:21: an array cannot have optional_i32, but a variable can",
+        ),
+        (
+            "def f_fn ret 0_optional_optional_i32\ndi\n  return 1_i32\ndo\n".to_owned(),
+            "test:1:14: expected optional_ and i32, i64, u32, u64, f32, f64, bool, str or color, as in 0_optional_i32 or count_optional_i32, got '0_optional_optional_i32'",
+        ),
+        (
+            "def f_fn count_optional_flags ret_void\ndi\n  nihil\ndo\n".to_owned(),
+            "test:1:10: expected optional_ and i32, i64, u32, u64, f32, f64, bool, str or color",
+        ),
+    ];
+    assert_diagnostics(&cases);
+}
+
+// How an optional is made: a present literal, none or to_optional_i32.
+#[test]
+fn optional_make_diagnostics() {
+    let main = optional_main;
+    let cases = [
+        (
+            "def f_fn ret 0_optional_i32\ndi\n  return 1_i32\ndo\n".to_owned(),
+            "test:3:10: return needs optional_i32, but '1_i32' is i32, so write 1_optional_i32",
+        ),
+        (
+            "def f_fn n_i32 ret 0_optional_i32\ndi\n  return n_i32\ndo\n".to_owned(),
+            "test:3:10: return needs optional_i32, but 'n_i32' is i32, so convert it first, as in val present is to_optional_i32 n_i32",
+        ),
+        (
+            "def f_fn n_optional_str ret_void\ndi\n  if some n_optional_str as n di\n info n\n do\ndo\nbosonoga_main\ndi\n  call f_fn of \"x\"_str\n  return exit_success\ndo\n".to_owned(),
+            "test:9:16: f_fn needs optional_str, but '\"x\"_str' is str, so write \"x\"_optional_str",
+        ),
+        (
+            main("  var other is count\n  val n is 2_i32\n  set other to n\n  info n"),
+            "test:10:16: 'other' is optional_i32, but 'n' is i32, so convert it, as in set other to_optional_i32 n",
+        ),
+        (
+            main("  var other is count\n  set other to 2_i32"),
+            "test:9:16: set ... to needs optional_i32, but '2_i32' is i32, so write 2_optional_i32",
+        ),
+        (
+            format!(
+                "def one_fn ret 0_i32\ndi\n  return 1_i32\ndo\n{}",
+                main("  var other is count\n  set other to one_fn with ret 0_i32")
+            ),
+            "test:13:7: 'other' is optional_i32, but 'one_fn' returns i32, so take it first, as in val found is one_fn ... with ret 0_i32, then set other to_optional_i32 found",
+        ),
+        (
+            main("  val other is to_optional_i32 7_i32"),
+            "test:8:32: a literal needs no to_optional_i32, write 7_optional_i32",
+        ),
+        (
+            main("  val wide is 7_i64\n  val other is to_optional_i32 wide"),
+            "test:9:32: to_optional_i32 needs i32, but 'wide' is i64",
+        ),
+        (
+            main("  val other is to_optional_i32 count"),
+            "test:8:32: to_optional_i32 needs i32, but 'count' is optional_i32",
+        ),
+        (
+            main("  val other is \"x\"_optional_text"),
+            "test:8:16: a string must have the suffix _str, as in \"text\"_str, or _optional_str",
+        ),
+        (
+            main("  val other is 3000000000_optional_i32"),
+            "test:8:16: the number is outside the i32 range",
+        ),
+        (
+            main("  val other is 1d5_optional_i32"),
+            "test:8:16: an integer cannot have a fraction",
+        ),
+        (
+            main("  val some is 1_i32"),
+            "test:8:7: expected a variable name, got 'some'",
+        ),
+    ];
+    assert_diagnostics(&cases);
+}

@@ -3,7 +3,7 @@ use lalrpop_util::ParseError;
 use crate::Diagnostic;
 use crate::ast::{
     Arguments, Block, Call, Comparison, Condition, Draw, ExitStatus, File, Initial, Item, Named,
-    Operand, Results, Rows, Section, Span, Statement, Taking, Term,
+    Operand, Presence, Results, Rows, Section, Span, Statement, Taking, Term,
 };
 use crate::lexer::Tok;
 use crate::value::{Compare, Conversion, Operation, Value};
@@ -59,6 +59,7 @@ extern {
         "and" => Tok::And,
         "or" => Tok::Or,
         "not" => Tok::Not,
+        "some" => Tok::Some,
         "shift_or" => Tok::ShiftOr,
         "compare" => Tok::Compare(<Compare>),
         "literal" => Tok::Literal(<Value>),
@@ -252,16 +253,25 @@ Conjunction: Vec<Comparison<'input>> = {
     },
 };
 
-Comparison: Comparison<'input> =
+Comparison: Comparison<'input> = {
+    <negate:"not"?> <start:@L> "some" <end:@R> <left:Operand> <binding:("as" <Named>)?> =>
+        Comparison {
+            negate: negate.is_some(),
+            presence: Some(Presence { span: Span { start, end }, binding }),
+            left,
+            right: None,
+        },
     <negate:"not"?> <left:Operand> <right:(<@L> <"compare"> <@R> <Operand>)?> =>
         Comparison {
             negate: negate.is_some(),
+            presence: None,
             left,
             right: match right {
                 Some((start, compare, end, value)) => Some((Span { start, end }, compare, value)),
                 None => None,
             },
-        };
+        },
+};
 
 Operand: Operand<'input> = <start:@L> <term:Term> <end:@R> => Operand { span: Span { start, end }, term };
 

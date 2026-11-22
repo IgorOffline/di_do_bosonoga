@@ -85,6 +85,13 @@ impl Value {
             (Value::InputKey(a), Value::InputKey(b)) => a == b,
             (Value::Font { index: a, .. }, Value::Font { index: b, .. })
             | (Value::Icon { index: a, .. }, Value::Icon { index: b, .. }) => a == b,
+            (Value::Optional { value: left, .. }, Value::Optional { value: right, .. }) => {
+                match (left, right) {
+                    (Some(present), Some(given)) => present.equal(given),
+                    (None, None) => true,
+                    (Some(_), None) | (None, Some(_)) => false,
+                }
+            }
             _ => self.order(other) == Some(Ordering::Equal),
         }
     }

@@ -48,6 +48,7 @@ pub enum Tok<'input> {
     And,
     Or,
     Not,
+    Some,
     ShiftOr,
     Compare(Compare),
     Literal(Value),
@@ -72,6 +73,8 @@ const RESERVED: &[&str] = &[
     "len_col",
     "len_row",
     "expect",
+    "none",
+    "optional",
 ];
 
 const INDEXED_TYPES: &[&str] = &[
@@ -201,7 +204,12 @@ impl<'input> Lexer<'input> {
         let Some(name) = suffix.strip_prefix('_') else {
             return Err(suffix_error(self.base + start));
         };
-        if INDEXED_TYPES.contains(&name) {
+        // 7_optional_i32 is a present optional, and 0_optional_str an index.
+        let (plain, optional) = match name.strip_prefix("optional_") {
+            Some(inner) => (inner, true),
+            None => (name, false),
+        };
+        if INDEXED_TYPES.contains(&name) || (optional && !is_number_name(plain)) {
             if has_fraction || number.starts_with('-') {
                 return Err(Diagnostic::new(
                     self.base + start,
@@ -210,7 +218,7 @@ impl<'input> Lexer<'input> {
             }
             return Ok(Tok::IndexedType(&self.source[start..self.cursor]));
         }
-        let kind = match name {
+        let kind = match plain {
             "i32" => Kind::I32,
             "i64" => Kind::I64,
             "u32" => Kind::U32,
@@ -234,6 +242,7 @@ impl<'input> Lexer<'input> {
             value = Value::real(kind, real);
         }
         match value {
+            Some(literal) if optional => Ok(Tok::Literal(Value::present(literal))),
             Some(literal) => Ok(Tok::Literal(literal)),
             None => Err(Diagnostic::new(
                 self.base + start,
@@ -268,20 +277,26 @@ impl<'input> Lexer<'input> {
         }
         let text = &self.source[text_start..self.cursor];
         self.cursor += 1;
-        if self.consume_word() != "_str" {
-            return Err(Diagnostic::new(
+        let value = Value::Str(text.to_owned());
+        match self.consume_word() {
+            "_str" => Ok(Tok::Literal(value)),
+            "_optional_str" => Ok(Tok::Literal(Value::present(value))),
+            _ => Err(Diagnostic::new(
                 self.base + start,
-                "a string must have the suffix _str, as in \"text\"_str",
-            ));
+                "a string must have the suffix _str, as in \"text\"_str, or _optional_str",
+            )),
         }
-        Ok(Tok::Literal(Value::Str(text.to_owned())))
     }
+}
+
+fn is_number_name(name: &str) -> bool {
+    matches!(name, "i32" | "i64" | "u32" | "u64" | "f32" | "f64")
 }
 
 fn suffix_error(start: usize) -> Diagnostic {
     Diagnostic::new(
         start,
-        "number must have the suffix _i32, _i64, _u32, _u64, _f32 or _f64",
+        "number must have the suffix _i32, _i64, _u32, _u64, _f32 or _f64, or _optional_ and one of these, as in 7_optional_i32",
     )
 }
 
@@ -312,6 +327,26 @@ fn is_result_name(text: &str) -> bool {
     match text.as_bytes().get(4) {
         Some(b) => b.is_ascii_digit(),
         None => false,
+    }
+}
+
+// An absent optional, as none_optional_i32.
+fn none_literal(text: &str, start: usize) -> Result<Option<Value>, Diagnostic> {
+    let Some(name) = text.strip_prefix("none_") else {
+        return Ok(None);
+    };
+    if !name.starts_with("optional_") {
+        return Ok(None);
+    }
+    match Kind::named(name) {
+        Some(Kind::Optional(inner)) => Ok(Some(Value::Optional {
+            inner: *inner,
+            value: None,
+        })),
+        Some(_) | None => Err(Diagnostic::new(
+            start,
+            "none is optional_ and i32, i64, u32, u64, f32, f64, bool, str or color, as in none_optional_i32",
+        )),
     }
 }
 
@@ -372,9 +407,12 @@ fn word(text: &str) -> Tok<'_> {
         "and" => Tok::And,
         "or" => Tok::Or,
         "not" => Tok::Not,
+        "some" => Tok::Some,
         "shift_or" => Tok::ShiftOr,
         "true_bool" => Tok::Literal(Value::Bool(true)),
         "false_bool" => Tok::Literal(Value::Bool(false)),
+        "true_optional_bool" => Tok::Literal(Value::present(Value::Bool(true))),
+        "false_optional_bool" => Tok::Literal(Value::present(Value::Bool(false))),
         "gfx_delta_time" | "gfx_key" => Tok::GfxValue(text),
         _ if is_numbered(text, "shift_") => Tok::Shift(text),
         _ if is_result_name(text) => Tok::Result(text),
@@ -399,7 +437,14 @@ impl<'input> Iterator for Lexer<'input> {
             }
             Some(b'"') => self.lex_string(start),
             Some(_) if self.at_number() => self.lex_number(start),
-            Some(b) if b.is_ascii_alphabetic() || b == b'_' => Ok(word(self.consume_word())),
+            Some(b) if b.is_ascii_alphabetic() || b == b'_' => {
+                let text = self.consume_word();
+                match none_literal(text, self.base + start) {
+                    Ok(Some(none)) => Ok(Tok::Literal(none)),
+                    Ok(None) => Ok(word(text)),
+                    Err(diagnostic) => Err(diagnostic),
+                }
+            }
             Some(_) => Err(Diagnostic::new(self.base + start, "unexpected character")),
         };
         match token {

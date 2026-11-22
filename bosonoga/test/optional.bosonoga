@@ -1,0 +1,162 @@
+// optional.bosonoga
+
+bosonoga_global
+di
+  var best is none_optional_i32
+do
+
+const no_name is none_optional_str
+const default_ratio is 1d5_optional_f32
+
+// A number that may be missing, as Rust's Option<i32>.
+def parsed_fn text_str ret 0_optional_i32
+di
+  str_parse text_str with ret 0_bool as parsed 1_i32 as number
+  di
+    if parsed
+    di
+      val found is to_optional_i32 number
+      return found
+    do
+  do
+  return none_optional_i32
+do
+
+// An optional parameter, given a present literal, none or an optional.
+def or_zero_fn count_optional_i32 ret 0_i32
+di
+  if some count_optional_i32 as count
+  di
+    return count
+  do
+  return 0_i32
+do
+
+def first_fn ret 0_optional_str 1_optional_f32 2_optional_bool
+di
+  return "first"_optional_str default_ratio false_optional_bool
+do
+
+def keep_best_fn candidate_i32 with from_global best ret_void
+di
+  if not some best
+  di
+    set best to_optional_i32 candidate_i32
+  do
+  else if some best as known
+  di
+    if candidate_i32 gt known
+    di
+      set best to_optional_i32 candidate_i32
+    do
+  do
+do
+
+bosonoga_main
+di
+  var ok is true_bool
+  val seven is parsed_fn of "7"_str with ret 0_optional_i32
+  val missing is parsed_fn of "seven"_str with ret 0_optional_i32
+  if some seven as number
+  di
+    info "seven "_str number
+    if number not_eq 7_i32
+    di
+      set ok to false_bool
+    do
+  do
+  else
+  di
+    set ok to false_bool
+  do
+  if some missing as number
+  di
+    info "missing "_str number
+    set ok to false_bool
+  do
+  else if some seven and not some missing
+  di
+    info "only seven"_str
+  do
+  if some missing or not some seven
+  di
+    set ok to false_bool
+  do
+  val zero is or_zero_fn of missing with ret 0_i32
+  val also_seven is or_zero_fn of seven with ret 0_i32
+  val three is or_zero_fn of 3_optional_i32 with ret 0_i32
+  val negative is or_zero_fn of -4_optional_i32 with ret 0_i32
+  val none_given is or_zero_fn of none_optional_i32 with ret 0_i32
+  if zero not_eq 0_i32 or also_seven not_eq 7_i32 or three not_eq 3_i32
+    or negative not_eq -4_i32 or none_given not_eq 0_i32
+  di
+    set ok to false_bool
+  do
+  var label is no_name
+  if some label
+  di
+    set ok to false_bool
+  do
+  set label to "label"_optional_str
+  call first_fn with ret 0_optional_str as name 1_optional_f32 as ratio 2_optional_bool as flag
+  di
+    if not some name or not some ratio or not some flag
+    di
+      set ok to false_bool
+    do
+    if some name as text
+    di
+      info text
+    do
+    if some ratio as value
+    di
+      if value not_eq_6 1d5_f32
+      di
+        set ok to false_bool
+      do
+    do
+    if some flag as raised
+    di
+      if raised
+      di
+        set ok to false_bool
+      do
+    do
+  do
+  if some label as text
+  di
+    if text not_eq "label"_str
+    di
+      set ok to false_bool
+    do
+  do
+  set label to none_optional_str
+  if some label
+  di
+    set ok to false_bool
+  do
+  call keep_best_fn of 4_i32
+  call keep_best_fn of 9_i32
+  call keep_best_fn of 2_i32
+  if some best as most
+  di
+    info "best "_str most
+    if most not_eq 9_i32
+    di
+      set ok to false_bool
+    do
+  do
+  val maybe_big is 9000000000_optional_i64
+  if some maybe_big as big
+  di
+    if big not_eq 9000000000_i64
+    di
+      set ok to false_bool
+    do
+  do
+  if ok
+  di
+    return exit_success
+  do
+  return exit_failure
+do

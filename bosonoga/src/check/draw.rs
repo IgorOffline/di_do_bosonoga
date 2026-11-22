@@ -44,8 +44,7 @@ impl<'input> Checker<'_, 'input> {
             }
         }
         for value in values.iter().skip(kinds.len()) {
-            let (part, _) = self.value(value)?;
-            parts.push(part);
+            parts.push(self.shown_value(value, word)?);
         }
         let o = &mut operands;
         let checked = match draw {

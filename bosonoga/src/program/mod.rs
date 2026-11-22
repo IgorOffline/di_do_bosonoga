@@ -45,7 +45,7 @@ impl Slot {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum Operand {
     Literal(Value),
     Slot(Slot),
@@ -158,6 +158,12 @@ pub(crate) enum Statement {
     },
     Return(ExitStatus),
     ReturnValues(Vec<Operand>),
+    // Copies the value of a present optional into the slot that
+    // if some ... as names, first in the block of that if.
+    Unwrap {
+        slot: Slot,
+        optional: Operand,
+    },
 }
 
 #[derive(Debug)]
