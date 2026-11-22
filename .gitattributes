@@ -1,0 +1,7 @@
+*.bosonoga linguist-language=COBOL linguist-detectable
+
+/archive_a/** linguist-detectable=false
+/archive_b/** linguist-detectable=false
+/archive_c/** linguist-detectable=false
+/archive_d/** linguist-detectable=false
+/experiment_e/** linguist-detectable=false
