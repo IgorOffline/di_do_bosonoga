@@ -1,8 +1,12 @@
 use lalrpop_util::ParseError;
 
 use crate::Diagnostic;
-use crate::ast::{ExitStatus, Program, Statement};
+use crate::ast::{
+    Arguments, Block, Call, Comparison, Condition, Draw, ExitStatus, File, Initial, Item, Located, Named,
+    Operand, Presence, Results, Rows, Section, Span, Statement, Taking, Term,
+};
 use crate::lexer::Tok;
+use crate::value::{Compare, Conversion, Operation, Value};
 
 grammar<'input>;
 
@@ -11,25 +15,108 @@ extern {
     type Error = Diagnostic;
 
     enum Tok<'input> {
-        "bosonoga_main" => Tok::BosonogaMain,
+        "section" => Tok::Section(<Section>),
         "di" => Tok::Di,
         "do" => Tok::Do,
         "info" => Tok::Info,
+        "call" => Tok::Call,
+        "given_operation" => Tok::Given(<crate::io::Builtin>),
+        "to_join" => Tok::Join,
+        "as" => Tok::As,
         "nihil" => Tok::Nihil,
         "return" => Tok::Return,
         "exit_success" => Tok::ExitSuccess,
         "exit_failure" => Tok::ExitFailure,
-        "number" => Tok::I32(<i32>),
-        "word" => Tok::Word(<&'input str>),
+        "var" => Tok::Var,
+        "val" => Tok::Val,
+        "is" => Tok::Is,
+        "set" => Tok::Set,
+        "operation" => Tok::Operation(<Operation>),
+        "conversion" => Tok::Conversion(<Conversion>),
+        "const" => Tok::Const,
+        "pub" => Tok::Pub,
+        "mod" => Tok::Mod,
+        "def" => Tok::Def,
+        "from_global" => Tok::FromGlobal,
+        "ret" => Tok::Ret,
+        "ret_void" => Tok::RetVoid,
+        "of" => Tok::Of,
+        "with" => Tok::With,
+        "at" => Tok::At,
+        "array" => Tok::Array,
+        "row" => Tok::Row,
+        "while" => Tok::While,
+        "gfx_await_next_frame" => Tok::AwaitNextFrame,
+        "gfx_clear" => Tok::GfxClear,
+        "gfx_draw_rectangle" => Tok::GfxDrawRectangle,
+        "gfx_draw_hex" => Tok::GfxDrawHex,
+        "gfx_draw_circle" => Tok::GfxDrawCircle,
+        "gfx_draw_text" => Tok::GfxDrawText,
+        "gfx_draw_icon" => Tok::GfxDrawIcon,
+        "with_len_col" => Tok::WithLenCol,
+        "if" => Tok::If,
+        "else" => Tok::Else,
+        "and" => Tok::And,
+        "or" => Tok::Or,
+        "not" => Tok::Not,
+        "some" => Tok::Some,
+        "shift_or" => Tok::ShiftOr,
+        "compare" => Tok::Compare(<Compare>),
+        "literal" => Tok::Literal(<Value>),
+        "shift" => Tok::Shift(<&'input str>),
+        "name" => Tok::Name(<&'input str>),
+        "result" => Tok::Result(<&'input str>),
+        "gfx_value" => Tok::GfxValue(<&'input str>),
+        "reserved" => Tok::Reserved(<&'input str>),
+        "indexed_type" => Tok::IndexedType(<&'input str>),
         "end" => Tok::End,
     }
 }
 
-pub Program: Program =
-    "bosonoga_main" <statements:Block> <end:@L> "end" => Program { statements, end };
+pub File: File<'input> = <items:Item*> <end:@L> "end" => File { items, end };
 
-Block: Vec<Statement> =
-    <opening:@L> "di" <statements:Statement*> "do" =>? {
+Item: Item<'input> = {
+    "mod" <start:@L> <name:"literal"> <end:@R> =>? match name {
+        Value::Str(text) => Ok(Item::Mod(Span { start, end }, text)),
+        _ => Err(ParseError::User {
+            error: Diagnostic::new(start, "expected a file name, as in mod \"lorem.bosonoga\"_str"),
+        }),
+    },
+    <public:Public?> "const" <name:Named> "is" <value:Operand> => Item::Const { public, name, value },
+    <public:Public?> "def" <name:Named> <parameters:Named*> <globals:FromGlobal?> <results:Results>
+        <block:Block> =>
+        Item::Def { public, name, parameters, globals: globals.unwrap_or_default(), results, block },
+    <public:Public?> "val" <name:Named> "is" "array" <kinds:Indexed+> "di" <rows:Row+> "do" =>
+        Item::Array { public, name, kinds, rows },
+    <start:@L> <section:"section"> <end:@R> <block:Block> <after:@R> =>
+        Item::Section(Span { start, end }, section, block, after),
+};
+
+// The variables of bosonoga_global that a def reads or sets.
+FromGlobal: Vec<Named<'input>> = "with" "from_global" <Named+>;
+
+Public: Span = <start:@L> "pub" <end:@R> => Span { start, end };
+
+Results: (Span, Results) = {
+    <start:@L> "ret" <end:@R> <kinds:Indexed+> => (Span { start, end }, Results::Indexed(kinds)),
+    <start:@L> "ret_void" <end:@R> => (Span { start, end }, Results::Void),
+};
+
+Indexed: Span = {
+    <start:@L> "literal" <end:@R> => Span { start, end },
+    <start:@L> "indexed_type" <end:@R> => Span { start, end },
+};
+
+Row: (Span, Vec<Operand<'input>>) =
+    <start:@L> "row" <end:@R> <values:Operand+> => (Span { start, end }, values);
+
+Rows: Rows<'input> = {
+    "di" <rows:Row+> "do" => Rows::Literal(rows),
+    <start:@L> "with_len_col" <end:@R> <count:Operand> => Rows::Zeroed(Span { start, end }, count),
+};
+
+Block: Block<'input> =
+    <opening:@L> "di" <statements:Located*> "do" =>? {
         if statements.is_empty() {
             Err(ParseError::User {
                 error: Diagnostic::new(opening, "empty block, write nihil for a block that does nothing"),
@@ -39,10 +126,163 @@ Block: Vec<Statement> =
         }
     };
 
-Statement: Statement = {
-    "info" <values:"number"+> => Statement::Info(values),
+Located: Located<'input> = <start:@L> <statement:Statement> => Located { start, statement };
+
+Statement: Statement<'input> = {
+    "info" <values:Operand+> => Statement::Info(values),
+    <start:@L> "call" <end:@R> <name:Named> <arguments:CallArguments> <taking:Taking?> =>
+        Statement::Call { span: Span { start, end }, name, arguments, taking },
+    "set" <name:Named> "to_join" <values:Operand+> => Statement::Join(name, values),
+    <operation:Spanned<"given_operation">> <values:Operand+> "with" "ret"
+        <results:GivenResult+> <block:Block> => Statement::Given { operation, values, results, block },
+    "set" <name:Named> <operation:Spanned<"operation">> <values:Operand+> =>
+        Statement::Set { name, operation, values },
+    "set" <name:Named> <conversion:Spanned<"conversion">> <values:Operand+> =>
+        Statement::SetConversion { name, conversion, values },
+    "set" <name:Named> <operation:Spanned<"operation">> <call:Call> => Statement::SetCall { name, operation, call },
+    "set" <name:Named> "at" <index:Operand> <operation:Spanned<"operation">> <values:Operand+> =>
+        Statement::SetAt { name, index, operation, values },
+    <declaration:Declaration> "is" <start:@L> "array" <end:@R> <kinds:Indexed+> <rows:Rows> =>
+        Statement::DeclareArray {
+            name: declaration.0,
+            mutable: declaration.1,
+            array: Span { start, end },
+            kinds,
+            rows,
+        },
+    <declaration:Declaration> "is" <initial:Initial> =>
+        Statement::Declare { name: declaration.0, mutable: declaration.1, initial },
+    "if" <condition:Condition> <block:Block> <tail:Else> => {
+        let (mut branches, otherwise) = tail;
+        branches.insert(0, (condition, block));
+        Statement::If { branches, otherwise }
+    },
+    <start:@L> "while" <end:@R> <condition:Condition> <block:Block> =>
+        Statement::While(Span { start, end }, condition, block),
+    <start:@L> "gfx_await_next_frame" <end:@R> => Statement::AwaitNextFrame(Span { start, end }),
+    <start:@L> "gfx_clear" <end:@R> <color:Operand> =>
+        Statement::Draw { span: Span { start, end }, draw: Draw::Clear, aligns: None, values: vec![color] },
+    <start:@L> "gfx_draw_rectangle" <end:@R> <x:Operand> <y:Operand> <width:Operand> <height:Operand> <color:Operand> =>
+        Statement::Draw {
+            span: Span { start, end },
+            draw: Draw::Rectangle,
+            aligns: None,
+            values: vec![x, y, width, height, color],
+        },
+    <start:@L> "gfx_draw_hex" <end:@R> <x:Operand> <y:Operand> <radius:Operand> <color:Operand> =>
+        Statement::Draw { span: Span { start, end }, draw: Draw::Hex, aligns: None, values: vec![x, y, radius, color] },
+    <start:@L> "gfx_draw_circle" <end:@R> <x:Operand> <y:Operand> <radius:Operand> <color:Operand> =>
+        Statement::Draw { span: Span { start, end }, draw: Draw::Circle, aligns: None, values: vec![x, y, radius, color] },
+    <start:@L> "gfx_draw_text" <end:@R> <horizontal:Named> <vertical:Named> <x:Operand> <y:Operand>
+        <font:Operand> <size:Operand> <color:Operand> <text:Operand+> => {
+        let mut values = vec![x, y, font, size, color];
+        values.extend(text);
+        Statement::Draw { span: Span { start, end }, draw: Draw::Text, aligns: Some((horizontal, vertical)), values }
+    },
+    <start:@L> "gfx_draw_icon" <end:@R> <x:Operand> <y:Operand> <icon:Operand> <angle:Operand> <color:Operand> =>
+        Statement::Draw {
+            span: Span { start, end },
+            draw: Draw::Icon,
+            aligns: None,
+            values: vec![x, y, icon, angle, color],
+        },
     "nihil" => Statement::Nihil,
-    "return" <status:Status> => Statement::Return(status),
+    <start:@L> "return" <end:@R> <status:Status> => Statement::Return(Span { start, end }, status),
+    <start:@L> "return" <end:@R> <values:Operand*> => Statement::ReturnValues(Span { start, end }, values),
+};
+
+CallArguments: Arguments<'input> = {
+    => Arguments::None,
+    <start:@L> "of" <end:@R> <values:Operand+> => Arguments::Of(Span { start, end }, values),
+    <start:@L> "at" <end:@R> <index:Operand> => Arguments::At(Span { start, end }, index),
+};
+
+Taking: Taking<'input> =
+    <start:@L> "with" <end:@R> "ret" <results:GivenResult+> <block:Block> =>
+        Taking { with: Span { start, end }, results, block };
+
+GivenResult: (Span, Named<'input>) = <index:Indexed> "as" <name:Named> => (index, name);
+
+Spanned<T>: (Span, T) = <start:@L> <value:T> <end:@R> => (Span { start, end }, value);
+
+Declaration: (Named<'input>, bool) = {
+    "var" <name:Named> => (name, true),
+    "val" <name:Named> => (name, false),
+};
+
+Initial: Initial<'input> = {
+    <value:Operand> <shift_or:ShiftOr*> => Initial::Value { value, shift_or },
+    <conversion:Spanned<"conversion">> <values:Operand+> => Initial::Conversion(conversion, values),
+    <call:Call> => Initial::Call(call),
+};
+
+Call: Call<'input> = {
+    <name:Named> <start:@L> "of" <end:@R> <values:Operand+> "with" "ret" <taken:Indexed> =>
+        Call { name, arguments: Arguments::Of(Span { start, end }, values), taken },
+    <name:Named> <start:@L> "at" <end:@R> <index:Operand> "with" "ret" <taken:Indexed> =>
+        Call { name, arguments: Arguments::At(Span { start, end }, index), taken },
+    <name:Named> "with" "ret" <taken:Indexed> => Call { name, arguments: Arguments::None, taken },
+};
+
+Named: Named<'input> = <start:@L> <name:"name"> <end:@R> => (Span { start, end }, name);
+
+ShiftOr: (Span, Operand<'input>) =
+    <start:@L> "shift_or" <end:@R> <value:Operand> => (Span { start, end }, value);
+
+Else: (Vec<(Condition<'input>, Block<'input>)>, Option<Block<'input>>) = {
+    => (Vec::new(), None),
+    "else" <block:Block> => (Vec::new(), Some(block)),
+    "else" "if" <condition:Condition> <block:Block> <tail:Else> => {
+        let (mut branches, otherwise) = tail;
+        branches.insert(0, (condition, block));
+        (branches, otherwise)
+    },
+};
+
+Condition: Condition<'input> = {
+    <Conjunction> => vec![<>],
+    <mut condition:Condition> "or" <conjunction:Conjunction> => {
+        condition.push(conjunction);
+        condition
+    },
+};
+
+Conjunction: Vec<Comparison<'input>> = {
+    <Comparison> => vec![<>],
+    <mut conjunction:Conjunction> "and" <comparison:Comparison> => {
+        conjunction.push(comparison);
+        conjunction
+    },
+};
+
+Comparison: Comparison<'input> = {
+    <negate:"not"?> <start:@L> "some" <end:@R> <left:Operand> <binding:("as" <Named>)?> =>
+        Comparison {
+            negate: negate.is_some(),
+            presence: Some(Presence { span: Span { start, end }, binding }),
+            left,
+            right: None,
+        },
+    <negate:"not"?> <left:Operand> <right:(<@L> <"compare"> <@R> <Operand>)?> =>
+        Comparison {
+            negate: negate.is_some(),
+            presence: None,
+            left,
+            right: match right {
+                Some((start, compare, end, value)) => Some((Span { start, end }, compare, value)),
+                None => None,
+            },
+        },
+};
+
+Operand: Operand<'input> = <start:@L> <term:Term> <end:@R> => Operand { span: Span { start, end }, term };
+
+Term: Term<'input> = {
+    "literal" => Term::Literal(<>),
+    "shift" => Term::Shift(<>),
+    "name" => Term::Name(<>),
+    "result" => Term::Result(<>),
+    "gfx_value" => Term::GfxValue(<>),
 };
 
 Status: ExitStatus = {

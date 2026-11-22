@@ -1,0 +1,20 @@
+// conversion.bosonoga
+
+bosonoga_main
+di
+  var q is 0_i32
+  set q to_subtract 4_i32 // -4
+  var x is to_f32 q // -4
+  set x to_multiply 1d5_f32 // -6
+  var half is 1d0_f32
+  set half to_divide 2d0_f32 // 0.5
+  var rounded is x
+  set rounded to_subtract half // -6.5
+  set rounded math_to_round rounded // -7
+  val back is to_i32 rounded
+  if q eq -4_i32 and back eq -7_i32 and half eq_6 0d5_f32
+  di
+    return exit_success
+  do
+  return exit_failure
+do

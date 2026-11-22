@@ -1,12 +1,25 @@
 pub mod ast;
+mod check;
+pub mod gfx;
+pub mod io;
+pub mod key;
 pub mod lexer;
+mod modules;
+mod program;
+pub mod settings;
+mod sources;
+mod syntax_error;
+pub mod value;
 
-use std::fmt::Write as _;
+use std::path::Path;
 
-use lalrpop_util::{ParseError, lalrpop_mod};
+use lalrpop_util::lalrpop_mod;
 
-use ast::{ExitStatus, Program, Statement};
-use lexer::{Lexer, Tok};
+use ast::ExitStatus;
+use lexer::Lexer;
+pub use program::Program;
+use settings::Settings;
+use sources::{SourceFile, Sources};
 
 lalrpop_mod!(
     #[allow(
@@ -19,6 +32,8 @@ lalrpop_mod!(
     )]
     grammar
 );
+
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const SHOWN_TOKEN_MAX: usize = 32;
 
@@ -38,93 +53,92 @@ impl Diagnostic {
 
     #[must_use]
     pub fn located(&self, path: &str, source: &str) -> String {
-        let mut lines = source.as_bytes()[..self.offset].split(|&b| b == b'\n');
-        let line = lines.clone().count();
-        let column = 1 + lines.next_back().map_or(0, <[u8]>::len);
+        let end = self.offset.min(source.len());
+        let mut line = 1;
+        let mut column = 1;
+        for byte in &source.as_bytes()[..end] {
+            if *byte == b'\n' {
+                line += 1;
+                column = 1;
+            } else {
+                column += 1;
+            }
+        }
         format!("{path}:{line}:{column}: {}", self.message)
     }
 }
 
 pub fn parse(source: &str) -> Result<Program, Diagnostic> {
-    grammar::ProgramParser::new()
-        .parse(Lexer::new(source))
-        .map_err(|error| syntax_error(source, error))
-}
-
-fn syntax_error(source: &str, error: ParseError<usize, Tok<'_>, Diagnostic>) -> Diagnostic {
-    match error {
-        ParseError::User { error: user } => user,
-        ParseError::UnrecognizedToken {
-            token: (start, token, end),
-            expected,
-        } => {
-            if token == Tok::End && expected == ["\"bosonoga_main\""] {
-                return Diagnostic::new(start, "a program needs a bosonoga_main block");
-            }
-            let got = if token == Tok::End {
-                "end of file".to_owned()
-            } else {
-                format!("'{}'", shown(&source[start..end]))
-            };
-            Diagnostic::new(
-                start,
-                format!("expected {}, got {got}", expected_words(&expected)),
-            )
-        }
-        ParseError::UnrecognizedEof { location, .. }
-        | ParseError::InvalidToken { location }
-        | ParseError::ExtraToken {
-            token: (location, ..),
-        } => Diagnostic::new(location, "unexpected token"),
+    let mut sources = Sources::default();
+    sources.add(String::new(), source.to_owned());
+    match compile(sources, &Settings::default()) {
+        Ok(program) => Ok(program),
+        Err((_, diagnostic)) => Err(diagnostic),
     }
 }
 
-fn shown(text: &str) -> &str {
+pub fn load(path: &Path, settings: &Settings) -> Result<Program, String> {
+    let shown = path.display().to_string();
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) => return Err(format!("{shown}: {}", io_message(&error))),
+    };
+    let mut sources = Sources::default();
+    sources.add(shown, text);
+    match compile(sources, settings) {
+        Ok(program) => Ok(program),
+        Err((read, diagnostic)) => Err(read.located(&diagnostic)),
+    }
+}
+
+pub fn run(program: &Program) -> Result<(String, ExitStatus), (String, Diagnostic)> {
+    program.run()
+}
+
+fn compile(mut sources: Sources, settings: &Settings) -> Result<Program, (Sources, Diagnostic)> {
+    let modules = match modules::discover(&mut sources) {
+        Ok(modules) => modules,
+        Err(diagnostic) => return Err((sources, diagnostic)),
+    };
+    match check_sources(&sources, settings, &modules) {
+        Ok(program) => Ok(Program { sources, ..program }),
+        Err(diagnostic) => Err((sources, diagnostic)),
+    }
+}
+
+fn check_sources(
+    sources: &Sources,
+    settings: &Settings,
+    modules: &[Vec<usize>],
+) -> Result<Program, Diagnostic> {
+    let mut files = Vec::new();
+    for file in &sources.files {
+        files.push(parse_file(file)?);
+    }
+    check::check(sources, settings, &files, modules)
+}
+
+fn parse_file(file: &SourceFile) -> Result<ast::File<'_>, Diagnostic> {
+    let parser = grammar::FileParser::new();
+    let lexer = Lexer::starting_at(&file.text, file.base, file.base);
+    match parser.parse(lexer) {
+        Ok(parsed) => Ok(parsed),
+        Err(error) => Err(syntax_error::describe(file, error)),
+    }
+}
+
+fn io_message(error: &std::io::Error) -> String {
+    let message = error.to_string();
+    match message.rfind(" (os error ") {
+        Some(at) => message[..at].to_owned(),
+        None => message,
+    }
+}
+
+pub(crate) fn shown(text: &str) -> &str {
     let mut end = text.len().min(SHOWN_TOKEN_MAX);
     while !text.is_char_boundary(end) {
         end -= 1;
     }
     &text[..end]
-}
-
-fn expected_words(expected: &[String]) -> String {
-    let has = |terminal: &str| expected.iter().any(|e| e.trim_matches('"') == terminal);
-    if has("info") {
-        return "a statement".to_owned();
-    }
-    if has("number") {
-        return "a value".to_owned();
-    }
-    let words: Vec<&str> = expected
-        .iter()
-        .map(|e| match e.trim_matches('"') {
-            "end" => "end of file",
-            word => word,
-        })
-        .collect();
-    match words.split_last() {
-        Some((last, [])) => (*last).to_owned(),
-        Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
-        None => "nothing".to_owned(),
-    }
-}
-
-pub fn run(program: &Program) -> Result<(String, ExitStatus), (String, Diagnostic)> {
-    let mut output = String::new();
-    for statement in &program.statements {
-        match statement {
-            Statement::Info(values) => {
-                for value in values {
-                    let _ = write!(output, "{value}");
-                }
-                output.push('\n');
-            }
-            Statement::Nihil => {}
-            Statement::Return(status) => return Ok((output, *status)),
-        }
-    }
-    Err((
-        output,
-        Diagnostic::new(program.end, "the program ended without a return"),
-    ))
 }
