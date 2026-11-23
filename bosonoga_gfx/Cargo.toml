@@ -9,7 +9,7 @@ macroquad = "0.4.16"
 
 [lints.rust]
 warnings = "deny"                # -Werror
-unsafe_code = "forbid"           # what UBSan and -Wnull-dereference guard against
+unsafe_code = "deny"             # only the startup diagnostics module may query raw GL strings
 unreachable_pub = "deny"         # -Wmissing-prototypes
 unused_qualifications = "deny"   # -Wredundant-decls
 unused_lifetimes = "deny"        # -Wunused
@@ -50,7 +50,6 @@ libm = { path = "../../../rust_vendor/macroquad/current/libm-0.2.16" }
 macroquad_macro = { path = "../../../rust_vendor/macroquad/current/macroquad_macro-0.1.8" }
 macroquad = { path = "../../../rust_vendor/macroquad/current/macroquad-0.4.16" }
 malloc_buf = { path = "../../../rust_vendor/macroquad/current/malloc_buf-0.0.6" }
-miniquad = { path = "../../../rust_vendor/macroquad/current/miniquad-0.4.11" }
 miniz_oxide_0_8_9 = { package = "miniz_oxide", path = "../../../rust_vendor/macroquad/current/miniz_oxide-0.8.9" }
 miniz_oxide_0_9_1 = { package = "miniz_oxide", path = "../../../rust_vendor/macroquad/current/miniz_oxide-0.9.1" }
 ndk-sys = { path = "../../../rust_vendor/macroquad/current/ndk-sys-0.2.2" }
@@ -64,6 +63,9 @@ winapi-i686-pc-windows-gnu = { path = "../../../rust_vendor/macroquad/current/wi
 winapi = { path = "../../../rust_vendor/macroquad/current/winapi-0.3.9" }
 winapi-x86_64-pc-windows-gnu = { path = "../../../rust_vendor/macroquad/current/winapi-x86_64-pc-windows-gnu-0.4.0" }
 zlib-rs = { path = "../../../rust_vendor/macroquad/current/zlib-rs-0.6.7" }
+
+# miniquad
+miniquad = { path = "../../../rust_vendor/miniquad/current/miniquad" }
 
 # lalrpop
 aho-corasick = { path = "../../../rust_vendor/lalrpop/current/aho-corasick-1.1.5" }

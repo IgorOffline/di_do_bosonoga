@@ -4,6 +4,29 @@ use bosonoga::ast::ExitStatus;
 use bosonoga::gfx::{Input, Scene, Window};
 use bosonoga::settings::Settings;
 
+#[test]
+fn startup_version_check_setting() {
+    let meta = "[meta]\nname = \"example\"\nversion = \"0.2.5\"\n";
+    for (suffix, expected) in [
+        ("", false),
+        ("skip_version_check = false\n", false),
+        ("skip_version_check = true  \n", true),
+    ] {
+        let settings = Settings::parse("regina.ini", Path::new("."), &format!("{meta}{suffix}"))
+            .unwrap_or_else(|message| panic!("{message}"));
+        assert_eq!(settings.skip_version_check, expected);
+    }
+    let invalid = Settings::parse(
+        "regina.ini",
+        Path::new("."),
+        &format!("{meta}skip_version_check = yes\n"),
+    );
+    assert_eq!(
+        invalid.unwrap_err(),
+        "regina.ini: skip_version_check must be true or false"
+    );
+}
+
 #[cfg(test)]
 fn check_program(path: &str, source: &str) {
     let program = match bosonoga::parse(source) {

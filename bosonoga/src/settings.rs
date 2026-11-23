@@ -15,6 +15,8 @@ pub struct Asset {
 pub struct Settings {
     pub name: String,
     pub version: String,
+    /// Skip the host's version requirement check and startup diagnostics.
+    pub skip_version_check: bool,
     pub gfx_width: u32,
     pub gfx_height: u32,
     pub background: u32,
@@ -90,9 +92,16 @@ impl Settings {
         let file = KeyFile::parse(contents)?;
         let name = file.text("meta", "name")?;
         let version = file.text("meta", "version")?;
+        let skip_version_check = file
+            .raw("meta", "skip_version_check")
+            .unwrap_or("false")
+            .trim()
+            .parse::<bool>()
+            .map_err(|_| "skip_version_check must be true or false".to_owned())?;
         let mut settings = Settings {
             name,
             version,
+            skip_version_check,
             ..Settings::default()
         };
         if file.has_group("gfx") {
