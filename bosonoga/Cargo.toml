@@ -39,6 +39,7 @@ manual_find = "allow"                          # plain search loops read better 
 
 # Every crate of the tree, so that Cargo.lock has no crates.io source or checksum.
 [patch.crates-io]
+# lalrpop
 aho-corasick = { path = "../../../rust_vendor/lalrpop/current/aho-corasick-1.1.5" }
 ascii-canvas = { path = "../../../rust_vendor/lalrpop/current/ascii-canvas-4.0.0" }
 bit-set = { path = "../../../rust_vendor/lalrpop/current/bit-set-0.11.1" }
