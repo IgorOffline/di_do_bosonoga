@@ -1,0 +1,123 @@
+[package]
+name = "bosonoga_gfx"
+version = "0.2.4"
+edition = "2024"
+
+[dependencies]
+bosonoga = { path = "../bosonoga" }
+macroquad = "0.4.16"
+
+[lints.rust]
+warnings = "deny"                # -Werror
+unsafe_code = "forbid"           # what UBSan and -Wnull-dereference guard against
+unreachable_pub = "deny"         # -Wmissing-prototypes
+unused_qualifications = "deny"   # -Wredundant-decls
+unused_lifetimes = "deny"        # -Wunused
+unused_macro_rules = "deny"      # -Wunused
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }        # -Wall -Wextra
+pedantic = { level = "deny", priority = -1 }   # -Wpedantic, -Wcast-qual, -Wcast-align, -Wfloat-equal
+as_conversions = "deny"                        # -Wconversion -Wsign-conversion
+shadow_reuse = "deny"                          # -Wshadow
+shadow_same = "deny"                           # -Wshadow
+shadow_unrelated = "deny"                      # -Wshadow
+wildcard_enum_match_arm = "deny"               # -Wswitch-enum
+float_cmp_const = "deny"                       # -Wfloat-equal
+unwrap_used = "deny"                           # -Wnull-dereference
+expect_used = "deny"                           # -Wnull-dereference
+panic = "deny"                                 # -fno-sanitize-recover is for bugs, not errors
+missing_errors_doc = "allow"                   # C11 had no doc requirement
+
+# Every crate of the tree, bosonoga's and macroquad's, so that Cargo.lock has no crates.io source or checksum.
+[patch.crates-io]
+# macroquad
+adler2 = { path = "../../../rust_vendor/macroquad/current/adler2-2.0.1" }
+allocator-api2 = { path = "../../../rust_vendor/macroquad/current/allocator-api2-0.2.21" }
+autocfg = { path = "../../../rust_vendor/macroquad/current/autocfg-1.5.1" }
+bitflags_1_3_2 = { package = "bitflags", path = "../../../rust_vendor/macroquad/current/bitflags-1.3.2" }
+bytemuck = { path = "../../../rust_vendor/macroquad/current/bytemuck-1.25.2" }
+byteorder = { path = "../../../rust_vendor/macroquad/current/byteorder-1.5.0" }
+color_quant = { path = "../../../rust_vendor/macroquad/current/color_quant-1.1.0" }
+core_maths = { path = "../../../rust_vendor/macroquad/current/core_maths-0.1.1" }
+crc32fast = { path = "../../../rust_vendor/macroquad/current/crc32fast-1.5.1" }
+fdeflate = { path = "../../../rust_vendor/macroquad/current/fdeflate-0.3.7" }
+flate2 = { path = "../../../rust_vendor/macroquad/current/flate2-1.1.10" }
+fontdue = { path = "../../../rust_vendor/macroquad/current/fontdue-0.9.4" }
+glam = { path = "../../../rust_vendor/macroquad/current/glam-0.27.0" }
+image = { path = "../../../rust_vendor/macroquad/current/image-0.24.9" }
+libm = { path = "../../../rust_vendor/macroquad/current/libm-0.2.16" }
+macroquad_macro = { path = "../../../rust_vendor/macroquad/current/macroquad_macro-0.1.8" }
+macroquad = { path = "../../../rust_vendor/macroquad/current/macroquad-0.4.16" }
+malloc_buf = { path = "../../../rust_vendor/macroquad/current/malloc_buf-0.0.6" }
+miniquad = { path = "../../../rust_vendor/macroquad/current/miniquad-0.4.11" }
+miniz_oxide_0_8_9 = { package = "miniz_oxide", path = "../../../rust_vendor/macroquad/current/miniz_oxide-0.8.9" }
+miniz_oxide_0_9_1 = { package = "miniz_oxide", path = "../../../rust_vendor/macroquad/current/miniz_oxide-0.9.1" }
+ndk-sys = { path = "../../../rust_vendor/macroquad/current/ndk-sys-0.2.2" }
+num-traits = { path = "../../../rust_vendor/macroquad/current/num-traits-0.2.19" }
+objc-rs = { path = "../../../rust_vendor/macroquad/current/objc-rs-0.2.8" }
+png = { path = "../../../rust_vendor/macroquad/current/png-0.17.16" }
+quad-rand = { path = "../../../rust_vendor/macroquad/current/quad-rand-0.2.3" }
+simd-adler32 = { path = "../../../rust_vendor/macroquad/current/simd-adler32-0.3.10" }
+ttf-parser = { path = "../../../rust_vendor/macroquad/current/ttf-parser-0.25.1" }
+winapi-i686-pc-windows-gnu = { path = "../../../rust_vendor/macroquad/current/winapi-i686-pc-windows-gnu-0.4.0" }
+winapi = { path = "../../../rust_vendor/macroquad/current/winapi-0.3.9" }
+winapi-x86_64-pc-windows-gnu = { path = "../../../rust_vendor/macroquad/current/winapi-x86_64-pc-windows-gnu-0.4.0" }
+zlib-rs = { path = "../../../rust_vendor/macroquad/current/zlib-rs-0.6.7" }
+
+# lalrpop
+aho-corasick = { path = "../../../rust_vendor/lalrpop/current/aho-corasick-1.1.5" }
+ascii-canvas = { path = "../../../rust_vendor/lalrpop/current/ascii-canvas-4.0.0" }
+bitflags_2_13_2 = { package = "bitflags", path = "../../../rust_vendor/lalrpop/current/bitflags-2.13.2" }
+bit-set = { path = "../../../rust_vendor/lalrpop/current/bit-set-0.11.1" }
+bit-vec = { path = "../../../rust_vendor/lalrpop/current/bit-vec-0.10.2" }
+cfg-if = { path = "../../../rust_vendor/lalrpop/current/cfg-if-1.0.5" }
+cpufeatures = { path = "../../../rust_vendor/lalrpop/current/cpufeatures-0.3.1" }
+crypto-common = { path = "../../../rust_vendor/lalrpop/current/crypto-common-0.2.2" }
+digest = { path = "../../../rust_vendor/lalrpop/current/digest-0.11.3" }
+either = { path = "../../../rust_vendor/lalrpop/current/either-1.19.0" }
+ena = { path = "../../../rust_vendor/lalrpop/current/ena-0.14.4" }
+equivalent = { path = "../../../rust_vendor/lalrpop/current/equivalent-1.0.3" }
+fixedbitset = { path = "../../../rust_vendor/lalrpop/current/fixedbitset-0.5.9" }
+foldhash = { path = "../../../rust_vendor/lalrpop/current/foldhash-0.1.5" }
+hashbrown_0_15_5 = { package = "hashbrown", path = "../../../rust_vendor/lalrpop/current/hashbrown-0.15.5" }
+hashbrown_0_17_1 = { package = "hashbrown", path = "../../../rust_vendor/lalrpop/current/hashbrown-0.17.1" }
+hybrid-array = { path = "../../../rust_vendor/lalrpop/current/hybrid-array-0.4.15" }
+indexmap = { path = "../../../rust_vendor/lalrpop/current/indexmap-2.14.2" }
+itertools = { path = "../../../rust_vendor/lalrpop/current/itertools-0.15.0" }
+keccak = { path = "../../../rust_vendor/lalrpop/current/keccak-0.2.2" }
+lalrpop = { path = "../../../rust_vendor/lalrpop/current/lalrpop-0.23.2" }
+lalrpop-util = { path = "../../../rust_vendor/lalrpop/current/lalrpop-util-0.23.2" }
+libc = { path = "../../../rust_vendor/lalrpop/current/libc-0.2.191" }
+lock_api = { path = "../../../rust_vendor/lalrpop/current/lock_api-0.4.14" }
+log = { path = "../../../rust_vendor/lalrpop/current/log-0.4.35" }
+memchr = { path = "../../../rust_vendor/lalrpop/current/memchr-2.8.3" }
+new_debug_unreachable = { path = "../../../rust_vendor/lalrpop/current/new_debug_unreachable-1.0.6" }
+parking_lot_core = { path = "../../../rust_vendor/lalrpop/current/parking_lot_core-0.9.12" }
+parking_lot = { path = "../../../rust_vendor/lalrpop/current/parking_lot-0.12.5" }
+petgraph = { path = "../../../rust_vendor/lalrpop/current/petgraph-0.8.3" }
+phf_shared = { path = "../../../rust_vendor/lalrpop/current/phf_shared-0.14.0" }
+pico-args = { path = "../../../rust_vendor/lalrpop/current/pico-args-0.5.0" }
+precomputed-hash = { path = "../../../rust_vendor/lalrpop/current/precomputed-hash-0.1.1" }
+redox_syscall = { path = "../../../rust_vendor/lalrpop/current/redox_syscall-0.5.18" }
+regex-automata = { path = "../../../rust_vendor/lalrpop/current/regex-automata-0.4.18" }
+regex = { path = "../../../rust_vendor/lalrpop/current/regex-1.13.1" }
+regex-syntax = { path = "../../../rust_vendor/lalrpop/current/regex-syntax-0.8.11" }
+same-file = { path = "../../../rust_vendor/lalrpop/current/same-file-1.0.6" }
+scopeguard = { path = "../../../rust_vendor/lalrpop/current/scopeguard-1.2.0" }
+sha3 = { path = "../../../rust_vendor/lalrpop/current/sha3-0.12.0" }
+siphasher = { path = "../../../rust_vendor/lalrpop/current/siphasher-1.0.4" }
+smallvec = { path = "../../../rust_vendor/lalrpop/current/smallvec-1.16.5" }
+sponge-cursor = { path = "../../../rust_vendor/lalrpop/current/sponge-cursor-0.1.0" }
+string_cache = { path = "../../../rust_vendor/lalrpop/current/string_cache-0.11.0" }
+term = { path = "../../../rust_vendor/lalrpop/current/term-1.2.1" }
+typenum = { path = "../../../rust_vendor/lalrpop/current/typenum-1.20.1" }
+unicode-xid = { path = "../../../rust_vendor/lalrpop/current/unicode-xid-0.2.6" }
+walkdir = { path = "../../../rust_vendor/lalrpop/current/walkdir-2.5.0" }
+winapi-util = { path = "../../../rust_vendor/lalrpop/current/winapi-util-0.1.11" }
+windows-link = { path = "../../../rust_vendor/lalrpop/current/windows-link-0.2.1" }
+windows-sys = { path = "../../../rust_vendor/lalrpop/current/windows-sys-0.61.2" }
+
+# -fsanitize=undefined traps signed overflow in every build.
+[profile.release]
+overflow-checks = true
