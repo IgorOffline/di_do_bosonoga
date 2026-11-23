@@ -123,7 +123,7 @@ impl<'input> Checker<'_, 'input> {
         }
     }
 
-    fn gfx_value(&self, at: usize, word: &str) -> Result<(Operand, Kind), Diagnostic> {
+    fn gfx_value(&mut self, at: usize, word: &str) -> Result<(Operand, Kind), Diagnostic> {
         let in_function = self.function.is_some();
         if word == "gfx_key" {
             if let Some(slot) = self.program.key_slot
@@ -134,9 +134,22 @@ impl<'input> Checker<'_, 'input> {
             }
             return Self::fail(at, "gfx_key can only be in gfx_key_down");
         }
+        let in_frame = self.section == Some(Section::GfxFrame) && !in_function;
+        if word == "gfx_heap_bytes" {
+            if !in_frame {
+                return Self::fail(at, "gfx_heap_bytes can only be in gfx_frame");
+            }
+            // Its slot is made by the first read, so that a program that does
+            // not read it does not measure the heap every frame.
+            if let Some(slot) = self.program.heap_slot {
+                return Ok((Operand::Slot(slot), Kind::U64));
+            }
+            let slot = self.allocate();
+            self.program.heap_slot = Some(slot);
+            return Ok((Operand::Slot(slot), Kind::U64));
+        }
         if let Some(slot) = self.program.delta_time_slot
-            && self.section == Some(Section::GfxFrame)
-            && !in_function
+            && in_frame
         {
             return Ok((Operand::Slot(slot), Kind::F32));
         }

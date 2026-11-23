@@ -416,7 +416,7 @@ fn word(text: &str) -> Tok<'_> {
         "false_bool" => Tok::Literal(Value::Bool(false)),
         "true_optional_bool" => Tok::Literal(Value::present(Value::Bool(true))),
         "false_optional_bool" => Tok::Literal(Value::present(Value::Bool(false))),
-        "gfx_delta_time" | "gfx_key" => Tok::GfxValue(text),
+        "gfx_delta_time" | "gfx_heap_bytes" | "gfx_key" => Tok::GfxValue(text),
         _ if is_numbered(text, "shift_") => Tok::Shift(text),
         _ if is_result_name(text) => Tok::Result(text),
         _ if is_numbered(text, "to_") || RESERVED.contains(&text) => Tok::Reserved(text),

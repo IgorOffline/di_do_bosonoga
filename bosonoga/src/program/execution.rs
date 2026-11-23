@@ -215,7 +215,8 @@ impl<'a> Execution<'a> {
         }
     }
 
-    // Sets gfx_key or gfx_delta_time, of a section, which runs in the first frame.
+    // Sets gfx_key, gfx_delta_time or gfx_heap_bytes, of a section, which runs
+    // in the first frame.
     fn set_section_slot(&mut self, slot: Option<Slot>, value: Value) {
         let Some(at) = slot else {
             return;
@@ -274,6 +275,13 @@ impl<'a> Execution<'a> {
     fn next_frame(&mut self) -> Result<Flow, Diagnostic> {
         let program = self.program;
         self.steps = 0;
+        // Measured before the scene of the last frame is let go, which the
+        // heap held until now.
+        if program.heap_slot.is_some() {
+            let bytes =
+                super::heap::bytes(&self.frames, &program.arrays, &self.scene, &self.output);
+            self.set_section_slot(program.heap_slot, Value::U64(bytes));
+        }
         self.scene = Scene {
             clear: program.background,
             shapes: Vec::new(),

@@ -1,4 +1,5 @@
 mod execution;
+mod heap;
 
 use crate::Diagnostic;
 use crate::ast::ExitStatus;
@@ -211,6 +212,8 @@ pub struct Program {
     pub(crate) slot_count: usize,
     pub(crate) key_slot: Option<Slot>,
     pub(crate) delta_time_slot: Option<Slot>,
+    // Of gfx_heap_bytes, only when the program reads it.
+    pub(crate) heap_slot: Option<Slot>,
     pub(crate) functions: Vec<Function>,
     pub(crate) arrays: Vec<Array>,
     pub(crate) var_arrays: Vec<VarArray>,

@@ -598,3 +598,25 @@ fn step_limit() {
         "{frame:?}"
     );
 }
+
+// gfx_heap_bytes grows with a str that grows, and is read only in gfx_frame.
+#[test]
+fn heap_bytes() {
+    let growing = gfx_result(
+        "bosonoga_global\ndi\n  var first is 0_u64\n  var latest is 0_u64\n  var text is \"\"_str\ndo\n\ngfx_frame\ndi\n  if first eq 0_u64\n  di\n    set first to gfx_heap_bytes\n  do\n  set latest to gfx_heap_bytes\ndo\n\ngfx_main\ndi\n  gfx_await_next_frame\n  var i is 0_i32\n  while i lt 1000_i32\n  di\n    var longer is \"\"_str\n    set longer to_join text \"0123456789\"_str\n    set text to longer\n    set i to_add 1_i32\n  do\n  gfx_await_next_frame\n  gfx_await_next_frame\n  if first gt 0_u64 and latest ge first\n  di\n    var grown is latest\n    set grown to_subtract first\n    if grown ge 10000_u64\n    di\n      return exit_success\n    do\n  do\n  return exit_failure\ndo\n",
+    );
+    assert_eq!(growing, Ok(ExitStatus::Success));
+    let outside = [
+        (
+            "gfx_main\ndi\n  val bytes is gfx_heap_bytes\n  info bytes\n  return exit_success\ndo\n",
+            "test:3:16: gfx_heap_bytes can only be in gfx_frame",
+        ),
+        (
+            "def f_fn ret 0_u64\ndi\n  return gfx_heap_bytes\ndo\n\ngfx_frame\ndi\n  val bytes is f_fn with ret 0_u64\n  info bytes\ndo\n\ngfx_main\ndi\n  return exit_success\ndo\n",
+            "test:3:10: gfx_heap_bytes can only be in gfx_frame",
+        ),
+    ];
+    for (source, expected) in outside {
+        assert_eq!(diagnostic(source), expected);
+    }
+}
