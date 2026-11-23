@@ -2,6 +2,9 @@
 // macroquad. bosonoga says what to draw, and this crate draws it.
 
 mod assets;
+// Macroquad exposes context diagnostics only through its unsafe GL interface.
+#[allow(unsafe_code)]
+mod diagnostics;
 mod draw;
 mod host;
 mod keys;
@@ -51,7 +54,7 @@ pub fn main(settings_file: &str, default_program: &str) -> ExitCode {
     if arguments.next().is_some() {
         return fail(&format!("usage: {} [FILE]", settings.name));
     }
-    if settings.version != bosonoga::VERSION {
+    if !settings.skip_version_check && settings.version != bosonoga::VERSION {
         return fail(&format!(
             "{} {} needs bosonoga {}, but this is bosonoga {}",
             settings.name,
@@ -79,8 +82,12 @@ pub fn main(settings_file: &str, default_program: &str) -> ExitCode {
         window_title: path,
         window_width: i32::try_from(settings.gfx_width).unwrap_or(i32::MAX),
         window_height: i32::try_from(settings.gfx_height).unwrap_or(i32::MAX),
+        window_resizable: false,
         ..Conf::default()
     };
-    macroquad::Window::from_config(conf, host::run(program, fonts, icons));
+    macroquad::Window::from_config(
+        conf,
+        host::run(program, fonts, icons, settings.skip_version_check),
+    );
     ExitCode::FAILURE
 }

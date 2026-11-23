@@ -51,7 +51,11 @@ pub(crate) async fn run(
     program: Program,
     fonts: Vec<(String, String, Vec<u8>)>,
     icons: Vec<(String, String, Vec<u8>)>,
+    skip_version_check: bool,
 ) {
+    if !skip_version_check {
+        crate::diagnostics::print();
+    }
     let assets = match Assets::load(program.path(), &fonts, &icons) {
         Ok(assets) => assets,
         Err(message) => {
