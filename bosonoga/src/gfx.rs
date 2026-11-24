@@ -22,6 +22,27 @@ pub struct Align {
     pub vertical: Vertical,
 }
 
+// A perspective camera, in world units. Y is up for gfx_draw_grid, but the
+// camera can have any up that is not along its view.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Camera {
+    pub position: [f32; 3],
+    pub target: [f32; 3],
+    pub up: [f32; 3],
+    // The vertical field of view, in degrees, above 0 and below 180.
+    pub fov_degrees: f32,
+}
+
+// A box from center - size / 2 to center + size / 2.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Cube {
+    pub center: [f32; 3],
+    pub size: [f32; 3],
+    pub color: u32,
+}
+
+// The shapes of a frame in the order they are drawn. Begin3d and End3d come
+// in pairs, at most once per frame, and only cubes and grids are between them.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Shape {
     Rectangle {
@@ -59,6 +80,19 @@ pub enum Shape {
         align: Align,
         text: String,
     },
+    Begin3d(Camera),
+    // Shaded faces: the top in full color, the sides darker, the bottom darkest.
+    Cube(Cube),
+    CubeWires(Cube),
+    // Lines on the plane y = 0 around the origin, slices / 2 cells to each
+    // side, spacing apart. The two lines through the origin have axes_color.
+    Grid {
+        slices: u32,
+        spacing: f32,
+        axes_color: u32,
+        color: u32,
+    },
+    End3d,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

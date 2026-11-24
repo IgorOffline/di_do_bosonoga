@@ -1,5 +1,6 @@
 mod execution;
 mod heap;
+mod space;
 
 use crate::Diagnostic;
 use crate::ast::ExitStatus;
@@ -88,6 +89,9 @@ pub(crate) enum Draw {
         values: [Operand; 5],
         parts: Vec<Operand>,
     },
+    Cube([Operand; 7]),
+    CubeWires([Operand; 7]),
+    Grid([Operand; 4]),
 }
 
 #[derive(Debug)]
@@ -159,6 +163,11 @@ pub(crate) enum Statement {
     AwaitNextFrame,
     Draw {
         draw: Draw,
+        offset: usize,
+    },
+    Camera3d {
+        camera: [Operand; 10],
+        block: Vec<Statement>,
         offset: usize,
     },
     Return(ExitStatus),

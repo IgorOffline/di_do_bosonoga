@@ -1,5 +1,6 @@
 use std::mem;
 
+use super::space;
 use super::{
     Call, Callee, Comparison, Condition, Draw, Given, Invoke, Operand, Program, Slot, Statement,
 };
@@ -107,6 +108,8 @@ struct Execution<'a> {
     output: String,
     window: Option<&'a mut dyn Window>,
     scene: Scene,
+    // Whether gfx_camera_3d ran in this frame, which it does at most once.
+    camera_3d: bool,
     io: &'a mut dyn Io,
     // The section that runs, its statements since its start or since
     // gfx_await_next_frame, and the while or call that a step error names.
@@ -123,6 +126,7 @@ impl<'a> Execution<'a> {
             output: String::new(),
             window,
             scene: Scene::default(),
+            camera_3d: false,
             io,
             running: "",
             steps: 0,
@@ -286,6 +290,7 @@ impl<'a> Execution<'a> {
             clear: program.background,
             shapes: Vec::new(),
         };
+        self.camera_3d = false;
         self.section("gfx_frame", &program.sections.frame)?;
         self.flush();
         let mut shown = None;
@@ -440,6 +445,26 @@ impl<'a> Execution<'a> {
                 angle: self.real(angle),
                 color: self.color(fill),
             },
+            Draw::Cube(values) => Shape::Cube(self.cube("gfx_draw_cube", values, offset)?),
+            Draw::CubeWires(values) => {
+                Shape::CubeWires(self.cube("gfx_draw_cube_wires", values, offset)?)
+            }
+            Draw::Grid([count, apart, axes, lines]) => {
+                let mut slices = 0;
+                if let Value::U32(value) = self.get(count) {
+                    slices = *value;
+                }
+                let spacing = self.real(apart);
+                if let Err(message) = space::grid(slices, spacing) {
+                    return Err(Diagnostic::new(offset, message));
+                }
+                Shape::Grid {
+                    slices,
+                    spacing,
+                    axes_color: self.color(axes),
+                    color: self.color(lines),
+                }
+            }
             Draw::Text {
                 align,
                 values: [x, y, typeface, size, fill],
@@ -463,6 +488,45 @@ impl<'a> Execution<'a> {
         };
         self.scene.shapes.push(shape);
         Ok(())
+    }
+
+    fn cube(
+        &self,
+        word: &str,
+        values: &[Operand; 7],
+        offset: usize,
+    ) -> Result<crate::gfx::Cube, Diagnostic> {
+        let [x, y, z, width, height, depth, fill] = values;
+        let reals = [x, y, z, width, height, depth].map(|operand| self.real(operand));
+        match space::cube(word, reals, self.color(fill)) {
+            Ok(cube) => Ok(cube),
+            Err(message) => Err(Diagnostic::new(offset, message)),
+        }
+    }
+
+    // Draws the block with the camera, then goes back to 2D, also when the
+    // block fails.
+    fn camera(
+        &mut self,
+        values: &[Operand; 10],
+        block: &[Statement],
+        offset: usize,
+    ) -> Result<Flow, Diagnostic> {
+        if self.camera_3d {
+            return Err(Diagnostic::new(
+                offset,
+                "gfx_camera_3d runs at most once per frame",
+            ));
+        }
+        let camera = match space::camera(values.each_ref().map(|operand| self.real(operand))) {
+            Ok(camera) => camera,
+            Err(message) => return Err(Diagnostic::new(offset, message)),
+        };
+        self.camera_3d = true;
+        self.scene.shapes.push(Shape::Begin3d(camera));
+        let flow = self.block(block);
+        self.scene.shapes.push(Shape::End3d);
+        flow
     }
 
     fn draw_text(&self, parts: &[Operand], offset: usize) -> Result<String, Diagnostic> {
@@ -722,6 +786,11 @@ impl<'a> Execution<'a> {
             } => return self.repeat(condition, block, *offset),
             Statement::AwaitNextFrame => return self.next_frame(),
             Statement::Draw { draw, offset } => self.draw(draw, *offset)?,
+            Statement::Camera3d {
+                camera,
+                block,
+                offset,
+            } => return self.camera(camera, block, *offset),
             Statement::Return(status) => return Ok(Flow::Exit(*status)),
             Statement::ReturnValues(operands) => return Ok(Flow::Values(self.values(operands))),
             Statement::Unwrap { slot, optional } => {

@@ -643,3 +643,235 @@ fn heap_bytes() {
         assert_eq!(diagnostic(source), expected);
     }
 }
+
+// Keeps the scenes it is shown.
+#[cfg(test)]
+struct Scenes(Vec<Scene>);
+
+impl Window for Scenes {
+    fn info(&mut self, _text: &str) {}
+
+    fn show(&mut self, scene: &Scene) -> Option<Input> {
+        self.0.push(scene.clone());
+        if self.0.len() > 100 {
+            return None;
+        }
+        Some(Input {
+            keys: Vec::new(),
+            delta_time: 1.0 / 60.0,
+        })
+    }
+}
+
+// Loads a program with colors, from a file of its own, as colors come from
+// settings. Its messages name the file test.
+#[cfg(test)]
+fn load_3d(source: &str) -> Result<bosonoga::Program, String> {
+    static LOADED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let settings = Settings::parse(
+        "regina.ini",
+        Path::new("."),
+        "[meta]\nname = \"cube\"\nversion = \"0.2.6\"\n[gfx]\nwidth = 960\nheight = 540\n[color]\nbackground = \"87CEEB\"\ncube = \"E07A5F\"\ngrid = \"5A5A5A\"\n",
+    )
+    .unwrap_or_else(|message| panic!("{message}"));
+    let number = LOADED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!("bosonoga_3d_{}_{number}", std::process::id()));
+    std::fs::write(&path, source).unwrap();
+    let loaded = bosonoga::load(&path, &settings);
+    std::fs::remove_file(&path).unwrap();
+    let shown = path.display().to_string();
+    match loaded {
+        Ok(program) => Ok(program),
+        Err(message) => Err(message.replacen(&shown, "test", 1)),
+    }
+}
+
+#[cfg(test)]
+fn run_3d(source: &str) -> (Result<ExitStatus, String>, Vec<Scene>) {
+    let program = load_3d(source).unwrap_or_else(|message| panic!("{message}"));
+    let mut window = Scenes(Vec::new());
+    let result = bosonoga::gfx::run(&program, &mut window);
+    let path = program.path().to_owned();
+    (
+        result.map_err(|message| message.replacen(&path, "test", 1)),
+        window.0,
+    )
+}
+
+// Shows four frames: the first before gfx_main, then one per wait.
+#[cfg(test)]
+fn frame_program(frame: &str) -> String {
+    format!(
+        "gfx_frame\ndi\n{frame}\ndo\n\ngfx_main\ndi\n  gfx_await_next_frame\n  gfx_await_next_frame\n  gfx_await_next_frame\n  return exit_success\ndo\n"
+    )
+}
+
+#[cfg(test)]
+const CAMERA_3D: &str = "gfx_camera_3d 6d0_f32 4d0_f32 6d0_f32 0d0_f32 1d0_f32 0d0_f32 0d0_f32 1d0_f32 0d0_f32 45d0_f32";
+
+#[cfg(test)]
+const CUBE: &str = "gfx_draw_cube 0d0_f32 1d0_f32 0d0_f32 2d0_f32 2d0_f32 2d0_f32 color_cube";
+
+// A 2D rectangle, then a camera block of a grid and a cube, then 2D again,
+// in that order, in every frame.
+#[test]
+fn camera_3d_scene() {
+    use bosonoga::gfx::{Camera, Cube, Shape};
+    let (result, shown) = run_3d(&frame_program(&format!(
+        "  gfx_draw_rectangle 0d0_f32 0d0_f32 10d0_f32 10d0_f32 color_grid\n  {CAMERA_3D}\n  di\n    gfx_draw_grid 20_u32 1d0_f32 color_cube color_grid\n    {CUBE}\n    gfx_draw_cube_wires 0d0_f32 1d0_f32 0d0_f32 2d01_f32 2d01_f32 2d01_f32 color_grid\n  do\n  gfx_draw_circle 5d0_f32 5d0_f32 3d0_f32 color_cube"
+    )));
+    assert_eq!(result, Ok(ExitStatus::Success));
+    assert_eq!(shown.len(), 4);
+    let (cube, grid) = (0x00E0_7A5F, 0x005A_5A5A);
+    for scene in &shown {
+        assert_eq!(scene.clear, 0x0087_CEEB);
+        assert_eq!(
+            scene.shapes,
+            vec![
+                Shape::Rectangle {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                    color: grid,
+                },
+                Shape::Begin3d(Camera {
+                    position: [6.0, 4.0, 6.0],
+                    target: [0.0, 1.0, 0.0],
+                    up: [0.0, 1.0, 0.0],
+                    fov_degrees: 45.0,
+                }),
+                Shape::Grid {
+                    slices: 20,
+                    spacing: 1.0,
+                    axes_color: cube,
+                    color: grid,
+                },
+                Shape::Cube(Cube {
+                    center: [0.0, 1.0, 0.0],
+                    size: [2.0, 2.0, 2.0],
+                    color: cube,
+                }),
+                Shape::CubeWires(Cube {
+                    center: [0.0, 1.0, 0.0],
+                    size: [2.01, 2.01, 2.01],
+                    color: grid,
+                }),
+                Shape::End3d,
+                Shape::Circle {
+                    x: 5.0,
+                    y: 5.0,
+                    radius: 3.0,
+                    color: cube,
+                },
+            ]
+        );
+    }
+}
+
+// A frame that skips the camera block draws in 2D only, and the next frame
+// can have its camera again.
+#[test]
+fn camera_3d_per_frame() {
+    use bosonoga::gfx::Shape;
+    let (result, shown) = run_3d(&format!(
+        "bosonoga_global\ndi\n  var frame is 0_i32\ndo\n\ngfx_frame\ndi\n  set frame to_add 1_i32\n  if not frame eq 2_i32\n  di\n    {CAMERA_3D}\n    di\n      {CUBE}\n    do\n  do\ndo\n\ngfx_main\ndi\n  gfx_await_next_frame\n  gfx_await_next_frame\n  gfx_await_next_frame\n  return exit_success\ndo\n"
+    ));
+    assert_eq!(result, Ok(ExitStatus::Success));
+    let counts: Vec<usize> = shown.iter().map(|scene| scene.shapes.len()).collect();
+    assert_eq!(counts, [3, 0, 3, 3]);
+    assert!(matches!(shown[2].shapes[0], Shape::Begin3d(_)));
+    assert_eq!(shown[2].shapes[2], Shape::End3d);
+}
+
+// 3D draws only in the block of gfx_camera_3d, 2D draws only outside it,
+// and the camera only in gfx_frame, outside defs and other cameras.
+#[test]
+fn camera_3d_placement() {
+    let cases = [
+        (
+            frame_program(&format!("  {CUBE}")),
+            "test:3:3: gfx_draw_cube can only be in the block of gfx_camera_3d, in gfx_frame",
+        ),
+        (
+            frame_program(&format!(
+                "  {CAMERA_3D}\n  di\n    gfx_clear color_cube\n  do"
+            )),
+            "test:5:5: gfx_clear draws in 2D, so it goes before or after the block of gfx_camera_3d",
+        ),
+        (
+            frame_program(&format!(
+                "  {CAMERA_3D}\n  di\n    {CAMERA_3D}\n    di\n      {CUBE}\n    do\n  do"
+            )),
+            "test:5:5: gfx_camera_3d cannot be in the block of another gfx_camera_3d",
+        ),
+        (
+            format!(
+                "gfx_main\ndi\n  {CAMERA_3D}\n  di\n    {CUBE}\n  do\n  return exit_success\ndo\n"
+            ),
+            "test:3:3: gfx_camera_3d can only be in gfx_frame",
+        ),
+        (
+            format!(
+                "def scene_fn ret_void\ndi\n  {CAMERA_3D}\n  di\n    {CUBE}\n  do\ndo\n\n{}",
+                frame_program("  call scene_fn")
+            ),
+            "test:3:3: gfx_camera_3d can only be in gfx_frame",
+        ),
+        (
+            frame_program(&format!(
+                "  {CAMERA_3D}\n  di\n    gfx_draw_grid 20_i32 1d0_f32 color_cube color_cube\n  do"
+            )),
+            "test:5:19: gfx_draw_grid needs u32, but '20_i32' is i32",
+        ),
+        (
+            frame_program(
+                &format!("  {CAMERA_3D}").replace("45d0_f32", "45_i32 di\n    nihil\n  do"),
+            ),
+            "test:3:89: gfx_camera_3d needs f32, but '45_i32' is i32",
+        ),
+    ];
+    for (source, expected) in cases {
+        let found = match load_3d(&source) {
+            Ok(_) => String::from("no error"),
+            Err(message) => message,
+        };
+        assert_eq!(found, expected, "{source}");
+    }
+}
+
+// Values are checked when they are drawn, and errors name the statement.
+#[test]
+fn camera_3d_values() {
+    let cases = [
+        (
+            frame_program(&format!(
+                "  var size is 2d0_f32\n  set size to_subtract 2d0_f32\n  {CAMERA_3D}\n  di\n    gfx_draw_cube_wires 0d0_f32 1d0_f32 0d0_f32 2d0_f32 size 2d0_f32 color_cube\n  do"
+            )),
+            "test:7:5: gfx_draw_cube_wires needs a width, height and depth above 0, but its height is 0",
+        ),
+        (
+            frame_program(&format!(
+                "  {CAMERA_3D}\n  di\n    gfx_draw_grid 21_u32 1d0_f32 color_cube color_grid\n  do"
+            )),
+            "test:5:5: gfx_draw_grid needs an even slice count from 2 to 256, not 21",
+        ),
+        (
+            frame_program(&format!("  {CAMERA_3D}").replace(
+                "0d0_f32 1d0_f32 0d0_f32 45d0_f32",
+                "0d0_f32 0d0_f32 0d0_f32 45d0_f32 di\n    nihil\n  do",
+            )),
+            "test:3:3: gfx_camera_3d needs an up that is not 0 0 0",
+        ),
+        (
+            frame_program(&format!(
+                "  var i is 0_i32\n  while i lt 2_i32\n  di\n    {CAMERA_3D}\n    di\n      {CUBE}\n    do\n    set i to_add 1_i32\n  do"
+            )),
+            "test:6:5: gfx_camera_3d runs at most once per frame",
+        ),
+    ];
+    for (source, expected) in cases {
+        let (result, _) = run_3d(&source);
+        assert_eq!(result, Err(expected.to_owned()), "{source}");
+    }
+}
