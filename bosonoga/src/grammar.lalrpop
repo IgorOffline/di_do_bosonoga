@@ -53,6 +53,10 @@ extern {
         "gfx_draw_circle" => Tok::GfxDrawCircle,
         "gfx_draw_text" => Tok::GfxDrawText,
         "gfx_draw_icon" => Tok::GfxDrawIcon,
+        "gfx_camera_3d" => Tok::GfxCamera3d,
+        "gfx_draw_cube" => Tok::GfxDrawCube,
+        "gfx_draw_cube_wires" => Tok::GfxDrawCubeWires,
+        "gfx_draw_grid" => Tok::GfxDrawGrid,
         "with_len_col" => Tok::WithLenCol,
         "if" => Tok::If,
         "else" => Tok::Else,
@@ -185,6 +189,37 @@ Statement: Statement<'input> = {
             draw: Draw::Icon,
             aligns: None,
             values: vec![x, y, icon, angle, color],
+        },
+    // The camera block draws in 3D, and 2D drawing comes back after its do.
+    <start:@L> "gfx_camera_3d" <end:@R> <px:Operand> <py:Operand> <pz:Operand> <tx:Operand> <ty:Operand>
+        <tz:Operand> <ux:Operand> <uy:Operand> <uz:Operand> <fov:Operand> <block:Block> =>
+        Statement::Camera3d {
+            span: Span { start, end },
+            values: vec![px, py, pz, tx, ty, tz, ux, uy, uz, fov],
+            block,
+        },
+    <start:@L> "gfx_draw_cube" <end:@R> <x:Operand> <y:Operand> <z:Operand> <width:Operand> <height:Operand>
+        <depth:Operand> <color:Operand> =>
+        Statement::Draw {
+            span: Span { start, end },
+            draw: Draw::Cube,
+            aligns: None,
+            values: vec![x, y, z, width, height, depth, color],
+        },
+    <start:@L> "gfx_draw_cube_wires" <end:@R> <x:Operand> <y:Operand> <z:Operand> <width:Operand>
+        <height:Operand> <depth:Operand> <color:Operand> =>
+        Statement::Draw {
+            span: Span { start, end },
+            draw: Draw::CubeWires,
+            aligns: None,
+            values: vec![x, y, z, width, height, depth, color],
+        },
+    <start:@L> "gfx_draw_grid" <end:@R> <slices:Operand> <spacing:Operand> <axes:Operand> <lines:Operand> =>
+        Statement::Draw {
+            span: Span { start, end },
+            draw: Draw::Grid,
+            aligns: None,
+            values: vec![slices, spacing, axes, lines],
         },
     "nihil" => Statement::Nihil,
     <start:@L> "return" <end:@R> <status:Status> => Statement::Return(Span { start, end }, status),

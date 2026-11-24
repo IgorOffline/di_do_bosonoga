@@ -6,12 +6,13 @@ use macroquad::texture::{DrawTextureParams, Texture2D, draw_texture_ex};
 use macroquad::window::clear_background;
 
 use crate::assets::{Assets, Typeface};
+use crate::draw_3d;
 
 const HEX_CORNERS: u8 = 6;
 // Enough that a circle of a few dozen pixels looks round.
 const CIRCLE_CORNERS: u8 = 48;
 
-fn color(rgb: u32) -> Color {
+pub(crate) fn color(rgb: u32) -> Color {
     let [_, red, green, blue] = rgb.to_be_bytes();
     Color::from_rgba(red, green, blue, u8::MAX)
 }
@@ -28,6 +29,7 @@ fn font_size(pixels: f32) -> u16 {
 
 pub(crate) fn scene(scene: &Scene, assets: &Assets) {
     clear_background(color(scene.clear));
+    let mut in_3d = false;
     for shape in &scene.shapes {
         match shape {
             Shape::Rectangle {
@@ -73,7 +75,27 @@ pub(crate) fn scene(scene: &Scene, assets: &Assets) {
                     draw_aligned_text(typeface, text, *x, *y, *size, *rgb, *align);
                 }
             }
+            Shape::Begin3d(camera) => {
+                draw_3d::begin(camera);
+                in_3d = true;
+            }
+            Shape::Cube(cube) => draw_3d::cube(cube),
+            Shape::CubeWires(cube) => draw_3d::cube_wires(cube),
+            Shape::Grid {
+                slices,
+                spacing,
+                axes_color,
+                color: rgb,
+            } => draw_3d::grid(*slices, *spacing, *axes_color, *rgb),
+            Shape::End3d => {
+                draw_3d::end();
+                in_3d = false;
+            }
         }
+    }
+    // bosonoga ends each camera block, so this only guards the next frame.
+    if in_3d {
+        draw_3d::end();
     }
 }
 

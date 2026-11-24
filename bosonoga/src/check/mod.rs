@@ -112,6 +112,8 @@ struct Checker<'a, 'input> {
     section: Option<Section>,
     function: Option<usize>,
     depth: usize,
+    // Inside the block of a gfx_camera_3d, where only 3D is drawn.
+    camera: bool,
     seen: Vec<Section>,
     program: Program,
 }
@@ -136,6 +138,7 @@ pub(crate) fn check(
         section: None,
         function: None,
         depth: 0,
+        camera: false,
         seen: Vec::new(),
         program: Program {
             background: settings.background,
@@ -197,6 +200,7 @@ pub(super) fn returns(statement: &ast::Statement<'_>) -> bool {
         | ast::Statement::While(..)
         | ast::Statement::AwaitNextFrame(_)
         | ast::Statement::Draw { .. }
+        | ast::Statement::Camera3d { .. }
         | ast::Statement::Nihil => false,
     }
 }

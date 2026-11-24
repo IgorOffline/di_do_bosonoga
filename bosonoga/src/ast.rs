@@ -142,6 +142,22 @@ pub enum Draw {
     Circle,
     Text,
     Icon,
+    Cube,
+    CubeWires,
+    Grid,
+}
+
+impl Draw {
+    // Whether it draws in the 3D of a gfx_camera_3d block.
+    #[must_use]
+    pub fn is_3d(&self) -> bool {
+        match self {
+            Draw::Cube | Draw::CubeWires | Draw::Grid => true,
+            Draw::Clear | Draw::Rectangle | Draw::Hex | Draw::Circle | Draw::Text | Draw::Icon => {
+                false
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -204,6 +220,11 @@ pub enum Statement<'input> {
         draw: Draw,
         aligns: Option<(Named<'input>, Named<'input>)>,
         values: Vec<Operand<'input>>,
+    },
+    Camera3d {
+        span: Span,
+        values: Vec<Operand<'input>>,
+        block: Block<'input>,
     },
     Nihil,
     Return(Span, ExitStatus),

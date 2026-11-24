@@ -6,6 +6,7 @@ mod assets;
 #[allow(unsafe_code)]
 mod diagnostics;
 mod draw;
+mod draw_3d;
 mod host;
 mod keys;
 mod pacer;

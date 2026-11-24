@@ -91,6 +91,11 @@ impl<'input> Checker<'_, 'input> {
                 aligns,
                 values,
             } => self.draw(*span, draw, aligns.as_ref(), values)?,
+            ast::Statement::Camera3d {
+                span,
+                values,
+                block,
+            } => self.camera_3d(*span, values, block)?,
             ast::Statement::Nihil => return Ok(None),
             ast::Statement::Return(span, status) => self.return_status(*span, *status)?,
             ast::Statement::ReturnValues(span, values) => self.return_values(*span, values)?,
