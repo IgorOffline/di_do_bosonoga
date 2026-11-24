@@ -330,7 +330,7 @@ impl<'a> Execution<'a> {
             return Ok(Flow::Closed);
         };
         self.set_mouse_captured(input.mouse_captured);
-        let [move_x, move_y] = input.mouse_move;
+        let [move_x, move_y] = program.mouse.applied(input.mouse_move);
         self.set_section_slot(program.mouse_move_x_slot, Value::F32(move_x));
         self.set_section_slot(program.mouse_move_y_slot, Value::F32(move_y));
         for event in input.keys {

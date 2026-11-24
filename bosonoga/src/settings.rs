@@ -13,6 +13,40 @@ pub struct Asset {
     pub path: PathBuf,
 }
 
+/// The group mouse: how the pixels the mouse moved become
+/// `gfx_mouse_move_x` and `gfx_mouse_move_y`. Each key is optional.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Mouse {
+    /// What the pixels are multiplied by, 1 by default.
+    pub sensitivity: f32,
+    /// Whether moving the mouse north, up, is a negative `gfx_mouse_move_y`
+    /// instead of a positive one, false by default.
+    pub invert_north: bool,
+    /// Whether moving the mouse west, left, is a positive `gfx_mouse_move_x`
+    /// instead of a negative one, false by default.
+    pub invert_west: bool,
+}
+
+impl Default for Mouse {
+    fn default() -> Mouse {
+        Mouse {
+            sensitivity: 1.0,
+            invert_north: false,
+            invert_west: false,
+        }
+    }
+}
+
+impl Mouse {
+    /// The move the program sees of the pixels the mouse moved.
+    #[must_use]
+    pub fn applied(&self, [x, y]: [f32; 2]) -> [f32; 2] {
+        let west = if self.invert_west { -1.0 } else { 1.0 };
+        let north = if self.invert_north { -1.0 } else { 1.0 };
+        [x * self.sensitivity * west, y * self.sensitivity * north]
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Settings {
     pub name: String,
@@ -22,6 +56,7 @@ pub struct Settings {
     pub gfx_width: u32,
     pub gfx_height: u32,
     pub background: u32,
+    pub mouse: Mouse,
     colors: Vec<(String, u32)>,
     globals: Vec<(String, Value)>,
     keys: Vec<(String, u32)>,
@@ -124,6 +159,9 @@ impl Settings {
             }
             settings.background = background;
         }
+        if file.has_group("mouse") {
+            settings.mouse = parse_mouse(&file)?;
+        }
         for key in file.keys("global") {
             let text = file.text("global", key)?;
             let value = parse_global(key, &text)?;
@@ -188,6 +226,59 @@ fn parse_color(key: &str, text: &str) -> Result<u32, String> {
         ));
     }
     Ok(u32::from_be_bytes([u8::MAX - alpha, red, green, blue]))
+}
+
+// One literal and nothing else, as a value in regina.ini.
+fn one_literal(text: &str) -> Option<Value> {
+    let mut lexer = Lexer::new(text);
+    let first = lexer.next();
+    let second = lexer.next();
+    if let Some(Ok((_, Tok::Literal(value), _))) = first
+        && let Some(Ok((_, Tok::End, _))) = second
+    {
+        return Some(value);
+    }
+    None
+}
+
+// The group mouse is of a gfx app, and has only the keys sensitivity,
+// invert_north and invert_west, each optional.
+fn parse_mouse(file: &KeyFile<'_>) -> Result<Mouse, String> {
+    if !file.has_group("gfx") {
+        return Err("the group mouse needs the group gfx".to_owned());
+    }
+    let mut mouse = Mouse::default();
+    for key in file.keys("mouse") {
+        let text = file.raw("mouse", key)?;
+        match key {
+            "sensitivity" => match one_literal(text) {
+                Some(Value::F32(sensitivity)) if sensitivity.is_finite() && sensitivity > 0.0 => {
+                    mouse.sensitivity = sensitivity;
+                }
+                _ => {
+                    return Err(
+                        "sensitivity must be one f32 number above 0, like 1d0_f32".to_owned()
+                    );
+                }
+            },
+            "invert_north" | "invert_west" => {
+                let Some(Value::Bool(invert)) = one_literal(text) else {
+                    return Err(format!("{key} must be true_bool or false_bool"));
+                };
+                if key == "invert_north" {
+                    mouse.invert_north = invert;
+                } else {
+                    mouse.invert_west = invert;
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "the group mouse has only the keys sensitivity, invert_north and invert_west, not {key}"
+                ));
+            }
+        }
+    }
+    Ok(mouse)
 }
 
 fn parse_global(key: &str, text: &str) -> Result<Value, String> {
