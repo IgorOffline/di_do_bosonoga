@@ -142,6 +142,7 @@ pub(crate) fn check(
         seen: Vec::new(),
         program: Program {
             background: settings.background,
+            mouse: settings.mouse,
             ..Program::default()
         },
     };

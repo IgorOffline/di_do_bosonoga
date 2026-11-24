@@ -240,6 +240,8 @@ pub struct Program {
     pub(crate) fonts: Vec<(String, Asset)>,
     pub(crate) icons: Vec<(String, Asset)>,
     pub(crate) background: u32,
+    // How the pixels the mouse moved become its move.
+    pub(crate) mouse: crate::settings::Mouse,
 }
 
 impl Program {

@@ -972,16 +972,11 @@ di
 do
 ";
 
-// Keys go down and come up in order, a tap within one frame too. M captures
-// the mouse from gfx_key_down, its moves reach gfx_frame, and losing focus
-// releases it, which gfx_mouse_captured shows.
-#[test]
-fn key_up_and_mouse() {
-    let program =
-        load_with(INPUT_REGINA, INPUT_PROGRAM).unwrap_or_else(|message| panic!("{message}"));
+#[cfg(test)]
+fn input_steps() -> Steps {
     let key = |name: &str| bosonoga::key::named(name).unwrap();
     let (w, m) = (key("SAPP_KEYCODE_W"), key("SAPP_KEYCODE_M"));
-    let mut window = Steps {
+    Steps {
         steps: vec![
             (vec![KeyEvent::Down(w)], [0.0, 0.0], false),
             (vec![KeyEvent::Down(m)], [0.0, 0.0], false),
@@ -995,7 +990,14 @@ fn key_up_and_mouse() {
             (Vec::new(), [0.0, 0.0], false),
         ],
         scenes: Vec::new(),
-    };
+    }
+}
+
+#[test]
+fn key_up_and_mouse() {
+    let program =
+        load_with(INPUT_REGINA, INPUT_PROGRAM).unwrap_or_else(|message| panic!("{message}"));
+    let mut window = input_steps();
     assert_eq!(
         bosonoga::gfx::run(&program, &mut window),
         Ok(ExitStatus::Success)
@@ -1008,8 +1010,103 @@ fn key_up_and_mouse() {
     assert_eq!(captured, [false, false, true, true, false, true]);
 }
 
-// Capturing a captured mouse, or releasing a released one, is an error when
-// it runs.
+#[test]
+fn mouse_settings() {
+    use bosonoga::settings::Mouse;
+    let input_regina = INPUT_REGINA.replace("0.2.7", "0.2.9");
+    let parse = |group: &str| {
+        Settings::parse(
+            "regina.ini",
+            Path::new("."),
+            &format!("{input_regina}{group}"),
+        )
+    };
+    let default = Mouse {
+        sensitivity: 1.0,
+        invert_north: false,
+        invert_west: false,
+    };
+    assert_eq!(Mouse::default(), default);
+    assert_eq!(parse("").map(|settings| settings.mouse), Ok(default));
+    assert_eq!(
+        parse("[mouse]\n").map(|settings| settings.mouse),
+        Ok(default)
+    );
+    assert_eq!(
+        parse("[mouse]\ninvert_west = true_bool\n").map(|settings| settings.mouse),
+        Ok(Mouse {
+            invert_west: true,
+            ..default
+        })
+    );
+    assert_eq!(
+        parse("[mouse]\ninvert_north = true_bool\n")
+            .map(|settings| settings.mouse.applied([3.0, -4.0])),
+        Ok([3.0, 4.0])
+    );
+    assert_eq!(
+        parse("[mouse]\ninvert_west = true_bool\n")
+            .map(|settings| settings.mouse.applied([3.0, -4.0])),
+        Ok([-3.0, -4.0])
+    );
+    let number = "sensitivity must be one f32 number above 0, like 1d0_f32";
+    let errors = [
+        ("[mouse]\nsensitivity = 0d0_f32\n", number),
+        ("[mouse]\nsensitivity = -1d0_f32\n", number),
+        ("[mouse]\nsensitivity = 1_i32\n", number),
+        ("[mouse]\nsensitivity = 1d0_f64\n", number),
+        ("[mouse]\nsensitivity = 1d0_f32 2d0_f32\n", number),
+        ("[mouse]\nsensitivity = \"1d0_f32\"\n", number),
+        (
+            "[mouse]\ninvert_north = true\n",
+            "invert_north must be true_bool or false_bool",
+        ),
+        (
+            "[mouse]\ninvert_west = 1_i32\n",
+            "invert_west must be true_bool or false_bool",
+        ),
+        (
+            "[mouse]\ninvert_west = \"false_bool\"\n",
+            "invert_west must be true_bool or false_bool",
+        ),
+        (
+            "[mouse]\nsensitivity = 1d0_f32\nspeed = 1d0_f32\n",
+            "the group mouse has only the keys sensitivity, invert_north and invert_west, not speed",
+        ),
+    ];
+    for (group, expected) in errors {
+        assert_eq!(
+            parse(group).err(),
+            Some(format!("regina.ini: {expected}")),
+            "{group}"
+        );
+    }
+    let no_gfx =
+        "[meta]\nname = \"input\"\nversion = \"0.2.9\"\n[mouse]\ninvert_west = false_bool\n";
+    assert_eq!(
+        Settings::parse("regina.ini", Path::new("."), no_gfx).err(),
+        Some("regina.ini: the group mouse needs the group gfx".to_owned())
+    );
+}
+
+#[test]
+fn mouse_settings_move() {
+    let regina = format!(
+        "{}[mouse]\nsensitivity = 0d5_f32\ninvert_north = true_bool\ninvert_west = true_bool\n",
+        INPUT_REGINA.replace("0.2.7", "0.2.9")
+    );
+    let changed = INPUT_PROGRAM.replace(
+        "turned eq_3 3d0_f32 and tilted eq_3 -4d0_f32",
+        "turned eq_3 -1d5_f32 and tilted eq_3 2d0_f32",
+    );
+    let program = load_with(&regina, &changed).unwrap_or_else(|message| panic!("{message}"));
+    let mut window = input_steps();
+    assert_eq!(
+        bosonoga::gfx::run(&program, &mut window),
+        Ok(ExitStatus::Success)
+    );
+}
+
 #[test]
 fn mouse_capture_twice() {
     let cases = [
@@ -1037,7 +1134,6 @@ fn mouse_capture_twice() {
     }
 }
 
-// Where the keys and the mouse can be read, captured and released.
 #[test]
 fn input_placement() {
     let cases = [
@@ -1075,7 +1171,6 @@ fn input_placement() {
     }
 }
 
-// Keeps what info gives, and the scenes it is shown.
 #[cfg(test)]
 struct Infos(String, Vec<Scene>);
 
