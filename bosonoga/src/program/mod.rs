@@ -170,6 +170,11 @@ pub(crate) enum Statement {
         block: Vec<Statement>,
         offset: usize,
     },
+    // gfx_mouse_capture when true, and gfx_mouse_release when false.
+    MouseCapture {
+        capture: bool,
+        offset: usize,
+    },
     Return(ExitStatus),
     ReturnValues(Vec<Operand>),
     // Copies the value of a present optional into the slot that
@@ -210,6 +215,7 @@ pub(crate) struct Sections {
     pub(crate) init: Vec<Statement>,
     pub(crate) frame: Vec<Statement>,
     pub(crate) key_down: Vec<Statement>,
+    pub(crate) key_up: Vec<Statement>,
     pub(crate) cleanup: Vec<Statement>,
 }
 
@@ -219,10 +225,15 @@ pub struct Program {
     pub(crate) sections: Sections,
     pub(crate) is_gfx: bool,
     pub(crate) slot_count: usize,
+    // Of gfx_key, for gfx_key_down and gfx_key_up.
     pub(crate) key_slot: Option<Slot>,
     pub(crate) delta_time_slot: Option<Slot>,
-    // Of gfx_heap_bytes, only when the program reads it.
+    // Of gfx_heap_bytes, gfx_mouse_move_x, gfx_mouse_move_y and
+    // gfx_mouse_captured, each only when the program reads it.
     pub(crate) heap_slot: Option<Slot>,
+    pub(crate) mouse_move_x_slot: Option<Slot>,
+    pub(crate) mouse_move_y_slot: Option<Slot>,
+    pub(crate) mouse_captured_slot: Option<Slot>,
     pub(crate) functions: Vec<Function>,
     pub(crate) arrays: Vec<Array>,
     pub(crate) var_arrays: Vec<VarArray>,

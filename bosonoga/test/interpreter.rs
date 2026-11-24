@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use bosonoga::ast::ExitStatus;
-use bosonoga::gfx::{Input, Scene, Window};
+use bosonoga::gfx::{Input, KeyEvent, Scene, Window};
 use bosonoga::settings::Settings;
 
 #[test]
@@ -579,8 +579,8 @@ impl Window for Frames {
             return None;
         }
         Some(Input {
-            keys: Vec::new(),
             delta_time: 1.0 / 60.0,
+            ..Input::default()
         })
     }
 }
@@ -657,8 +657,8 @@ impl Window for Scenes {
             return None;
         }
         Some(Input {
-            keys: Vec::new(),
             delta_time: 1.0 / 60.0,
+            ..Input::default()
         })
     }
 }
@@ -667,13 +667,17 @@ impl Window for Scenes {
 // settings. Its messages name the file test.
 #[cfg(test)]
 fn load_3d(source: &str) -> Result<bosonoga::Program, String> {
-    static LOADED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let settings = Settings::parse(
-        "regina.ini",
-        Path::new("."),
+    load_with(
         "[meta]\nname = \"cube\"\nversion = \"0.2.6\"\n[gfx]\nwidth = 960\nheight = 540\n[color]\nbackground = \"87CEEB\"\ncube = \"E07A5F\"\ngrid = \"5A5A5A\"\n",
+        source,
     )
-    .unwrap_or_else(|message| panic!("{message}"));
+}
+
+#[cfg(test)]
+fn load_with(regina: &str, source: &str) -> Result<bosonoga::Program, String> {
+    static LOADED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let settings = Settings::parse("regina.ini", Path::new("."), regina)
+        .unwrap_or_else(|message| panic!("{message}"));
     let number = LOADED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!("bosonoga_3d_{}_{number}", std::process::id()));
     std::fs::write(&path, source).unwrap();
@@ -873,5 +877,324 @@ fn camera_3d_values() {
     for (source, expected) in cases {
         let (result, _) = run_3d(&source);
         assert_eq!(result, Err(expected.to_owned()), "{source}");
+    }
+}
+
+// A window that captures the mouse as each scene asks, as the host does,
+// and gives the keys and mouse moves of its steps, one step per frame. A
+// step can lose focus, which releases the mouse.
+#[cfg(test)]
+struct Steps {
+    steps: Vec<(Vec<KeyEvent>, [f32; 2], bool)>,
+    scenes: Vec<Scene>,
+}
+
+impl Window for Steps {
+    fn info(&mut self, _text: &str) {}
+
+    fn show(&mut self, scene: &Scene) -> Option<Input> {
+        self.scenes.push(scene.clone());
+        let (keys, mouse_move, focus_lost) = self.steps.get(self.scenes.len() - 1)?.clone();
+        Some(Input {
+            keys,
+            delta_time: 1.0 / 60.0,
+            mouse_move,
+            mouse_captured: scene.mouse_captured && !focus_lost,
+        })
+    }
+}
+
+#[cfg(test)]
+const INPUT_REGINA: &str = "[meta]\nname = \"input\"\nversion = \"0.2.7\"\n[gfx]\nwidth = 960\nheight = 540\n[color]\nbackground = \"87CEEB\"\n[key]\nwalk = \"SAPP_KEYCODE_W\"\nmouse = \"SAPP_KEYCODE_M\"\n";
+
+#[cfg(test)]
+const INPUT_PROGRAM: &str = r"bosonoga_global
+di
+  var held is false_bool
+  var downs is 0_i32
+  var ups is 0_i32
+  var turned is 0d0_f32
+  var tilted is 0d0_f32
+  var captured_frames is 0_i32
+do
+
+gfx_key_down
+di
+  if gfx_key eq key_walk
+  di
+    set held to true_bool
+    set downs to_add 1_i32
+  do
+  else if gfx_key eq key_mouse
+  di
+    if gfx_mouse_captured
+    di
+      gfx_mouse_release
+    do
+    else
+    di
+      gfx_mouse_capture
+    do
+  do
+do
+
+gfx_key_up
+di
+  if gfx_key eq key_walk
+  di
+    set held to false_bool
+    set ups to_add 1_i32
+  do
+do
+
+gfx_frame
+di
+  set turned to_add gfx_mouse_move_x
+  set tilted to_add gfx_mouse_move_y
+  if gfx_mouse_captured
+  di
+    set captured_frames to_add 1_i32
+  do
+do
+
+gfx_main
+di
+  gfx_await_next_frame
+  gfx_await_next_frame
+  gfx_await_next_frame
+  gfx_await_next_frame
+  gfx_await_next_frame
+  if not held and downs eq 2_i32 and ups eq 2_i32 and turned eq_3 3d0_f32 and tilted eq_3 -4d0_f32 and captured_frames eq 3_i32
+  di
+    return exit_success
+  do
+  return exit_failure
+do
+";
+
+// Keys go down and come up in order, a tap within one frame too. M captures
+// the mouse from gfx_key_down, its moves reach gfx_frame, and losing focus
+// releases it, which gfx_mouse_captured shows.
+#[test]
+fn key_up_and_mouse() {
+    let program =
+        load_with(INPUT_REGINA, INPUT_PROGRAM).unwrap_or_else(|message| panic!("{message}"));
+    let key = |name: &str| bosonoga::key::named(name).unwrap();
+    let (w, m) = (key("SAPP_KEYCODE_W"), key("SAPP_KEYCODE_M"));
+    let mut window = Steps {
+        steps: vec![
+            (vec![KeyEvent::Down(w)], [0.0, 0.0], false),
+            (vec![KeyEvent::Down(m)], [0.0, 0.0], false),
+            (
+                vec![KeyEvent::Up(w), KeyEvent::Down(w), KeyEvent::Up(w)],
+                [3.0, -4.0],
+                false,
+            ),
+            (Vec::new(), [0.0, 0.0], true),
+            (vec![KeyEvent::Down(m)], [0.0, 0.0], false),
+            (Vec::new(), [0.0, 0.0], false),
+        ],
+        scenes: Vec::new(),
+    };
+    assert_eq!(
+        bosonoga::gfx::run(&program, &mut window),
+        Ok(ExitStatus::Success)
+    );
+    let captured: Vec<bool> = window
+        .scenes
+        .iter()
+        .map(|scene| scene.mouse_captured)
+        .collect();
+    assert_eq!(captured, [false, false, true, true, false, true]);
+}
+
+// Capturing a captured mouse, or releasing a released one, is an error when
+// it runs.
+#[test]
+fn mouse_capture_twice() {
+    let cases = [
+        (
+            "gfx_frame\ndi\n  gfx_mouse_capture\ndo\n\ngfx_main\ndi\n  gfx_await_next_frame\n  return exit_success\ndo\n",
+            "test:3:3: gfx_mouse_capture needs a released mouse, but the mouse is captured",
+        ),
+        (
+            "gfx_frame\ndi\n  gfx_mouse_release\ndo\n\ngfx_main\ndi\n  return exit_success\ndo\n",
+            "test:3:3: gfx_mouse_release needs a captured mouse, but the mouse is released",
+        ),
+    ];
+    for (source, expected) in cases {
+        let program = load_with(INPUT_REGINA, source).unwrap_or_else(|message| panic!("{message}"));
+        let path = program.path().to_owned();
+        let mut window = Steps {
+            steps: vec![(Vec::new(), [0.0, 0.0], false); 4],
+            scenes: Vec::new(),
+        };
+        let result = bosonoga::gfx::run(&program, &mut window);
+        assert_eq!(
+            result.map_err(|message| message.replacen(&path, "test", 1)),
+            Err(expected.to_owned())
+        );
+    }
+}
+
+// Where the keys and the mouse can be read, captured and released.
+#[test]
+fn input_placement() {
+    let cases = [
+        (
+            "gfx_frame\ndi\n  info gfx_key\ndo\n\ngfx_main\ndi\n  return exit_success\ndo\n",
+            "test:3:8: gfx_key can only be in gfx_key_down or gfx_key_up",
+        ),
+        (
+            "gfx_key_down\ndi\n  info gfx_mouse_move_x\ndo\n\ngfx_main\ndi\n  return exit_success\ndo\n",
+            "test:3:8: gfx_mouse_move_x can only be in gfx_frame",
+        ),
+        (
+            "gfx_main\ndi\n  info gfx_mouse_move_y\n  return exit_success\ndo\n",
+            "test:3:8: gfx_mouse_move_y can only be in gfx_frame",
+        ),
+        (
+            "gfx_main\ndi\n  info gfx_mouse_captured\n  return exit_success\ndo\n",
+            "test:3:8: gfx_mouse_captured can only be in gfx_frame, gfx_key_down or gfx_key_up",
+        ),
+        (
+            "gfx_main\ndi\n  gfx_mouse_capture\n  return exit_success\ndo\n",
+            "test:3:3: gfx_mouse_capture can only be in gfx_frame, gfx_key_down or gfx_key_up",
+        ),
+        (
+            "def let_go_fn ret_void\ndi\n  gfx_mouse_release\ndo\n\ngfx_key_up\ndi\n  call let_go_fn\ndo\n\ngfx_main\ndi\n  return exit_success\ndo\n",
+            "test:3:3: gfx_mouse_release can only be in gfx_frame, gfx_key_down or gfx_key_up",
+        ),
+        (
+            "gfx_key_up\ndi\n  info gfx_key\ndo\n\ngfx_key_up\ndi\n  info gfx_key\ndo\n\ngfx_main\ndi\n  return exit_success\ndo\n",
+            "test:6:1: there is already a gfx_key_up block",
+        ),
+    ];
+    for (source, expected) in cases {
+        assert_eq!(diagnostic(source), expected);
+    }
+}
+
+// Keeps what info gives, and the scenes it is shown.
+#[cfg(test)]
+struct Infos(String, Vec<Scene>);
+
+impl Window for Infos {
+    fn info(&mut self, text: &str) {
+        self.0.push_str(text);
+    }
+
+    fn show(&mut self, scene: &Scene) -> Option<Input> {
+        self.1.push(scene.clone());
+        Some(Input {
+            delta_time: 1.0 / 60.0,
+            ..Input::default()
+        })
+    }
+}
+
+#[cfg(test)]
+const ALPHA_REGINA: &str = "[meta]\nname = \"alpha\"\nversion = \"0.2.8\"\n[gfx]\nwidth = 960\nheight = 540\n[color]\nbackground = \"87CEEB\"\nsolid = \"1A212E\"\nshade = \"1A212ED1\"\n";
+
+// RRGGBBAA in regina.ini is a translucent color, kept as 0xTTRRGGBB, where
+// TT is 255 less the alpha, so RRGGBB colors stay as they were.
+#[test]
+fn alpha_settings() {
+    let settings = Settings::parse("regina.ini", Path::new("."), ALPHA_REGINA)
+        .unwrap_or_else(|message| panic!("{message}"));
+    assert_eq!(settings.color("solid"), Some(0x001A_212E));
+    assert_eq!(settings.color("shade"), Some(0x2E1A_212E));
+    assert_eq!(bosonoga::gfx::alpha(0x2E1A_212E), 0xD1);
+    assert!(bosonoga::gfx::is_opaque(0) && !bosonoga::gfx::is_opaque(0x2E1A_212E));
+    let errors = [
+        (
+            "shade = \"1A212EFF\"",
+            "shade has an alpha of FF, which is opaque, so it is written as RRGGBB: 1A212E",
+        ),
+        (
+            "shade = \"1A212ED\"",
+            "shade must be 6 uppercase hex digits, RRGGBB, or 8 with an alpha, RRGGBBAA",
+        ),
+        (
+            "shade = \"1a212ed1\"",
+            "shade must be 6 uppercase hex digits, RRGGBB, or 8 with an alpha, RRGGBBAA",
+        ),
+    ];
+    for (line, expected) in errors {
+        let regina = ALPHA_REGINA.replace("shade = \"1A212ED1\"", line);
+        assert_eq!(
+            Settings::parse("regina.ini", Path::new("."), &regina).err(),
+            Some(format!("regina.ini: {expected}"))
+        );
+    }
+    let regina = ALPHA_REGINA.replace("background = \"87CEEB\"", "background = \"87CEEB80\"");
+    assert_eq!(
+        Settings::parse("regina.ini", Path::new("."), &regina).err(),
+        Some("regina.ini: background must be opaque, as RRGGBB".to_owned())
+    );
+}
+
+// A translucent color draws in 2D and shows as RRGGBBAA, and gfx_clear and
+// every 3D draw need an opaque one.
+#[test]
+fn alpha_draws() {
+    use bosonoga::gfx::Shape;
+    let program = load_with(
+        ALPHA_REGINA,
+        &frame_program(
+            "  gfx_draw_rectangle 0d0_f32 0d0_f32 10d0_f32 10d0_f32 color_shade\n  info color_shade \" \"_str color_solid",
+        ),
+    )
+    .unwrap_or_else(|message| panic!("{message}"));
+    let mut window = Infos(String::new(), Vec::new());
+    assert_eq!(
+        bosonoga::gfx::run(&program, &mut window),
+        Ok(ExitStatus::Success)
+    );
+    assert!(window.0.starts_with("1A212ED1 1A212E\n"), "{}", window.0);
+    assert_eq!(
+        window.1[0].shapes,
+        vec![Shape::Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+            color: 0x2E1A_212E,
+        }]
+    );
+    let camera = "gfx_camera_3d 6d0_f32 4d0_f32 6d0_f32 0d0_f32 1d0_f32 0d0_f32 0d0_f32 1d0_f32 0d0_f32 45d0_f32";
+    let cases = [
+        (
+            "  gfx_clear color_shade".to_owned(),
+            "test:3:3: gfx_clear needs an opaque color, as RRGGBB, but its color is 1A212ED1",
+        ),
+        (
+            format!(
+                "  {camera}\n  di\n    gfx_draw_cube 0d0_f32 1d0_f32 0d0_f32 2d0_f32 2d0_f32 2d0_f32 color_shade\n  do"
+            ),
+            "test:5:5: gfx_draw_cube needs an opaque color, as RRGGBB, but its color is 1A212ED1",
+        ),
+        (
+            format!(
+                "  {camera}\n  di\n    gfx_draw_cube_wires 0d0_f32 1d0_f32 0d0_f32 2d0_f32 2d0_f32 2d0_f32 color_shade\n  do"
+            ),
+            "test:5:5: gfx_draw_cube_wires needs an opaque color, as RRGGBB, but its color is 1A212ED1",
+        ),
+        (
+            format!(
+                "  {camera}\n  di\n    gfx_draw_grid 20_u32 1d0_f32 color_solid color_shade\n  do"
+            ),
+            "test:5:5: gfx_draw_grid needs an opaque color, as RRGGBB, but its line color is 1A212ED1",
+        ),
+    ];
+    for (frame, expected) in cases {
+        let failing = load_with(ALPHA_REGINA, &frame_program(&frame))
+            .unwrap_or_else(|message| panic!("{message}"));
+        let path = failing.path().to_owned();
+        let result = bosonoga::gfx::run(&failing, &mut Scenes(Vec::new()));
+        assert_eq!(
+            result.map_err(|message| message.replacen(&path, "test", 1)),
+            Err(expected.to_owned())
+        );
     }
 }

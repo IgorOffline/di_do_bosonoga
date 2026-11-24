@@ -1,6 +1,18 @@
 use crate::Program;
 use crate::ast::ExitStatus;
 
+// A color is 0xTTRRGGBB, where TT is its transparency: 255 less its alpha.
+// So every RRGGBB color is opaque, 0 too, which is black.
+#[must_use]
+pub fn alpha(color: u32) -> u8 {
+    u8::MAX - color.to_be_bytes()[0]
+}
+
+#[must_use]
+pub fn is_opaque(color: u32) -> bool {
+    alpha(color) == u8::MAX
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Horizontal {
     Left,
@@ -99,12 +111,31 @@ pub enum Shape {
 pub struct Scene {
     pub clear: u32,
     pub shapes: Vec<Shape>,
+    // Whether the program wants the mouse captured: the cursor grabbed and
+    // hidden. The window captures or releases it when it shows the scene.
+    pub mouse_captured: bool,
+}
+
+// A key that went down or came up, by its code. A key comes up only after it
+// went down, and every key that is down comes up when the window loses focus.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyEvent {
+    Down(u32),
+    Up(u32),
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Input {
-    pub keys: Vec<u32>,
+    // In the order they happened since the last frame.
+    pub keys: Vec<KeyEvent>,
     pub delta_time: f32,
+    // The pixels the mouse moved, x and y, since the last frame. They are 0
+    // unless the mouse is captured, and in the frames where it was captured
+    // or released, so that the view never jumps.
+    pub mouse_move: [f32; 2],
+    // Whether the mouse is captured now. The window can release it by itself,
+    // as when it loses focus.
+    pub mouse_captured: bool,
 }
 
 pub trait Window {

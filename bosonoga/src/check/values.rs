@@ -1,7 +1,7 @@
 use super::{Checker, SHIFT_BIT_MAX};
 use crate::Diagnostic;
 use crate::ast::{self, Section, Span, Term};
-use crate::program::{Comparison, Condition, Operand};
+use crate::program::{Comparison, Condition, Operand, Program, Slot};
 use crate::value::{Compare, Kind, Value};
 
 // The present literal of a literal, as 7_optional_i32 of 7_i32.
@@ -127,25 +127,42 @@ impl<'input> Checker<'_, 'input> {
         let in_function = self.function.is_some();
         if word == "gfx_key" {
             if let Some(slot) = self.program.key_slot
-                && self.section == Some(Section::GfxKeyDown)
+                && matches!(self.section, Some(Section::GfxKeyDown | Section::GfxKeyUp))
                 && !in_function
             {
                 return Ok((Operand::Slot(slot), Kind::InputKey));
             }
-            return Self::fail(at, "gfx_key can only be in gfx_key_down");
+            return Self::fail(at, "gfx_key can only be in gfx_key_down or gfx_key_up");
+        }
+        if word == "gfx_mouse_captured" {
+            if !self.in_mouse_section() {
+                return Self::fail(
+                    at,
+                    "gfx_mouse_captured can only be in gfx_frame, gfx_key_down or gfx_key_up",
+                );
+            }
+            let slot = self.read_slot(|program| &mut program.mouse_captured_slot);
+            return Ok((Operand::Slot(slot), Kind::Bool));
         }
         let in_frame = self.section == Some(Section::GfxFrame) && !in_function;
+        if word == "gfx_mouse_move_x" || word == "gfx_mouse_move_y" {
+            if !in_frame {
+                return Self::fail(at, format!("{word} can only be in gfx_frame"));
+            }
+            let slot = if word == "gfx_mouse_move_x" {
+                self.read_slot(|program| &mut program.mouse_move_x_slot)
+            } else {
+                self.read_slot(|program| &mut program.mouse_move_y_slot)
+            };
+            return Ok((Operand::Slot(slot), Kind::F32));
+        }
         if word == "gfx_heap_bytes" {
             if !in_frame {
                 return Self::fail(at, "gfx_heap_bytes can only be in gfx_frame");
             }
             // Its slot is made by the first read, so that a program that does
             // not read it does not measure the heap every frame.
-            if let Some(slot) = self.program.heap_slot {
-                return Ok((Operand::Slot(slot), Kind::U64));
-            }
-            let slot = self.allocate();
-            self.program.heap_slot = Some(slot);
+            let slot = self.read_slot(|program| &mut program.heap_slot);
             return Ok((Operand::Slot(slot), Kind::U64));
         }
         if let Some(slot) = self.program.delta_time_slot
@@ -154,6 +171,16 @@ impl<'input> Checker<'_, 'input> {
             return Ok((Operand::Slot(slot), Kind::F32));
         }
         Self::fail(at, "gfx_delta_time can only be in gfx_frame")
+    }
+
+    // The slot of a gfx value that the window sets, made by its first read.
+    fn read_slot(&mut self, slot_of: fn(&mut Program) -> &mut Option<Slot>) -> Slot {
+        if let Some(slot) = *slot_of(&mut self.program) {
+            return slot;
+        }
+        let slot = self.allocate();
+        *slot_of(&mut self.program) = Some(slot);
+        slot
     }
 
     fn named_value(&mut self, span: Span, name: &str) -> Result<(Operand, Kind), Diagnostic> {

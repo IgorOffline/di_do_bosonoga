@@ -96,11 +96,29 @@ impl<'input> Checker<'_, 'input> {
                 values,
                 block,
             } => self.camera_3d(*span, values, block)?,
+            ast::Statement::MouseCapture(span, capture) => self.mouse_capture(*span, *capture)?,
             ast::Statement::Nihil => return Ok(None),
             ast::Statement::Return(span, status) => self.return_status(*span, *status)?,
             ast::Statement::ReturnValues(span, values) => self.return_values(*span, values)?,
         };
         Ok(Some(checked))
+    }
+
+    // gfx_mouse_capture or gfx_mouse_release.
+    fn mouse_capture(&self, span: Span, capture: bool) -> Result<Statement, Diagnostic> {
+        if !self.in_mouse_section() {
+            return Self::fail(
+                span.start,
+                format!(
+                    "{} can only be in gfx_frame, gfx_key_down or gfx_key_up",
+                    self.text(span)
+                ),
+            );
+        }
+        Ok(Statement::MouseCapture {
+            capture,
+            offset: span.start,
+        })
     }
 
     fn operands(

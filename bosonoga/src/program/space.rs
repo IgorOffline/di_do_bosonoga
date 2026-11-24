@@ -2,7 +2,8 @@
 // camera, cubes and grids that macroquad draws as they were meant. Each
 // error names the statement and the value that is wrong.
 
-use crate::gfx::{Camera, Cube};
+use crate::gfx::{Camera, Cube, is_opaque};
+use crate::value::Value;
 
 const CAMERA: &str = "gfx_camera_3d";
 const GRID: &str = "gfx_draw_grid";
@@ -100,8 +101,21 @@ pub(super) fn camera(values: [f32; 10]) -> Result<Camera, String> {
     Ok(camera)
 }
 
+// 3D is drawn without sorting by depth, so its colors must be opaque, and so
+// must the color that gfx_clear clears a frame with.
+pub(super) fn opaque(word: &str, name: &str, color: u32) -> Result<(), String> {
+    if is_opaque(color) {
+        return Ok(());
+    }
+    Err(format!(
+        "{word} needs an opaque color, as RRGGBB, but its {name} is {}",
+        Value::Color(color)
+    ))
+}
+
 pub(super) fn cube(word: &str, values: [f32; 6], color: u32) -> Result<Cube, String> {
     finite(word, &CUBE_NAMES, &values)?;
+    opaque(word, "color", color)?;
     let [x, y, z, width, height, depth] = values;
     for (name, size) in CUBE_NAMES.iter().zip(&values).skip(3) {
         if *size <= 0.0 {

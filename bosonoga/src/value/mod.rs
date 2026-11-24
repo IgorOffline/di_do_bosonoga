@@ -381,7 +381,14 @@ impl Display for Value {
             Value::U64(v) => write!(f, "{v}"),
             Value::F32(v) => f.write_str(&general(f64::from(*v), 6)),
             Value::F64(v) => f.write_str(&general(*v, 17)),
-            Value::Color(v) => write!(f, "{v:06X}"),
+            Value::Color(v) => {
+                let [_, red, green, blue] = v.to_be_bytes();
+                write!(f, "{red:02X}{green:02X}{blue:02X}")?;
+                if !crate::gfx::is_opaque(*v) {
+                    write!(f, "{:02X}", crate::gfx::alpha(*v))?;
+                }
+                Ok(())
+            }
             Value::Bool(v) => f.write_str(if *v { "true" } else { "false" }),
             Value::Str(v) | Value::Font { text: v, .. } | Value::Icon { text: v, .. } => {
                 f.write_str(v)

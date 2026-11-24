@@ -143,7 +143,7 @@ impl<'input> Checker<'_, 'input> {
         if section == Section::Main && has_gfx {
             return self.expected_at(
                 span,
-                "const, def, val, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down or gfx_main",
+                "const, def, val, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main",
             );
         }
         let is_main = section == Section::Main || section == Section::GfxMain;
@@ -162,7 +162,9 @@ impl<'input> Checker<'_, 'input> {
         if section == Section::GfxFrame {
             self.program.delta_time_slot = Some(self.allocate());
         }
-        if section == Section::GfxKeyDown {
+        if (section == Section::GfxKeyDown || section == Section::GfxKeyUp)
+            && self.program.key_slot.is_none()
+        {
             self.program.key_slot = Some(self.allocate());
         }
         let checked = self.block(block);
@@ -185,6 +187,7 @@ impl<'input> Checker<'_, 'input> {
             Section::GfxInit => sections.init = statements,
             Section::GfxFrame => sections.frame = statements,
             Section::GfxKeyDown => sections.key_down = statements,
+            Section::GfxKeyUp => sections.key_up = statements,
             Section::GfxCleanup => sections.cleanup = statements,
         }
         Ok(())
