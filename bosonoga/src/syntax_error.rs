@@ -55,7 +55,7 @@ fn unrecognized(
 
 fn wanted(expected: &[String], before: &[Tok<'_>]) -> String {
     if has(expected, "section") && has(expected, "end") {
-        return "const, def, val, bosonoga_global, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down or gfx_main".to_owned();
+        return "const, def, val, bosonoga_global, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main".to_owned();
     }
     if has(expected, "section") {
         return "a program, which has a bosonoga_main block".to_owned();

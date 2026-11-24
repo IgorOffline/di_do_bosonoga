@@ -1,17 +1,24 @@
 use std::thread;
 use std::time::{Duration, Instant};
 
-use bosonoga::gfx::Input;
+use bosonoga::gfx::{Input, KeyEvent};
 use macroquad::input::utils::repeat_all_miniquad_input;
+use macroquad::input::{mouse_position, set_cursor_grab, show_mouse};
 use macroquad::miniquad::{EventHandler, KeyCode, KeyMods};
 
 use crate::keys;
 
 const FRAME_TIME: Duration = Duration::from_micros(1_000_000 / 60);
 
+// The keys since the last frame. A key comes up only after it went down, so
+// that the program sees them in pairs, and the keys that are down all come
+// up when the window loses focus, which miniquad reports as minimized.
 #[derive(Default)]
 struct Keys {
-    pressed: Vec<u32>,
+    events: Vec<KeyEvent>,
+    // The keys that are down, in the order they went down.
+    down: Vec<u32>,
+    focus_lost: bool,
 }
 
 impl EventHandler for Keys {
@@ -23,16 +30,65 @@ impl EventHandler for Keys {
         if repeat {
             return;
         }
-        if let Some(code) = keys::code(keycode) {
-            self.pressed.push(code);
+        if let Some(code) = keys::code(keycode)
+            && !self.down.contains(&code)
+        {
+            self.down.push(code);
+            self.events.push(KeyEvent::Down(code));
+        }
+    }
+
+    fn key_up_event(&mut self, keycode: KeyCode, _: KeyMods) {
+        if let Some(code) = keys::code(keycode)
+            && let Some(at) = self.down.iter().position(|down| *down == code)
+        {
+            self.down.remove(at);
+            self.events.push(KeyEvent::Up(code));
+        }
+    }
+
+    fn window_minimized_event(&mut self) {
+        self.focus_lost = true;
+        for code in self.down.drain(..) {
+            self.events.push(KeyEvent::Up(code));
         }
     }
 }
 
-// Keeps 60 frames a second, and collects the keys pressed since the last
-// frame.
+// The capture of the mouse, and its moves while captured.
+struct Mouse {
+    captured: bool,
+    // Whether it was captured or released in this frame.
+    changed: bool,
+    last: (f32, f32),
+}
+
+impl Mouse {
+    fn set(&mut self, captured: bool) {
+        set_cursor_grab(captured);
+        show_mouse(!captured);
+        self.captured = captured;
+        self.changed = true;
+    }
+
+    // The pixels moved since the last frame, which are 0 while released and
+    // in a frame that captured or released the mouse, as the jump from where
+    // the cursor was is no move of the player's.
+    fn moved(&mut self) -> [f32; 2] {
+        let now = mouse_position();
+        let (x, y) = (now.0 - self.last.0, now.1 - self.last.1);
+        self.last = now;
+        let still = !self.captured || self.changed;
+        self.changed = false;
+        if still { [0.0, 0.0] } else { [x, y] }
+    }
+}
+
+// Keeps 60 frames a second, and collects the keys and the mouse since the
+// last frame.
 pub(crate) struct Pacer {
     keys: Keys,
+    mouse: Mouse,
     next_frame_time: Instant,
     last_frame_start: Option<Instant>,
 }
@@ -41,12 +97,22 @@ impl Pacer {
     pub(crate) fn new() -> Pacer {
         Pacer {
             keys: Keys::default(),
+            mouse: Mouse {
+                captured: false,
+                changed: false,
+                last: mouse_position(),
+            },
             next_frame_time: Instant::now(),
             last_frame_start: None,
         }
     }
 
-    pub(crate) fn wait(&mut self, subscriber: usize) -> Input {
+    // Captures or releases the mouse as the scene just shown asks, and waits
+    // for the next frame.
+    pub(crate) fn wait(&mut self, subscriber: usize, mouse_captured: bool) -> Input {
+        if mouse_captured != self.mouse.captured {
+            self.mouse.set(mouse_captured);
+        }
         let now = Instant::now();
         if now < self.next_frame_time {
             thread::sleep(self.next_frame_time - now);
@@ -61,9 +127,71 @@ impl Pacer {
         };
         self.last_frame_start = Some(start);
         repeat_all_miniquad_input(&mut self.keys, subscriber);
-        Input {
-            keys: std::mem::take(&mut self.keys.pressed),
-            delta_time: elapsed.as_secs_f32(),
+        if std::mem::take(&mut self.keys.focus_lost) && self.mouse.captured {
+            self.mouse.set(false);
         }
+        Input {
+            keys: std::mem::take(&mut self.keys.events),
+            delta_time: elapsed.as_secs_f32(),
+            mouse_move: self.mouse.moved(),
+            mouse_captured: self.mouse.captured,
+        }
+    }
+
+    // Gives the cursor back before the app exits.
+    pub(crate) fn release_mouse(&mut self) {
+        if self.mouse.captured {
+            self.mouse.set(false);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Keys;
+    use bosonoga::gfx::KeyEvent;
+    use macroquad::miniquad::{EventHandler, KeyCode, KeyMods};
+
+    fn code(name: &str) -> u32 {
+        bosonoga::key::named(name).unwrap()
+    }
+
+    // Each key that comes up went down before, a second down of a key that
+    // is down is not another press, and losing focus brings up every key that
+    // is down, in the order they went down.
+    #[test]
+    fn keys_come_up_in_pairs() {
+        let mods = KeyMods::default();
+        let mut keys = Keys::default();
+        keys.key_up_event(KeyCode::S, mods);
+        keys.key_down_event(KeyCode::W, mods, false);
+        keys.key_down_event(KeyCode::W, mods, true);
+        keys.key_down_event(KeyCode::W, mods, false);
+        keys.key_down_event(KeyCode::A, mods, false);
+        keys.key_up_event(KeyCode::W, mods);
+        keys.key_up_event(KeyCode::W, mods);
+        keys.key_down_event(KeyCode::D, mods, false);
+        keys.key_down_event(KeyCode::W, mods, false);
+        assert!(!keys.focus_lost);
+        keys.window_minimized_event();
+        let (w, a, d) = (
+            code("SAPP_KEYCODE_W"),
+            code("SAPP_KEYCODE_A"),
+            code("SAPP_KEYCODE_D"),
+        );
+        assert_eq!(
+            keys.events,
+            [
+                KeyEvent::Down(w),
+                KeyEvent::Down(a),
+                KeyEvent::Up(w),
+                KeyEvent::Down(d),
+                KeyEvent::Down(w),
+                KeyEvent::Up(a),
+                KeyEvent::Up(d),
+                KeyEvent::Up(w),
+            ]
+        );
+        assert!(keys.focus_lost && keys.down.is_empty());
     }
 }

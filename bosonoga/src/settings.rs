@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use crate::lexer::{Lexer, Tok};
 use crate::value::Value;
 
+// RRGGBB, or RRGGBBAA with an alpha.
 const COLOR_HEX_LENGTH: usize = 6;
+const COLOR_ALPHA_HEX_LENGTH: usize = 8;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Asset {
@@ -117,6 +119,9 @@ impl Settings {
             let Some(background) = settings.color("background") else {
                 return Err("the group color needs the key background".to_owned());
             };
+            if !crate::gfx::is_opaque(background) {
+                return Err("background must be opaque, as RRGGBB".to_owned());
+            }
             settings.background = background;
         }
         for key in file.keys("global") {
@@ -156,9 +161,12 @@ fn is_upper_hex_digit(byte: u8) -> bool {
     matches!(byte, b'0'..=b'9' | b'A'..=b'F')
 }
 
+// A color as gfx keeps it: 0xTTRRGGBB, where TT is 255 less the alpha.
 fn parse_color(key: &str, text: &str) -> Result<u32, String> {
-    let error = format!("{key} must be {COLOR_HEX_LENGTH} uppercase hex digits");
-    if text.len() != COLOR_HEX_LENGTH {
+    let error = format!(
+        "{key} must be {COLOR_HEX_LENGTH} uppercase hex digits, RRGGBB, or {COLOR_ALPHA_HEX_LENGTH} with an alpha, RRGGBBAA"
+    );
+    if text.len() != COLOR_HEX_LENGTH && text.len() != COLOR_ALPHA_HEX_LENGTH {
         return Err(error);
     }
     for byte in text.bytes() {
@@ -166,10 +174,20 @@ fn parse_color(key: &str, text: &str) -> Result<u32, String> {
             return Err(error);
         }
     }
-    match u32::from_str_radix(text, 16) {
-        Ok(color) => Ok(color),
-        Err(_) => Err(error),
+    let Ok(value) = u32::from_str_radix(text, 16) else {
+        return Err(error);
+    };
+    if text.len() == COLOR_HEX_LENGTH {
+        return Ok(value);
     }
+    let [red, green, blue, alpha] = value.to_be_bytes();
+    if alpha == u8::MAX {
+        return Err(format!(
+            "{key} has an alpha of FF, which is opaque, so it is written as RRGGBB: {}",
+            text.get(..COLOR_HEX_LENGTH).unwrap_or_default()
+        ));
+    }
+    Ok(u32::from_be_bytes([u8::MAX - alpha, red, green, blue]))
 }
 
 fn parse_global(key: &str, text: &str) -> Result<Value, String> {

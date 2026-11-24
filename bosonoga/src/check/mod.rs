@@ -201,6 +201,7 @@ pub(super) fn returns(statement: &ast::Statement<'_>) -> bool {
         | ast::Statement::AwaitNextFrame(_)
         | ast::Statement::Draw { .. }
         | ast::Statement::Camera3d { .. }
+        | ast::Statement::MouseCapture(..)
         | ast::Statement::Nihil => false,
     }
 }
@@ -385,6 +386,15 @@ impl<'a, 'input> Checker<'a, 'input> {
     // Whether a declaration here is a variable of bosonoga_global.
     fn in_global(&self) -> bool {
         self.section == Some(Section::Global) && self.function.is_none()
+    }
+
+    // Whether the mouse can be captured, released or asked about here: in
+    // gfx_frame, gfx_key_down or gfx_key_up, outside defs.
+    fn in_mouse_section(&self) -> bool {
+        matches!(
+            self.section,
+            Some(Section::GfxFrame | Section::GfxKeyDown | Section::GfxKeyUp)
+        ) && self.function.is_none()
     }
 
     fn allocate(&mut self) -> Slot {

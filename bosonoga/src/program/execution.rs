@@ -6,7 +6,7 @@ use super::{
 };
 use crate::Diagnostic;
 use crate::ast::ExitStatus;
-use crate::gfx::{Scene, Shape, Window};
+use crate::gfx::{KeyEvent, Scene, Shape, Window};
 use crate::io::{FileIo, Io};
 use crate::value::Value;
 
@@ -47,6 +47,9 @@ pub(super) fn run_window(
 ) -> Result<ExitStatus, String> {
     let mut execution = Execution::new(program, Some(window), io);
     execution.set_section_slot(program.delta_time_slot, Value::F32(FIRST_DELTA_TIME));
+    execution.set_section_slot(program.mouse_move_x_slot, Value::F32(0.0));
+    execution.set_section_slot(program.mouse_move_y_slot, Value::F32(0.0));
+    execution.set_mouse_captured(false);
     let result = execution.run_window();
     let cleanup = execution.section("gfx_cleanup", &program.sections.cleanup);
     execution.flush();
@@ -110,6 +113,9 @@ struct Execution<'a> {
     scene: Scene,
     // Whether gfx_camera_3d ran in this frame, which it does at most once.
     camera_3d: bool,
+    // Whether the mouse is captured, as the program asked or as the window
+    // last said.
+    mouse_captured: bool,
     io: &'a mut dyn Io,
     // The section that runs, its statements since its start or since
     // gfx_await_next_frame, and the while or call that a step error names.
@@ -127,6 +133,7 @@ impl<'a> Execution<'a> {
             window,
             scene: Scene::default(),
             camera_3d: false,
+            mouse_captured: false,
             io,
             running: "",
             steps: 0,
@@ -232,6 +239,26 @@ impl<'a> Execution<'a> {
         }
     }
 
+    fn set_mouse_captured(&mut self, captured: bool) {
+        self.mouse_captured = captured;
+        self.set_section_slot(self.program.mouse_captured_slot, Value::Bool(captured));
+    }
+
+    // gfx_mouse_capture or gfx_mouse_release, which must change whether the
+    // mouse is captured.
+    fn capture_mouse(&mut self, capture: bool, offset: usize) -> Result<(), Diagnostic> {
+        if capture == self.mouse_captured {
+            let message = if capture {
+                "gfx_mouse_capture needs a released mouse, but the mouse is captured"
+            } else {
+                "gfx_mouse_release needs a captured mouse, but the mouse is released"
+            };
+            return Err(Diagnostic::new(offset, message));
+        }
+        self.set_mouse_captured(capture);
+        Ok(())
+    }
+
     fn holds(&self, condition: &Condition) -> bool {
         for conjunction in condition {
             if self.all_hold(conjunction) {
@@ -289,10 +316,12 @@ impl<'a> Execution<'a> {
         self.scene = Scene {
             clear: program.background,
             shapes: Vec::new(),
+            mouse_captured: false,
         };
         self.camera_3d = false;
         self.section("gfx_frame", &program.sections.frame)?;
         self.flush();
+        self.scene.mouse_captured = self.mouse_captured;
         let mut shown = None;
         if let Some(window) = self.window.as_deref_mut() {
             shown = window.show(&self.scene);
@@ -300,9 +329,17 @@ impl<'a> Execution<'a> {
         let Some(input) = shown else {
             return Ok(Flow::Closed);
         };
-        for key in input.keys {
+        self.set_mouse_captured(input.mouse_captured);
+        let [move_x, move_y] = input.mouse_move;
+        self.set_section_slot(program.mouse_move_x_slot, Value::F32(move_x));
+        self.set_section_slot(program.mouse_move_y_slot, Value::F32(move_y));
+        for event in input.keys {
+            let (key, word, statements) = match event {
+                KeyEvent::Down(key) => (key, "gfx_key_down", &program.sections.key_down),
+                KeyEvent::Up(key) => (key, "gfx_key_up", &program.sections.key_up),
+            };
             self.set_section_slot(program.key_slot, Value::InputKey(key));
-            self.section("gfx_key_down", &program.sections.key_down)?;
+            self.section(word, statements)?;
         }
         self.set_section_slot(program.delta_time_slot, Value::F32(input.delta_time));
         Ok(Flow::Next)
@@ -404,7 +441,11 @@ impl<'a> Execution<'a> {
     fn draw(&mut self, draw: &Draw, offset: usize) -> Result<(), Diagnostic> {
         let shape = match draw {
             Draw::Clear(value) => {
-                self.scene.clear = self.color(value);
+                let color = self.color(value);
+                if let Err(message) = space::opaque("gfx_clear", "color", color) {
+                    return Err(Diagnostic::new(offset, message));
+                }
+                self.scene.clear = color;
                 return Ok(());
             }
             Draw::Rectangle([x, y, width, height, fill]) => Shape::Rectangle {
@@ -455,14 +496,18 @@ impl<'a> Execution<'a> {
                     slices = *value;
                 }
                 let spacing = self.real(apart);
-                if let Err(message) = space::grid(slices, spacing) {
+                let (axes_color, color) = (self.color(axes), self.color(lines));
+                let checked = space::grid(slices, spacing)
+                    .and_then(|()| space::opaque("gfx_draw_grid", "axes color", axes_color))
+                    .and_then(|()| space::opaque("gfx_draw_grid", "line color", color));
+                if let Err(message) = checked {
                     return Err(Diagnostic::new(offset, message));
                 }
                 Shape::Grid {
                     slices,
                     spacing,
-                    axes_color: self.color(axes),
-                    color: self.color(lines),
+                    axes_color,
+                    color,
                 }
             }
             Draw::Text {
@@ -791,6 +836,7 @@ impl<'a> Execution<'a> {
                 block,
                 offset,
             } => return self.camera(camera, block, *offset),
+            Statement::MouseCapture { capture, offset } => self.capture_mouse(*capture, *offset)?,
             Statement::Return(status) => return Ok(Flow::Exit(*status)),
             Statement::ReturnValues(operands) => return Ok(Flow::Values(self.values(operands))),
             Statement::Unwrap { slot, optional } => {

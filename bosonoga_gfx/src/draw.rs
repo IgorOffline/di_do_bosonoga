@@ -12,9 +12,11 @@ const HEX_CORNERS: u8 = 6;
 // Enough that a circle of a few dozen pixels looks round.
 const CIRCLE_CORNERS: u8 = 48;
 
-pub(crate) fn color(rgb: u32) -> Color {
-    let [_, red, green, blue] = rgb.to_be_bytes();
-    Color::from_rgba(red, green, blue, u8::MAX)
+// Of a color as bosonoga keeps it, 0xTTRRGGBB, where TT is 255 less the
+// alpha. Only 2D draws can be translucent.
+pub(crate) fn color(rgba: u32) -> Color {
+    let [_, red, green, blue] = rgba.to_be_bytes();
+    Color::from_rgba(red, green, blue, bosonoga::gfx::alpha(rgba))
 }
 
 #[expect(

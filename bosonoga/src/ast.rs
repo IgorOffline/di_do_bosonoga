@@ -20,6 +20,7 @@ pub enum Section {
     GfxFrame,
     GfxCleanup,
     GfxKeyDown,
+    GfxKeyUp,
     GfxMain,
 }
 
@@ -33,6 +34,7 @@ impl Section {
             "gfx_frame" => Section::GfxFrame,
             "gfx_cleanup" => Section::GfxCleanup,
             "gfx_key_down" => Section::GfxKeyDown,
+            "gfx_key_up" => Section::GfxKeyUp,
             "gfx_main" => Section::GfxMain,
             _ => return None,
         })
@@ -47,6 +49,7 @@ impl Section {
             Section::GfxFrame => "gfx_frame",
             Section::GfxCleanup => "gfx_cleanup",
             Section::GfxKeyDown => "gfx_key_down",
+            Section::GfxKeyUp => "gfx_key_up",
             Section::GfxMain => "gfx_main",
         }
     }
@@ -226,6 +229,8 @@ pub enum Statement<'input> {
         values: Vec<Operand<'input>>,
         block: Block<'input>,
     },
+    // gfx_mouse_capture when true, and gfx_mouse_release when false.
+    MouseCapture(Span, bool),
     Nihil,
     Return(Span, ExitStatus),
     ReturnValues(Span, Vec<Operand<'input>>),

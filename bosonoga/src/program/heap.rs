@@ -119,6 +119,7 @@ mod tests {
                 },
                 text: String::with_capacity(20),
             }],
+            mouse_captured: false,
         };
         let expected = 2 * size_of::<Vec<Value>>()
             + 4 * size_of::<Value>()

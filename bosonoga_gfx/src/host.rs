@@ -89,19 +89,24 @@ pub(crate) async fn run(
             Ok(Event::Frame(scene)) => {
                 draw::scene(&scene, &assets);
                 next_frame().await;
-                let input = pacer.wait(subscriber);
+                let input = pacer.wait(subscriber, scene.mouse_captured);
                 if is_quit_requested() {
                     let _ = inputs.send(None);
                 } else {
                     let _ = inputs.send(Some(input));
                 }
             }
-            Ok(Event::Done(Ok(status))) => std::process::exit(exit_code(status).into()),
+            Ok(Event::Done(Ok(status))) => {
+                pacer.release_mouse();
+                std::process::exit(exit_code(status).into());
+            }
             Ok(Event::Done(Err(message))) => {
+                pacer.release_mouse();
                 eprintln!("{message}");
                 std::process::exit(1);
             }
             Err(_) => {
+                pacer.release_mouse();
                 eprintln!("the interpreter stopped without a result");
                 std::process::exit(1);
             }
