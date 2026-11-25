@@ -1,0 +1,11 @@
+// gfx_step_limit.bosonoga
+
+gfx_main
+di
+  var count is 0_i32
+  while count lt 200000_i32
+  di
+    set count to_add 1_i32
+  do
+  return exit_success
+do

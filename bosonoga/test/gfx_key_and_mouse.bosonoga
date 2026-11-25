@@ -1,0 +1,64 @@
+// gfx_key_and_mouse.bosonoga
+
+bosonoga_global
+di
+  var held is false_bool
+  var downs is 0_i32
+  var ups is 0_i32
+  var turned is 0d0_f32
+  var tilted is 0d0_f32
+  var captured_frames is 0_i32
+do
+
+gfx_key_down
+di
+  if gfx_key eq key_walk
+  di
+    set held to true_bool
+    set downs to_add 1_i32
+  do
+  else if gfx_key eq key_mouse
+  di
+    if gfx_mouse_captured
+    di
+      gfx_mouse_release
+    do
+    else
+    di
+      gfx_mouse_capture
+    do
+  do
+do
+
+gfx_key_up
+di
+  if gfx_key eq key_walk
+  di
+    set held to false_bool
+    set ups to_add 1_i32
+  do
+do
+
+gfx_frame
+di
+  set turned to_add gfx_mouse_move_x
+  set tilted to_add gfx_mouse_move_y
+  if gfx_mouse_captured
+  di
+    set captured_frames to_add 1_i32
+  do
+do
+
+gfx_main
+di
+  gfx_await_next_frame
+  gfx_await_next_frame
+  gfx_await_next_frame
+  gfx_await_next_frame
+  gfx_await_next_frame
+  if not held and downs eq 2_i32 and ups eq 2_i32 and turned eq_3 3d0_f32 and tilted eq_3 -4d0_f32 and captured_frames eq 3_i32
+  di
+    return exit_success
+  do
+  return exit_failure
+do

@@ -1,0 +1,80 @@
+// gfx_aka_camera_3d.bosonoga
+
+mod "aka_camera.bosonoga"_str
+
+const origin is 0_i32
+const side is 6_i32
+
+// The camera is apart from its target, which is at the origin.
+aka_i32 away except origin
+
+// The slices of a grid are even.
+aka_i32 slices is from 2_i32 to 9_i32 except 3_i32 5_i32 7_i32
+
+bosonoga_global
+di
+  var eye_y is 0d0_f32
+do
+
+def eye_fn step_away ret 0_f32
+di
+  val step is to_i32 step_away
+  val eye is to_f32 step
+  return eye
+do
+
+// Its own call is given its own parameter.
+def raise_fn step_away times_i32 with from_global eye_y ret_void
+di
+  if times_i32 gt 0_i32
+  di
+    val step is eye_fn of step_away with ret 0_f32
+    set eye_y to_add step
+    var less is times_i32
+    set less to_subtract 1_i32
+    call raise_fn of step_away less
+  do
+do
+
+// The aka_i32 of a module is that of a parameter here too.
+def half_fn view_fov ret 0_f32
+di
+  var half is degrees_fn of view_fov with ret 0_f32
+  set half to_multiply 0d5_f32
+  return half
+do
+
+def slices_fn count_slices ret 0_u32
+di
+  var count is 0_i32
+  set count to_i32 count_slices
+  val slices_count is to_u32 count
+  return slices_count
+do
+
+gfx_frame
+di
+  set eye_y to 0d0_f32
+  call raise_fn of 2_i32 2_i32
+  // Known before the program runs: a constant, a literal and a val.
+  val eye_x is eye_fn of side with ret 0_f32
+  val view is half_fn of 179_i32 with ret 0_f32
+  val eight is 8_i32
+  val grid_slices is slices_fn of eight with ret 0_u32
+  // Not known, so checked by the call.
+  var steps is -17_i32
+  set steps to_mod 6_i32
+  val eye_z is eye_fn of steps with ret 0_f32
+  gfx_camera_3d eye_x eye_y eye_z 0d0_f32 0d0_f32 0d0_f32 0d0_f32 1d0_f32 0d0_f32 view
+  di
+    gfx_draw_grid grid_slices 1d0_f32 color_cube color_grid
+    gfx_draw_cube 0d0_f32 1d0_f32 2d0_f32 3d0_f32 4d0_f32 5d0_f32 color_cube
+  do
+  gfx_draw_circle 5d0_f32 6d0_f32 3d0_f32 color_grid
+do
+
+gfx_main
+di
+  gfx_await_next_frame
+  return exit_success
+do
