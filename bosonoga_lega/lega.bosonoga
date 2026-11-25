@@ -1,0 +1,235 @@
+// lega.bosonoga
+//
+// lega word    a whole word, as di
+// lega _word   a suffix, as _i32 of 7_i32
+// lega word_   a prefix, as shift_ of shift_0
+
+// suffixes of types
+lega _i32
+lega _i64
+lega _u32
+lega _u64
+lega _f32
+lega _f64
+lega _flags
+lega _color
+lega _str
+lega _bool
+lega _input_key
+lega _font
+lega _icon
+lega _optional_i32
+lega _optional_i64
+lega _optional_u32
+lega _optional_u64
+lega _optional_f32
+lega _optional_f64
+lega _optional_color
+lega _optional_str
+lega _optional_bool
+
+// suffix of functions
+lega _fn
+
+// prefix of flags, shift_0 to shift_31
+lega shift_
+
+// prefixes of regina.ini
+lega color_
+lega dir_
+lega font_
+lega global_
+lega icon_
+lega key_
+
+// values
+lega exit_failure
+lega exit_success
+lega false_bool
+lega false_optional_bool
+lega nihil_bool
+lega nihil_color
+lega nihil_f32
+lega nihil_f64
+lega nihil_i32
+lega nihil_i64
+lega nihil_str
+lega nihil_u32
+lega nihil_u64
+lega true_bool
+lega true_optional_bool
+
+// sections
+lega bosonoga_global
+lega bosonoga_main
+lega gfx_cleanup
+lega gfx_frame
+lega gfx_init
+lega gfx_key_down
+lega gfx_key_up
+lega gfx_main
+
+// blocks
+lega di
+lega do
+
+// items
+lega aka_i32
+lega const
+lega def
+lega except
+lega from
+lega from_global
+lega mod
+lega pub
+lega ret
+lega ret_void
+
+// statements
+lega array
+lega as
+lega at
+lega call
+lega else
+lega if
+lega info
+lega is
+lega nihil
+lega of
+lega return
+lega row
+lega set
+lega val
+lega var
+lega while
+lega with
+lega with_len_col
+
+// conditions
+lega and
+lega eq
+lega eq_3
+lega eq_6
+lega ge
+lega gt
+lega le
+lega lt
+lega not
+lega not_eq
+lega not_eq_3
+lega not_eq_6
+lega or
+lega shift_has
+lega some
+
+// operations
+lega shift_or
+lega to
+lega to_add
+lega to_divide
+lega to_join
+lega to_mod
+lega to_multiply
+lega to_subtract
+
+// conversions
+lega to_f32
+lega to_f64
+lega to_i32
+lega to_i64
+lega to_optional_bool
+lega to_optional_color
+lega to_optional_f32
+lega to_optional_f64
+lega to_optional_i32
+lega to_optional_i64
+lega to_optional_str
+lega to_optional_u32
+lega to_optional_u64
+lega to_u32
+lega to_u64
+
+// math
+lega math_to_abs
+lega math_to_acos
+lega math_to_asin
+lega math_to_atan2
+lega math_to_ceil
+lega math_to_cos
+lega math_to_exp
+lega math_to_expm1
+lega math_to_floor
+lega math_to_hypot
+lega math_to_log
+lega math_to_log10
+lega math_to_log1p
+lega math_to_max
+lega math_to_min
+lega math_to_pow
+lega math_to_round
+lega math_to_sin
+lega math_to_sqrt
+lega math_to_tan
+
+// io, str and xml
+lega io_latest
+lega io_modified
+lega io_read
+lega io_write
+lega str_digit
+lega str_len
+lega str_parse
+lega xml_attribute
+lega xml_child
+lega xml_escape
+lega xml_name
+
+// gfx statements
+lega gfx_await_next_frame
+lega gfx_camera_3d
+lega gfx_clear
+lega gfx_draw_circle
+lega gfx_draw_cube
+lega gfx_draw_cube_wires
+lega gfx_draw_grid
+lega gfx_draw_hex
+lega gfx_draw_icon
+lega gfx_draw_rectangle
+lega gfx_draw_text
+lega gfx_mouse_capture
+lega gfx_mouse_release
+
+// gfx values
+lega gfx_delta_time
+lega gfx_heap_bytes
+lega gfx_key
+lega gfx_mouse_captured
+lega gfx_mouse_move_x
+lega gfx_mouse_move_y
+
+// alignments of gfx_draw_text
+lega baseline
+lega bottom
+lega center
+lega left
+lega middle
+lega right
+lega top
+
+// reserved, so not lega yet
+// lega _dir
+// lega _xml_str
+// lega aka
+// lega aka_
+// lega break
+// lega continue
+// lega expect
+// lega io_raw_import
+// lega len_col
+// lega len_row
+// lega new
+// lega optional
+// lega ret_
+// lega sleep_ms
+// lega to_
+// lega unset
