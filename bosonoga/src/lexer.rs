@@ -1,5 +1,6 @@
 use crate::Diagnostic;
 use crate::ast::Section;
+use crate::gfx::{Horizontal, Vertical};
 use crate::value::{Compare, Conversion, Kind, Operation, Value};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -52,6 +53,8 @@ pub enum Tok<'input> {
     GfxDrawCube,
     GfxDrawCubeWires,
     GfxDrawGrid,
+    AlignX(Horizontal),
+    AlignY(Vertical),
     WithLenCol,
     If,
     Else,
@@ -386,6 +389,12 @@ fn word(text: &str) -> Tok<'_> {
     }
     if let Some(builtin) = crate::io::Builtin::named(text) {
         return Tok::Given(builtin);
+    }
+    if let Some(horizontal) = Horizontal::named(text) {
+        return Tok::AlignX(horizontal);
+    }
+    if let Some(vertical) = Vertical::named(text) {
+        return Tok::AlignY(vertical);
     }
     match text {
         "to_join" => Tok::Join,

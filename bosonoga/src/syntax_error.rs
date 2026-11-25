@@ -125,6 +125,10 @@ fn terminal_word(terminal: &str) -> &str {
     match terminal {
         "end" => "end of file",
         "name" => "a variable name",
+        "gfx_align_x" => "gfx_align_x_left, gfx_align_x_center or gfx_align_x_right",
+        "gfx_align_y" => {
+            "gfx_align_y_top, gfx_align_y_middle, gfx_align_y_baseline or gfx_align_y_bottom"
+        }
         "operation" => "to, to_add, to_subtract, to_multiply, to_divide, to_mod or a conversion",
         word => word,
     }

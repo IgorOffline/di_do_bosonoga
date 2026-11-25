@@ -1,6 +1,6 @@
 use super::Checker;
 use crate::Diagnostic;
-use crate::ast::{self, Named, Section, Span};
+use crate::ast::{self, Section, Span};
 use crate::gfx::{Align, Horizontal, Vertical};
 use crate::program::{Draw, Operand, Statement};
 use crate::value::{Kind, Value};
@@ -46,7 +46,7 @@ impl<'input> Checker<'_, 'input> {
         &mut self,
         span: Span,
         draw: &ast::Draw,
-        aligns: Option<&(Named<'input>, Named<'input>)>,
+        align: Option<Align>,
         values: &[ast::Operand<'input>],
     ) -> Result<Statement, Diagnostic> {
         let word = self.text(span);
@@ -66,7 +66,6 @@ impl<'input> Checker<'_, 'input> {
             );
         }
         let kinds = draw_kinds(draw);
-        let align = self.align(aligns)?;
         let mut operands = Vec::new();
         let mut parts = Vec::new();
         for (index, value) in values.iter().enumerate() {
@@ -88,7 +87,10 @@ impl<'input> Checker<'_, 'input> {
             ast::Draw::Circle => Draw::Circle(take(o)),
             ast::Draw::Icon => Draw::Icon(take(o)),
             ast::Draw::Text => Draw::Text {
-                align,
+                align: align.unwrap_or(Align {
+                    horizontal: Horizontal::Left,
+                    vertical: Vertical::Baseline,
+                }),
                 values: take(o),
                 parts,
             },
@@ -130,32 +132,6 @@ impl<'input> Checker<'_, 'input> {
             camera: take(&mut operands),
             block: checked?,
             offset: span.start,
-        })
-    }
-
-    fn align(&self, aligns: Option<&(Named<'input>, Named<'input>)>) -> Result<Align, Diagnostic> {
-        let Some(((h_span, h), (v_span, v))) = aligns else {
-            return Ok(Align {
-                horizontal: Horizontal::Left,
-                vertical: Vertical::Baseline,
-            });
-        };
-        let horizontal = match *h {
-            "left" => Horizontal::Left,
-            "center" => Horizontal::Center,
-            "right" => Horizontal::Right,
-            _ => return self.expected_at(*h_span, "left, center or right"),
-        };
-        let vertical = match *v {
-            "top" => Vertical::Top,
-            "middle" => Vertical::Middle,
-            "baseline" => Vertical::Baseline,
-            "bottom" => Vertical::Bottom,
-            _ => return self.expected_at(*v_span, "top, middle, baseline or bottom"),
-        };
-        Ok(Align {
-            horizontal,
-            vertical,
         })
     }
 }
