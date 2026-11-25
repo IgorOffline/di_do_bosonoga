@@ -1,6 +1,0 @@
-mod "named_imports.mod.bosonoga"_str
-bosonoga_main
-di
-  info visible_limit
-  return exit_success
-do

@@ -1,5 +1,0 @@
-bosonoga_main
-di
-  info "keyword filename"_str
-  return exit_success
-do

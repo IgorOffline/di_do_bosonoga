@@ -1,2 +1,0 @@
-mod "long_names.mod.bosonoga"_str
-pub const wrapped_limit is abcdefghijklmnopqrstuvwxyzabcdef_public

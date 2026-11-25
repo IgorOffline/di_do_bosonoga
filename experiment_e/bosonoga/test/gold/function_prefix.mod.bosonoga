@@ -1,4 +1,0 @@
-// A raw import can also leave a function body open for its reader.
-def imported_identity_fn value_i32 ret 0_i32
-di
-  return

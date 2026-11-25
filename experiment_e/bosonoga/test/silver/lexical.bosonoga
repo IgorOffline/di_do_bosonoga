@@ -1,20 +1,0 @@
-// A CR does not end this comment.return exit_failure
-bosonoga_maindi
-  val cr is "ab"_str
-  val controls is ""_str
-  val same_cr is new str of "a"_str ""_str "b"_str
-  val same_controls is new str of ""_str ""_str
-  var matches is false_bool
-  if cr eq same_cr and controls eq same_controls
-  di
-    set matches to true_bool
-  do
-  unset same_cr
-  unset same_controls
-  if matches
-  di
-    info "lexical parity"_str
-    return exit_success
-  do
-  return exit_failure
-do

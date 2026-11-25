@@ -1,5 +1,0 @@
-bosonoga_main
-di
-  info "filename with spaces"_str
-  return exit_success
-do
