@@ -80,6 +80,7 @@ extern {
         "name" => Tok::Name(<&'input str>),
         "result" => Tok::Result(<&'input str>),
         "gfx_value" => Tok::GfxValue(<&'input str>),
+        "une" => Tok::Une,
         "reserved" => Tok::Reserved(<&'input str>),
         "indexed_type" => Tok::IndexedType(<&'input str>),
         "end" => Tok::End,

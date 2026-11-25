@@ -8,7 +8,7 @@ mod statement;
 mod value;
 
 use crate::ast::{self, Section, Span};
-use crate::lexer::{Lexer, Tok};
+use crate::lexer::{Lexer, Tok, UNE_PREFIX};
 use crate::program::{Program, Slot, Statement};
 use crate::setting::Settings;
 use crate::source::Sources;
@@ -332,7 +332,7 @@ impl<'a, 'input> Checker<'a, 'input> {
             span,
             scope: self.scope,
             public,
-            used: false,
+            used: self.text(span).starts_with(UNE_PREFIX),
         }
     }
 

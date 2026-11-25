@@ -19,6 +19,7 @@ fn programs() {
         ("test/arithmetic.bosonoga", ""),
         ("test/function.bosonoga", ""),
         ("test/var_array.bosonoga", ""),
+        ("test/une.bosonoga", ""),
         (
             "test/call.bosonoga",
             "hello\ncountdown 2\ncountdown 1\ncountdown 0\n",
@@ -71,6 +72,10 @@ fn diagnostics() {
         (
             "def f_fn n_i32 ret_void di set n_i32 to 1_i32 do",
             "'n_i32' is a parameter, which is a val and cannot be set, but a copy can, as in var n is n_i32",
+        ),
+        (
+            "bosonoga_main di var une is 1_i32 return exit_success do",
+            "expected a variable name, got 'une'",
         ),
         // The step lega comes first, so the missing return is not reported.
         (

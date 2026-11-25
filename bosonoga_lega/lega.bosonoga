@@ -34,6 +34,9 @@ lega _fn
 // prefix of flags, shift_0 to shift_31
 lega shift_
 
+// prefix of names that can be unused
+lega une_
+
 // prefixes of regina.ini
 lega color_
 lega dir_
