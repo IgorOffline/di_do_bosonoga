@@ -1,4 +1,4 @@
-// module_board.mod.bosonoga
+// module_board.bosonoga
 
 const board_radius is 4_i32
 

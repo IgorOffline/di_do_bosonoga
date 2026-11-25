@@ -11,6 +11,10 @@ pub enum Tok<'input> {
     Call,
     Given(crate::io::Builtin),
     Join,
+    Aka,
+    From,
+    To,
+    Except,
     As,
     Nihil,
     Return,
@@ -294,6 +298,11 @@ impl<'input> Lexer<'input> {
     }
 }
 
+// Whether a name is that of a type, which the name of an aka_i32 is not.
+pub(crate) fn is_type_name(name: &str) -> bool {
+    Kind::named(name).is_some() || INDEXED_TYPES.contains(&name)
+}
+
 fn is_number_name(name: &str) -> bool {
     matches!(name, "i32" | "i64" | "u32" | "u64" | "f32" | "f64")
 }
@@ -367,6 +376,9 @@ fn word(text: &str) -> Tok<'_> {
         return Tok::Section(section);
     }
     if let Some(operation) = Operation::named(text) {
+        if operation == Operation::Copy {
+            return Tok::To;
+        }
         return Tok::Operation(operation);
     }
     if let Some(conversion) = Conversion::named(text) {
@@ -377,6 +389,9 @@ fn word(text: &str) -> Tok<'_> {
     }
     match text {
         "to_join" => Tok::Join,
+        "aka_i32" => Tok::Aka,
+        "from" => Tok::From,
+        "except" => Tok::Except,
         "as" => Tok::As,
         "di" => Tok::Di,
         "do" => Tok::Do,
@@ -432,6 +447,8 @@ fn word(text: &str) -> Tok<'_> {
         | "gfx_mouse_move_y" | "gfx_mouse_captured" => Tok::GfxValue(text),
         _ if is_numbered(text, "shift_") => Tok::Shift(text),
         _ if is_result_name(text) => Tok::Result(text),
+        // Only aka_i32 is a keyword so far, and the others are kept for later.
+        _ if text == "aka" || text.starts_with("aka_") => Tok::Reserved(text),
         _ if is_numbered(text, "to_") || RESERVED.contains(&text) => Tok::Reserved(text),
         _ => Tok::Name(text),
     }

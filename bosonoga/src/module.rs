@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::ast::Item;
-use crate::sources::Sources;
+use crate::source::Sources;
 use crate::{Diagnostic, io_message, parse_file};
 
 const FILE_SUFFIX: &str = ".bosonoga";
@@ -98,7 +98,11 @@ fn mod_names(
     for item in &parsed.items {
         match item {
             Item::Mod(span, name) => names.push((span.start, name.clone())),
-            Item::Const { .. } | Item::Def { .. } | Item::Array { .. } | Item::Section(..) => {}
+            Item::Aka { .. }
+            | Item::Const { .. }
+            | Item::Def { .. }
+            | Item::Array { .. }
+            | Item::Section(..) => {}
         }
     }
     Ok(names)

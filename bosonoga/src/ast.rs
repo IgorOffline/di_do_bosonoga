@@ -251,6 +251,14 @@ pub enum Results {
 #[derive(Debug, PartialEq)]
 pub enum Item<'input> {
     Mod(Span, String),
+    // The range is from, inclusive, and to, exclusive, and is every i32 if
+    // it is not given.
+    Aka {
+        public: Option<Span>,
+        name: Named<'input>,
+        range: Option<(Operand<'input>, Operand<'input>)>,
+        except: Vec<Operand<'input>>,
+    },
     Const {
         public: Option<Span>,
         name: Named<'input>,

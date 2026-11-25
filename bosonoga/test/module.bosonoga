@@ -1,6 +1,6 @@
 // module.bosonoga
 
-mod "module_board.mod.bosonoga"_str
+mod "module_board.bosonoga"_str
 
 bosonoga_main
 di

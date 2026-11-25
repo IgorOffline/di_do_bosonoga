@@ -1,8 +1,8 @@
 use std::mem;
 
 use super::{
-    Callable, Checker, FUNCTION_VALUES_MAX, Function, Origin, Scope, Variable, block_returns,
-    is_function_name, kinds_named, split_indexed,
+    Callable, Checker, FUNCTION_VALUES_MAX, Function, Origin, Parameter, Scope, Variable,
+    block_returns, is_function_name, kinds_named, split_indexed,
 };
 use crate::Diagnostic;
 use crate::ast::{self, Item, Named, Results, Section, Span};
@@ -51,6 +51,12 @@ impl<'input> Checker<'_, 'input> {
                     next_module += 1;
                     self.module(*module)?;
                 }
+                Item::Aka {
+                    public,
+                    name,
+                    range,
+                    except,
+                } => self.aka(*public, *name, range.as_ref(), except)?,
                 Item::Const {
                     public,
                     name,
@@ -138,12 +144,12 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(span.start, "bosonoga_global must be the first section");
         }
         if has_main {
-            return self.expected_at(span, "const, def, val or end of file");
+            return self.expected_at(span, "aka_i32, const, def, val or end of file");
         }
         if section == Section::Main && has_gfx {
             return self.expected_at(
                 span,
-                "const, def, val, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main",
+                "aka_i32, const, def, val, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main",
             );
         }
         let is_main = section == Section::Main || section == Section::GfxMain;
@@ -350,6 +356,8 @@ impl<'input> Checker<'_, 'input> {
             declaration: self.declaration(span, false),
             origin: Origin::Captured,
             written: false,
+            aka: None,
+            known: global.known,
         };
         self.variables.push(variable);
         Ok(())
@@ -366,7 +374,13 @@ impl<'input> Checker<'_, 'input> {
     ) -> Result<(), Diagnostic> {
         let mut kinds = Vec::new();
         for parameter in parameters {
-            let Some(kind) = parameter_kind(parameter.1) else {
+            let mut aka = None;
+            let mut found = parameter_kind(parameter.1);
+            if found.is_none() {
+                aka = self.parameter_aka(*parameter)?;
+                found = aka.map(|_| Kind::I32);
+            }
+            let Some(kind) = found else {
                 if parameter.1.contains("_optional_") {
                     return self.expected_at(parameter.0, OPTIONAL_TYPES);
                 }
@@ -386,8 +400,9 @@ impl<'input> Checker<'_, 'input> {
             self.declare(*parameter, kind, slot, false);
             if let Some(declared) = self.variables.last_mut() {
                 declared.origin = Origin::Parameter;
+                declared.aka = aka;
             }
-            kinds.push(kind);
+            kinds.push(Parameter { kind, aka });
         }
         for global in globals {
             self.capture(*global, outer)?;
@@ -458,7 +473,7 @@ impl<'input> Checker<'_, 'input> {
         self.functions.push(Function {
             name,
             callable: Callable::Array(index),
-            parameters: vec![Kind::I32],
+            parameters: vec![Parameter::plain(Kind::I32)],
             results: kinds,
             declaration,
         });

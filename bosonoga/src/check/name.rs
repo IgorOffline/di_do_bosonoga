@@ -2,7 +2,7 @@ use super::{Checker, Declaration, is_function_name};
 use crate::Diagnostic;
 use crate::ast::{Named, Span};
 use crate::program::Slot;
-use crate::settings::Asset;
+use crate::setting::Asset;
 use crate::value::{Kind, Value};
 
 fn asset_index(assets: &mut Vec<(String, Asset)>, key: &str, asset: &Asset) -> usize {
@@ -83,6 +83,9 @@ impl<'input> Checker<'_, 'input> {
     }
 
     fn hidden(&self, name: &str) -> Option<&Declaration> {
+        if let Some(index) = self.aka_any(name) {
+            return Some(&self.akas[index].declaration);
+        }
         if let Some(index) = self.constant_any(name) {
             return Some(&self.constants[index].declaration);
         }
@@ -130,6 +133,14 @@ impl<'input> Checker<'_, 'input> {
     pub(super) fn fail_unknown_variable<T>(&self, span: Span, name: &str) -> Result<T, Diagnostic> {
         self.check_not_hidden(span, name)?;
         let shown = self.text(span);
+        if self.aka_any(name).is_some() {
+            return Self::fail(
+                span.start,
+                format!(
+                    "'{shown}' is an aka_i32, which is only the type of a parameter, as in value_{shown}"
+                ),
+            );
+        }
         if let Some(index) = self.variable(name)
             && self.variables[index].array.is_some()
         {
@@ -160,6 +171,9 @@ impl<'input> Checker<'_, 'input> {
             return self.expected_at(span, "a variable name");
         }
         let shown = self.text(span);
+        if self.aka_any(name).is_some() {
+            return Self::fail(span.start, format!("'{shown}' is already an aka_i32"));
+        }
         if self.constant_any(name).is_some() {
             return Self::fail(span.start, "a constant with this name already exists");
         }
@@ -216,6 +230,15 @@ impl<'input> Checker<'_, 'input> {
                 span.start,
                 format!(
                     "'{shown}' is an array, whose rows are set with set {shown} at INDEX to and one value per column"
+                ),
+            );
+        }
+        if let Some(aka) = variable.aka {
+            let copy = self.aka_base(span, aka);
+            return Self::fail(
+                span.start,
+                format!(
+                    "'{shown}' is a parameter, which is a val and cannot be set, but a copy can, as in var {copy} is to_i32 {shown}"
                 ),
             );
         }

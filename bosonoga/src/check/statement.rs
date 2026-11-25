@@ -406,6 +406,15 @@ impl<'input> Checker<'_, 'input> {
             }
         };
         self.declare(name, kind, slot, mutable);
+        if let Statement::Assign {
+            initial: Operand::Literal(Value::I32(value)),
+            ..
+        } = &statement
+            && !mutable
+            && let Some(variable) = self.variables.last_mut()
+        {
+            variable.known = Some(*value);
+        }
         Ok(statement)
     }
 
@@ -497,7 +506,7 @@ impl<'input> Checker<'_, 'input> {
         let word = conversion.word();
         let shown = self.text(first.span);
         if let ast::Term::Literal(_) = first.term
-            && let Some(present) = super::values::present_literal(shown)
+            && let Some(present) = super::value::present_literal(shown)
         {
             return Self::fail(
                 first.span.start,
@@ -531,7 +540,11 @@ impl<'input> Checker<'_, 'input> {
         if let Conversion::ToOptional(inner) = conversion {
             return self.optional_conversion(slot, (span, inner), first, values.get(1));
         }
-        let (left, source) = self.value(first)?;
+        // to_i32 is how an aka_i32 becomes an i32.
+        let (left, source) = match self.aka_parameter(first) {
+            Some((operand, _)) if conversion == Conversion::ToI32 => (operand, Kind::I32),
+            Some(_) | None => self.value(first)?,
+        };
         let accepts_integer = conversion.accepts_integer();
         if !(source.is_real() || (accepts_integer && source.is_integer())) {
             let needed = if accepts_integer {

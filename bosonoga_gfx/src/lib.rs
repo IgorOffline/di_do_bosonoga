@@ -1,20 +1,20 @@
 // The gfx scaffold of bosonoga: it runs a gfx program in a window with
 // macroquad. bosonoga says what to draw, and this crate draws it.
 
-mod assets;
+mod asset;
 // Macroquad exposes context diagnostics only through its unsafe GL interface.
 #[allow(unsafe_code)]
-mod diagnostics;
+mod diagnostic;
 mod draw;
 mod draw_3d;
 mod host;
-mod keys;
+mod key;
 mod pacer;
 
 use std::path::Path;
 use std::process::ExitCode;
 
-use bosonoga::settings::{Asset, Settings};
+use bosonoga::setting::{Asset, Settings};
 use macroquad::window::Conf;
 
 fn fail(message: &str) -> ExitCode {
