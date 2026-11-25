@@ -85,6 +85,10 @@ fn diagnostics() {
             "bosonoga_main di break do",
             "'break' cannot be lega, as bosonoga has no break",
         ),
+        (
+            "gfx_frame di gfx_draw_text gfx_align_y_top do",
+            "expected gfx_align_x_left, gfx_align_x_center or gfx_align_x_right, got 'gfx_align_y_top'",
+        ),
     ];
     for (source, expected) in cases {
         match bosonoga::parse(source, &lega) {

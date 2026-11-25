@@ -78,10 +78,7 @@ impl Lega {
         {
             return vec![&text[suffix..]];
         }
-        // The alignments of gfx_draw_text are names to the lexer.
-        if let Tok::Name(_) = token
-            && !has(&self.language, text)
-        {
+        if let Tok::Name(_) = token {
             return self.affixes(text);
         }
         vec![text]

@@ -1,6 +1,6 @@
 // lega.bosonoga
 //
-// Only what the programs of this directory use.
+// Only what the programs of this directory and of interpreter.rs use.
 
 // suffixes of types
 lega _i32
@@ -118,6 +118,7 @@ lega gfx_camera_3d
 lega gfx_draw_circle
 lega gfx_draw_cube
 lega gfx_draw_grid
+lega gfx_draw_text
 lega gfx_mouse_capture
 lega gfx_mouse_release
 
@@ -128,4 +129,4 @@ lega gfx_mouse_move_x
 lega gfx_mouse_move_y
 
 // alignments of gfx_draw_text
-lega left
+lega gfx_align_y_top

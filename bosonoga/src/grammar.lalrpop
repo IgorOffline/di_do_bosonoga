@@ -5,6 +5,7 @@ use crate::ast::{
     Arguments, Block, Call, Comparison, Condition, Draw, ExitStatus, File, Initial, Item, Located, Named,
     Operand, Presence, Results, Rows, Section, Span, Statement, Taking, Term,
 };
+use crate::gfx::{Align, Horizontal, Vertical};
 use crate::lexer::Tok;
 use crate::value::{Compare, Conversion, Operation, Value};
 
@@ -63,6 +64,8 @@ extern {
         "gfx_draw_grid" => Tok::GfxDrawGrid,
         "gfx_mouse_capture" => Tok::GfxMouseCapture,
         "gfx_mouse_release" => Tok::GfxMouseRelease,
+        "gfx_align_x" => Tok::AlignX(<Horizontal>),
+        "gfx_align_y" => Tok::AlignY(<Vertical>),
         "with_len_col" => Tok::WithLenCol,
         "if" => Tok::If,
         "else" => Tok::Else,
@@ -177,29 +180,34 @@ Statement: Statement<'input> = {
         Statement::While(Span { start, end }, condition, block),
     <start:@L> "gfx_await_next_frame" <end:@R> => Statement::AwaitNextFrame(Span { start, end }),
     <start:@L> "gfx_clear" <end:@R> <color:Operand> =>
-        Statement::Draw { span: Span { start, end }, draw: Draw::Clear, aligns: None, values: vec![color] },
+        Statement::Draw { span: Span { start, end }, draw: Draw::Clear, align: None, values: vec![color] },
     <start:@L> "gfx_draw_rectangle" <end:@R> <x:Operand> <y:Operand> <width:Operand> <height:Operand> <color:Operand> =>
         Statement::Draw {
             span: Span { start, end },
             draw: Draw::Rectangle,
-            aligns: None,
+            align: None,
             values: vec![x, y, width, height, color],
         },
     <start:@L> "gfx_draw_hex" <end:@R> <x:Operand> <y:Operand> <radius:Operand> <color:Operand> =>
-        Statement::Draw { span: Span { start, end }, draw: Draw::Hex, aligns: None, values: vec![x, y, radius, color] },
+        Statement::Draw { span: Span { start, end }, draw: Draw::Hex, align: None, values: vec![x, y, radius, color] },
     <start:@L> "gfx_draw_circle" <end:@R> <x:Operand> <y:Operand> <radius:Operand> <color:Operand> =>
-        Statement::Draw { span: Span { start, end }, draw: Draw::Circle, aligns: None, values: vec![x, y, radius, color] },
-    <start:@L> "gfx_draw_text" <end:@R> <horizontal:Named> <vertical:Named> <x:Operand> <y:Operand>
+        Statement::Draw { span: Span { start, end }, draw: Draw::Circle, align: None, values: vec![x, y, radius, color] },
+    <start:@L> "gfx_draw_text" <end:@R> <horizontal:"gfx_align_x"> <vertical:"gfx_align_y"> <x:Operand> <y:Operand>
         <font:Operand> <size:Operand> <color:Operand> <text:Operand+> => {
         let mut values = vec![x, y, font, size, color];
         values.extend(text);
-        Statement::Draw { span: Span { start, end }, draw: Draw::Text, aligns: Some((horizontal, vertical)), values }
+        Statement::Draw {
+            span: Span { start, end },
+            draw: Draw::Text,
+            align: Some(Align { horizontal, vertical }),
+            values,
+        }
     },
     <start:@L> "gfx_draw_icon" <end:@R> <x:Operand> <y:Operand> <icon:Operand> <angle:Operand> <color:Operand> =>
         Statement::Draw {
             span: Span { start, end },
             draw: Draw::Icon,
-            aligns: None,
+            align: None,
             values: vec![x, y, icon, angle, color],
         },
     // The camera block draws in 3D, and 2D drawing comes back after its do.
@@ -215,7 +223,7 @@ Statement: Statement<'input> = {
         Statement::Draw {
             span: Span { start, end },
             draw: Draw::Cube,
-            aligns: None,
+            align: None,
             values: vec![x, y, z, width, height, depth, color],
         },
     <start:@L> "gfx_draw_cube_wires" <end:@R> <x:Operand> <y:Operand> <z:Operand> <width:Operand>
@@ -223,14 +231,14 @@ Statement: Statement<'input> = {
         Statement::Draw {
             span: Span { start, end },
             draw: Draw::CubeWires,
-            aligns: None,
+            align: None,
             values: vec![x, y, z, width, height, depth, color],
         },
     <start:@L> "gfx_draw_grid" <end:@R> <slices:Operand> <spacing:Operand> <axes:Operand> <lines:Operand> =>
         Statement::Draw {
             span: Span { start, end },
             draw: Draw::Grid,
-            aligns: None,
+            align: None,
             values: vec![slices, spacing, axes, lines],
         },
     <start:@L> "gfx_mouse_capture" <end:@R> => Statement::MouseCapture(Span { start, end }, true),

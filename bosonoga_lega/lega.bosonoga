@@ -208,13 +208,13 @@ lega gfx_mouse_move_x
 lega gfx_mouse_move_y
 
 // alignments of gfx_draw_text
-lega baseline
-lega bottom
-lega center
-lega left
-lega middle
-lega right
-lega top
+lega gfx_align_x_center
+lega gfx_align_x_left
+lega gfx_align_x_right
+lega gfx_align_y_baseline
+lega gfx_align_y_bottom
+lega gfx_align_y_middle
+lega gfx_align_y_top
 
 // reserved, so not lega yet
 // lega _dir

@@ -1,3 +1,4 @@
+use crate::gfx::Align;
 use crate::value::{Compare, Conversion, Operation, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -221,7 +222,7 @@ pub enum Statement<'input> {
     Draw {
         span: Span,
         draw: Draw,
-        aligns: Option<(Named<'input>, Named<'input>)>,
+        align: Option<Align>,
         values: Vec<Operand<'input>>,
     },
     Camera3d {

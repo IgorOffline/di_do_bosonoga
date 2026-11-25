@@ -88,9 +88,9 @@ impl<'input> Checker<'_, 'input> {
             ast::Statement::Draw {
                 span,
                 draw,
-                aligns,
+                align,
                 values,
-            } => self.draw(*span, draw, aligns.as_ref(), values)?,
+            } => self.draw(*span, draw, *align, values)?,
             ast::Statement::Camera3d {
                 span,
                 values,

@@ -20,12 +20,37 @@ pub enum Horizontal {
     Right,
 }
 
+impl Horizontal {
+    #[must_use]
+    pub fn named(word: &str) -> Option<Horizontal> {
+        Some(match word {
+            "gfx_align_x_left" => Horizontal::Left,
+            "gfx_align_x_center" => Horizontal::Center,
+            "gfx_align_x_right" => Horizontal::Right,
+            _ => return None,
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Vertical {
     Top,
     Middle,
     Baseline,
     Bottom,
+}
+
+impl Vertical {
+    #[must_use]
+    pub fn named(word: &str) -> Option<Vertical> {
+        Some(match word {
+            "gfx_align_y_top" => Vertical::Top,
+            "gfx_align_y_middle" => Vertical::Middle,
+            "gfx_align_y_baseline" => Vertical::Baseline,
+            "gfx_align_y_bottom" => Vertical::Bottom,
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
