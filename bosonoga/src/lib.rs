@@ -4,10 +4,10 @@ pub mod gfx;
 pub mod io;
 pub mod key;
 pub mod lexer;
-mod modules;
+mod module;
 mod program;
-pub mod settings;
-mod sources;
+pub mod setting;
+mod source;
 mod syntax_error;
 pub mod value;
 
@@ -18,8 +18,8 @@ use lalrpop_util::lalrpop_mod;
 use ast::ExitStatus;
 use lexer::Lexer;
 pub use program::Program;
-use settings::Settings;
-use sources::{SourceFile, Sources};
+use setting::Settings;
+use source::{SourceFile, Sources};
 
 lalrpop_mod!(
     #[allow(
@@ -96,7 +96,7 @@ pub fn run(program: &Program) -> Result<(String, ExitStatus), (String, Diagnosti
 }
 
 fn compile(mut sources: Sources, settings: &Settings) -> Result<Program, (Sources, Diagnostic)> {
-    let modules = match modules::discover(&mut sources) {
+    let modules = match module::discover(&mut sources) {
         Ok(modules) => modules,
         Err(diagnostic) => return Err((sources, diagnostic)),
     };

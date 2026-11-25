@@ -198,6 +198,7 @@ impl<'input> Checker<'_, 'input> {
         let Some(index) = self.variable(name) else {
             return self.fail_unknown_variable(span, name);
         };
+        self.check_not_aka(span, index)?;
         let variable = &mut self.variables[index];
         if variable.array.is_some() {
             return self.fail_unknown_variable(span, name);

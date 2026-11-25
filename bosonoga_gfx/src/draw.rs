@@ -5,7 +5,7 @@ use macroquad::text::{TextParams, draw_text_ex, measure_text};
 use macroquad::texture::{DrawTextureParams, Texture2D, draw_texture_ex};
 use macroquad::window::clear_background;
 
-use crate::assets::{Assets, Typeface};
+use crate::asset::{Assets, Typeface};
 use crate::draw_3d;
 
 const HEX_CORNERS: u8 = 6;

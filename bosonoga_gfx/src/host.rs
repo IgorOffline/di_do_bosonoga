@@ -8,7 +8,7 @@ use macroquad::input::utils::register_input_subscriber;
 use macroquad::input::{is_quit_requested, prevent_quit};
 use macroquad::window::next_frame;
 
-use crate::assets::Assets;
+use crate::asset::Assets;
 use crate::draw;
 use crate::pacer::Pacer;
 
@@ -54,7 +54,7 @@ pub(crate) async fn run(
     skip_version_check: bool,
 ) {
     if !skip_version_check {
-        crate::diagnostics::print();
+        crate::diagnostic::print();
     }
     let assets = match Assets::load(program.path(), &fonts, &icons) {
         Ok(assets) => assets,

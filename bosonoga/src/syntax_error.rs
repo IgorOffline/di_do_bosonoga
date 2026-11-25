@@ -3,7 +3,7 @@ use lalrpop_util::ParseError;
 use crate::Diagnostic;
 use crate::lexer::{Lexer, Tok};
 use crate::shown;
-use crate::sources::SourceFile;
+use crate::source::SourceFile;
 use crate::value::Value;
 
 pub(crate) fn describe(
@@ -32,7 +32,7 @@ fn unrecognized(
     expected: &[String],
 ) -> Diagnostic {
     let before = tokens_before(file, start);
-    if has(expected, "is") && matches!(token, Tok::Name(_)) {
+    if has(expected, "is") && !has(expected, "except") && matches!(token, Tok::Name(_)) {
         let mut declaration = "var";
         if before.len() >= 2 && before[before.len() - 2] == Tok::Val {
             declaration = "val";
@@ -55,7 +55,15 @@ fn unrecognized(
 
 fn wanted(expected: &[String], before: &[Tok<'_>]) -> String {
     if has(expected, "section") && has(expected, "end") {
-        return "const, def, val, bosonoga_global, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main".to_owned();
+        // After the values of an aka_i32 that can also be followed by except.
+        let except = if has(expected, "except") {
+            "except, "
+        } else {
+            ""
+        };
+        return format!(
+            "{except}aka_i32, const, def, val, bosonoga_global, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main"
+        );
     }
     if has(expected, "section") {
         return "a program, which has a bosonoga_main block".to_owned();
@@ -123,12 +131,19 @@ fn terminal_word(terminal: &str) -> &str {
 }
 
 fn listed(expected: &[String]) -> String {
-    if expected.is_empty() {
+    // The words of an operation have to among them.
+    let mut terminals = Vec::new();
+    for terminal in expected {
+        if terminal != "\"to\"" || !has(expected, "operation") {
+            terminals.push(terminal);
+        }
+    }
+    if terminals.is_empty() {
         return "nothing".to_owned();
     }
-    let last = expected.len() - 1;
+    let last = terminals.len() - 1;
     let mut text = String::new();
-    for (index, terminal) in expected.iter().enumerate() {
+    for (index, terminal) in terminals.iter().enumerate() {
         if index > 0 && index == last {
             text.push_str(" or ");
         } else if index > 0 {

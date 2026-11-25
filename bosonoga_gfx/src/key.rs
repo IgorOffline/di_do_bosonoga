@@ -1,7 +1,5 @@
 use macroquad::miniquad::KeyCode;
 
-// The names of bosonoga's keys are sokol_app's, and miniquad's are its
-// variants in CamelCase, as KeyCode::PageUp for SAPP_KEYCODE_PAGE_UP.
 pub(crate) fn code(keycode: KeyCode) -> Option<u32> {
     let variant = format!("{keycode:?}");
     let word = variant.strip_prefix("Key").unwrap_or(&variant);
@@ -28,7 +26,6 @@ mod tests {
     use super::code;
     use macroquad::miniquad::KeyCode;
 
-    // Every variant of miniquad 0.4.11's KeyCode, in its order.
     const ALL: [KeyCode; 122] = [
         KeyCode::Space,
         KeyCode::Apostrophe,

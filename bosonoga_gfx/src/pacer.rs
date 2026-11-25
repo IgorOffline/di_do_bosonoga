@@ -6,7 +6,7 @@ use macroquad::input::utils::repeat_all_miniquad_input;
 use macroquad::input::{mouse_position, set_cursor_grab, show_mouse};
 use macroquad::miniquad::{EventHandler, KeyCode, KeyMods};
 
-use crate::keys;
+use crate::key;
 
 const FRAME_TIME: Duration = Duration::from_micros(1_000_000 / 60);
 
@@ -30,7 +30,7 @@ impl EventHandler for Keys {
         if repeat {
             return;
         }
-        if let Some(code) = keys::code(keycode)
+        if let Some(code) = key::code(keycode)
             && !self.down.contains(&code)
         {
             self.down.push(code);
@@ -39,7 +39,7 @@ impl EventHandler for Keys {
     }
 
     fn key_up_event(&mut self, keycode: KeyCode, _: KeyMods) {
-        if let Some(code) = keys::code(keycode)
+        if let Some(code) = key::code(keycode)
             && let Some(at) = self.down.iter().position(|down| *down == code)
         {
             self.down.remove(at);

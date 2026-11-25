@@ -1,12 +1,12 @@
-use super::{Callable, Checker, kinds_named, split_indexed, values_shown};
+use super::{Callable, Checker, Parameter, kinds_named, names_shown, split_indexed};
 use crate::Diagnostic;
 use crate::ast::{self, Arguments, Named, Span};
-use crate::program::{self, Callee, Operand, Slot, Statement};
+use crate::program::{self, AkaCheck, Callee, Operand, Slot, Statement};
 use crate::value::Kind;
 
 struct Target {
     callable: Callable,
-    parameters: Vec<Kind>,
+    parameters: Vec<Parameter>,
     results: Vec<Kind>,
     gives: &'static str,
 }
@@ -70,7 +70,7 @@ impl<'input> Checker<'_, 'input> {
                 variable.declaration.used = true;
                 return Ok(Target {
                     callable: Callable::VarArray(array),
-                    parameters: vec![Kind::I32],
+                    parameters: vec![Parameter::plain(Kind::I32)],
                     results: kinds,
                     gives: "has rows of",
                 });
@@ -99,6 +99,7 @@ impl<'input> Checker<'_, 'input> {
         arguments: &Arguments<'input>,
     ) -> Result<(program::Call, Target), Diagnostic> {
         let target = self.call_target(name.0, name.1)?;
+        let mut aka_checks = Vec::new();
         let (callee, values) = match target.callable {
             Callable::Array(array) => (Callee::Array(array), self.array_index(name, arguments)?),
             Callable::VarArray(array) => {
@@ -106,12 +107,13 @@ impl<'input> Checker<'_, 'input> {
             }
             Callable::Function(code) => (
                 Callee::Function(code),
-                self.function_arguments(name, arguments, &target.parameters)?,
+                self.function_arguments(name, arguments, &target.parameters, &mut aka_checks)?,
             ),
         };
         let call = program::Call {
             callee,
             arguments: values,
+            aka_checks,
             offset: name.0.start,
         };
         Ok((call, target))
@@ -277,10 +279,18 @@ impl<'input> Checker<'_, 'input> {
         &mut self,
         (span, _): Named<'input>,
         arguments: &Arguments<'input>,
-        parameters: &[Kind],
+        parameters: &[Parameter],
+        aka_checks: &mut Vec<AkaCheck>,
     ) -> Result<Vec<Operand>, Diagnostic> {
         let shown = self.text(span);
-        let taken = values_shown(parameters);
+        let mut names = Vec::new();
+        for parameter in parameters {
+            names.push(match parameter.aka {
+                Some(aka) => self.aka_name(aka),
+                None => parameter.kind.name(),
+            });
+        }
+        let taken = names_shown(&names);
         let values: &[ast::Operand<'input>] = match arguments {
             Arguments::At(at, _) => {
                 return Self::fail(
@@ -305,7 +315,7 @@ impl<'input> Checker<'_, 'input> {
             Arguments::None => &[],
         };
         let mut operands = Vec::new();
-        for (index, kind) in parameters.iter().enumerate() {
+        for (index, parameter) in parameters.iter().enumerate() {
             let Some(value) = values.get(index) else {
                 let mut after = span.end;
                 if let Some(last) = values.last() {
@@ -314,7 +324,19 @@ impl<'input> Checker<'_, 'input> {
                 let (at, _) = self.next_token(after);
                 return Self::fail(at, format!("'{shown}' takes {taken}, but is given {index}"));
             };
-            operands.push(self.value_of_kind(value, *kind, shown)?);
+            let Some(aka) = parameter.aka else {
+                operands.push(self.value_of_kind(value, parameter.kind, shown)?);
+                continue;
+            };
+            let (operand, checked) = self.aka_argument(value, aka, shown)?;
+            if !checked {
+                aka_checks.push(AkaCheck {
+                    argument: index,
+                    aka,
+                    offset: value.span.start,
+                });
+            }
+            operands.push(operand);
         }
         if let Some(extra) = values.get(parameters.len()) {
             return Self::fail(

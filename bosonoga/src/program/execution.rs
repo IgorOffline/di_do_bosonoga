@@ -347,11 +347,30 @@ impl<'a> Execution<'a> {
 
     fn call(&mut self, call: &Call) -> Result<Flow, Diagnostic> {
         let arguments = self.values(&call.arguments);
+        self.check_akas(call, &arguments)?;
         match call.callee {
             Callee::Array(index) => self.read_array(index, &arguments, call.offset),
             Callee::VarArray(index) => self.read_var_array(index, &arguments, call.offset),
             Callee::Function(index) => self.call_function(index, arguments, call.offset),
         }
+    }
+
+    fn check_akas(&self, call: &Call, arguments: &[Value]) -> Result<(), Diagnostic> {
+        let Callee::Function(index) = call.callee else {
+            return Ok(());
+        };
+        let Some(function) = self.program.functions.get(index) else {
+            return Ok(());
+        };
+        for check in &call.aka_checks {
+            if let Some(aka) = self.program.akas.get(check.aka)
+                && let Some(Value::I32(value)) = arguments.get(check.argument)
+                && let Some(refusal) = aka.refusal(&function.name, *value)
+            {
+                return Err(Diagnostic::new(check.offset, refusal));
+            }
+        }
+        Ok(())
     }
 
     fn read_array(

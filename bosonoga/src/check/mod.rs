@@ -1,16 +1,17 @@
-mod arrays;
-mod calls;
+mod aka;
+mod array;
+mod call;
 mod draw;
-mod items;
-mod names;
-mod statements;
-mod values;
+mod item;
+mod name;
+mod statement;
+mod value;
 
 use crate::ast::{self, Section, Span};
 use crate::lexer::{Lexer, Tok};
 use crate::program::{Program, Slot, Statement};
-use crate::settings::Settings;
-use crate::sources::Sources;
+use crate::setting::Settings;
+use crate::source::Sources;
 use crate::value::{Kind, Value};
 use crate::{Diagnostic, shown};
 
@@ -36,6 +37,12 @@ struct Variable<'input> {
     declaration: Declaration,
     origin: Origin,
     written: bool,
+    // The aka_i32 of a parameter, which is only converted with to_i32 or
+    // given to a parameter of the same aka_i32.
+    aka: Option<usize>,
+    // The value of an i32 val that is a literal, which is known before the
+    // program runs.
+    known: Option<i32>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -46,6 +53,24 @@ enum Origin {
     // A variable of bosonoga_global that a def lists in with from_global,
     // which is used once it is read or set.
     Captured,
+}
+
+// An aka_i32, whose values are at the same index in the program.
+struct Aka<'input> {
+    name: &'input str,
+    declaration: Declaration,
+}
+
+#[derive(Clone, Copy)]
+struct Parameter {
+    kind: Kind,
+    aka: Option<usize>,
+}
+
+impl Parameter {
+    fn plain(kind: Kind) -> Self {
+        Parameter { kind, aka: None }
+    }
 }
 
 struct Constant<'input> {
@@ -70,7 +95,7 @@ impl Callable {
 struct Function<'input> {
     name: &'input str,
     callable: Callable,
-    parameters: Vec<Kind>,
+    parameters: Vec<Parameter>,
     results: Vec<Kind>,
     declaration: Declaration,
 }
@@ -106,6 +131,7 @@ struct Checker<'a, 'input> {
     scopes: Vec<Scope>,
     scope: usize,
     variables: Vec<Variable<'input>>,
+    akas: Vec<Aka<'input>>,
     constants: Vec<Constant<'input>>,
     functions: Vec<Function<'input>>,
     slot_count: usize,
@@ -132,6 +158,7 @@ pub(crate) fn check(
         scopes: vec![Scope { file: 0, parent: 0 }],
         scope: 0,
         variables: Vec::new(),
+        akas: Vec::new(),
         constants: Vec::new(),
         functions: Vec::new(),
         slot_count: 0,
@@ -234,18 +261,19 @@ fn split_indexed(text: &str) -> Option<(usize, Kind)> {
 }
 
 fn values_shown(kinds: &[Kind]) -> String {
-    if kinds.is_empty() {
+    let mut names = Vec::new();
+    for kind in kinds {
+        names.push(kind.name());
+    }
+    names_shown(&names)
+}
+
+fn names_shown(names: &[&str]) -> String {
+    if names.is_empty() {
         return "no values".to_owned();
     }
-    let mut names = String::new();
-    for kind in kinds {
-        if !names.is_empty() {
-            names.push(' ');
-        }
-        names.push_str(kind.name());
-    }
-    let noun = if kinds.len() == 1 { "value" } else { "values" };
-    format!("{} {noun}, {names}", kinds.len())
+    let noun = if names.len() == 1 { "value" } else { "values" };
+    format!("{} {noun}, {}", names.len(), names.join(" "))
 }
 
 fn kinds_named(kinds: &[Kind]) -> String {
@@ -414,6 +442,8 @@ impl<'a, 'input> Checker<'a, 'input> {
             declaration,
             origin: Origin::Declared,
             written: false,
+            aka: None,
+            known: None,
         });
     }
 
@@ -452,6 +482,15 @@ impl<'a, 'input> Checker<'a, 'input> {
     }
 
     fn check_all_used(&self) -> Result<(), Diagnostic> {
+        for aka in &self.akas {
+            if !aka.declaration.used {
+                let span = aka.declaration.span;
+                return Self::fail(
+                    span.start,
+                    format!("'{}' is never the type of a parameter", self.text(span)),
+                );
+            }
+        }
         for constant in &self.constants {
             if !constant.declaration.used {
                 let span = constant.declaration.span;

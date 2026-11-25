@@ -2,12 +2,14 @@ mod execution;
 mod heap;
 mod space;
 
+use std::fmt::{self, Display, Formatter};
+
 use crate::Diagnostic;
 use crate::ast::ExitStatus;
 use crate::gfx::{Align, Window};
 use crate::io::{Builtin, Io};
-use crate::settings::Asset;
-use crate::sources::Sources;
+use crate::setting::Asset;
+use crate::source::Sources;
 use crate::value::{Compare, Conversion, Operation, Value};
 
 // Where a variable lives: in the frame of the running function or section,
@@ -70,10 +72,67 @@ pub(crate) enum Callee {
     VarArray(usize),
 }
 
+// The values of an aka_i32: those of the range, which is from, inclusive, and
+// to, exclusive, or else every i32, but not those of except, which increase.
+#[derive(Debug)]
+pub(crate) struct Aka {
+    pub(crate) name: String,
+    pub(crate) range: Option<(i32, i32)>,
+    pub(crate) except: Vec<i32>,
+}
+
+impl Aka {
+    pub(crate) fn has(&self, value: i32) -> bool {
+        if let Some((from, to)) = self.range
+            && (value < from || value >= to)
+        {
+            return false;
+        }
+        self.except.binary_search(&value).is_err()
+    }
+
+    // Why a call of a function cannot be given a value, or nothing if it can.
+    pub(crate) fn refusal(&self, function: &str, value: i32) -> Option<String> {
+        if self.has(value) {
+            return None;
+        }
+        Some(format!(
+            "'{function}' needs {}, an i32{self}, but is given {value}_i32",
+            self.name
+        ))
+    }
+}
+
+// As it is written, as in from 0_i32 to 6_i32 except 3_i32 4_i32.
+impl Display for Aka {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        if let Some((from, to)) = self.range {
+            write!(formatter, " from {from}_i32 to {to}_i32")?;
+        }
+        if !self.except.is_empty() {
+            write!(formatter, " except")?;
+        }
+        for value in &self.except {
+            write!(formatter, " {value}_i32")?;
+        }
+        Ok(())
+    }
+}
+
+// An argument of a call that is not known before the program runs, so the
+// call checks that it is a value of the aka_i32 of its parameter.
+#[derive(Debug)]
+pub(crate) struct AkaCheck {
+    pub(crate) argument: usize,
+    pub(crate) aka: usize,
+    pub(crate) offset: usize,
+}
+
 #[derive(Debug)]
 pub(crate) struct Call {
     pub(crate) callee: Callee,
     pub(crate) arguments: Vec<Operand>,
+    pub(crate) aka_checks: Vec<AkaCheck>,
     pub(crate) offset: usize,
 }
 
@@ -234,6 +293,7 @@ pub struct Program {
     pub(crate) mouse_move_x_slot: Option<Slot>,
     pub(crate) mouse_move_y_slot: Option<Slot>,
     pub(crate) mouse_captured_slot: Option<Slot>,
+    pub(crate) akas: Vec<Aka>,
     pub(crate) functions: Vec<Function>,
     pub(crate) arrays: Vec<Array>,
     pub(crate) var_arrays: Vec<VarArray>,
@@ -241,7 +301,7 @@ pub struct Program {
     pub(crate) icons: Vec<(String, Asset)>,
     pub(crate) background: u32,
     // How the pixels the mouse moved become its move.
-    pub(crate) mouse: crate::settings::Mouse,
+    pub(crate) mouse: crate::setting::Mouse,
 }
 
 impl Program {

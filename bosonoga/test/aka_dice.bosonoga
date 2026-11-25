@@ -1,0 +1,10 @@
+// aka_dice.bosonoga
+
+pub aka_i32 dice is from 0_i32 to 6_i32 except 3_i32 4_i32
+
+pub def score_fn roll_dice ret 0_i32
+di
+  var score is to_i32 roll_dice
+  set score to_multiply 10_i32
+  return score
+do

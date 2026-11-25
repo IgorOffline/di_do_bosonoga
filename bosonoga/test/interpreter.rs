@@ -2,7 +2,7 @@ use std::path::Path;
 
 use bosonoga::ast::ExitStatus;
 use bosonoga::gfx::{Input, KeyEvent, Scene, Window};
-use bosonoga::settings::Settings;
+use bosonoga::setting::Settings;
 
 #[test]
 fn startup_version_check_setting() {
@@ -1012,7 +1012,7 @@ fn key_up_and_mouse() {
 
 #[test]
 fn mouse_settings() {
-    use bosonoga::settings::Mouse;
+    use bosonoga::setting::Mouse;
     let input_regina = INPUT_REGINA.replace("0.2.7", "0.2.9");
     let parse = |group: &str| {
         Settings::parse(
@@ -1292,4 +1292,417 @@ fn alpha_draws() {
             Err(expected.to_owned())
         );
     }
+}
+
+#[test]
+fn akas() {
+    let program = bosonoga::load(Path::new("test/aka.bosonoga"), &Settings::default())
+        .unwrap_or_else(|message| panic!("{message}"));
+    let (output, status) = match bosonoga::run(&program) {
+        Ok(ran) => ran,
+        Err((_, diagnostic)) => panic!("{}", program.located(&diagnostic)),
+    };
+    assert_eq!(output, "countdown 1\ncountdown 0\n");
+    assert_eq!(status, ExitStatus::Success);
+}
+
+#[cfg(test)]
+const DICE: &str = "aka_i32 dice is from 0_i32 to 6_i32 except 3_i32 4_i32\n";
+
+// A program of DICE, of score_fn, whose only line is given, and of main.
+#[cfg(test)]
+fn dice_program(line: &str, main: &str) -> String {
+    format!(
+        "{DICE}def score_fn roll_dice ret 0_i32\ndi\n  {line}\n  return roll\ndo\nbosonoga_main\ndi\n  {main}\n  return exit_success\ndo\n"
+    )
+}
+
+#[cfg(test)]
+const TO_I32: &str = "val roll is to_i32 roll_dice";
+
+#[cfg(test)]
+fn dice_call(argument: &str) -> String {
+    format!("val score is score_fn of {argument} with ret 0_i32\n  info score")
+}
+
+#[test]
+fn aka_values() {
+    let far = "aka_i32 far except -1_i32 0_i32 1_i32\ndef f_fn x_far ret 0_i32\ndi\n  val x is to_i32 x_far\n  return x\ndo\n";
+    let refused = |given: i32| {
+        format!(
+            "'score_fn' needs dice, an i32 from 0_i32 to 6_i32 except 3_i32 4_i32, but is given {given}_i32"
+        )
+    };
+    let refused_far = |given: i32| {
+        format!("'f_fn' needs far, an i32 except -1_i32 0_i32 1_i32, but is given {given}_i32")
+    };
+    for given in -8..=8 {
+        let dice = [0, 1, 2, 5].contains(&given);
+        let is_far = !(-1..=1).contains(&given);
+        let far_call = |argument: &str| {
+            format!(
+                "{far}bosonoga_main\ndi\n  var got is {given}_i32\n  val x is f_fn of {argument} with ret 0_i32\n  info x got\n  return exit_success\ndo\n"
+            )
+        };
+        let literal = format!("{given}_i32");
+        // Known before the program runs.
+        for (source, holds, message) in [
+            (
+                dice_program(TO_I32, &dice_call(&literal)),
+                dice,
+                refused(given),
+            ),
+            (
+                dice_program(TO_I32, &format!("val x is {literal}\n  {}", dice_call("x"))),
+                dice,
+                refused(given),
+            ),
+            (
+                format!(
+                    "const x is {literal}\n{}",
+                    dice_program(TO_I32, &dice_call("x"))
+                ),
+                dice,
+                refused(given),
+            ),
+            (far_call(&literal), is_far, refused_far(given)),
+        ] {
+            match bosonoga::parse(&source) {
+                Ok(_) => assert!(holds, "{source}"),
+                Err(diagnostic) => {
+                    assert!(!holds, "{}", diagnostic.located("test", &source));
+                    assert_eq!(diagnostic.message, message);
+                }
+            }
+        }
+        // Not known, so checked by the call.
+        for (source, holds, message) in [
+            (
+                dice_program(TO_I32, &format!("var x is {literal}\n  {}", dice_call("x"))),
+                dice,
+                refused(given),
+            ),
+            (far_call("got"), is_far, refused_far(given)),
+        ] {
+            let program = match bosonoga::parse(&source) {
+                Ok(program) => program,
+                Err(diagnostic) => panic!("{}", diagnostic.located("test", &source)),
+            };
+            match bosonoga::run(&program) {
+                Ok((_, status)) => {
+                    assert!(holds, "{source}");
+                    assert_eq!(status, ExitStatus::Success);
+                }
+                Err((output, diagnostic)) => {
+                    assert!(!holds, "{source}");
+                    assert_eq!(output, "");
+                    assert_eq!(diagnostic.message, message);
+                }
+            }
+        }
+    }
+}
+
+// A call statement and a set check too, and point at the argument.
+#[test]
+fn aka_call_forms() {
+    let void = "aka_i32 pip is from 1_i32 to 7_i32\ndef show_fn times_i32 count_pip ret_void\ndi\n  val count is to_i32 count_pip\n  info count times_i32\ndo\ndef two_fn count_pip ret 0_i32 1_i32\ndi\n  val count is to_i32 count_pip\n  return count count\ndo\ndef one_fn count_pip ret 0_i32\ndi\n  val count is to_i32 count_pip\n  return count\ndo\n";
+    let cases = [
+        ("call show_fn of 9_i32 x", "test:20:25: 'show_fn'"),
+        (
+            "call two_fn of x with ret 0_i32 as a di\n info a\n do",
+            "test:20:18: 'two_fn'",
+        ),
+        (
+            "set x to one_fn of x with ret 0_i32",
+            "test:20:22: 'one_fn'",
+        ),
+    ];
+    for (line, expected) in cases {
+        // The other functions are called with a value that they take.
+        let source = format!(
+            "{void}bosonoga_main\ndi\n  var x is 0_i32\n  {line}\n  call show_fn of 1_i32 1_i32\n  call two_fn of 1_i32 with ret 0_i32 as b di\n info b\n do\n  val c is one_fn of 1_i32 with ret 0_i32\n  info c x\n  return exit_success\ndo\n"
+        );
+        let program = match bosonoga::parse(&source) {
+            Ok(program) => program,
+            Err(diagnostic) => panic!("{}", diagnostic.located("test", &source)),
+        };
+        match bosonoga::run(&program) {
+            Ok(_) => panic!("{line} is not refused"),
+            Err((_, diagnostic)) => assert_eq!(
+                diagnostic.located("test", &source),
+                format!("{expected} needs pip, an i32 from 1_i32 to 7_i32, but is given 0_i32")
+            ),
+        }
+    }
+}
+
+#[test]
+fn aka_declaration_diagnostics() {
+    let cases = [
+        (
+            "pub aka_i32 d is from 0_i32 to 6_i32",
+            "test:1:1: pub is only in a module",
+        ),
+        (
+            "aka_i32 d is from 6_i32 to 6_i32",
+            "test:1:19: from 6_i32 to 6_i32 has no values, as from is inclusive and to is exclusive",
+        ),
+        (
+            "aka_i32 d is from 0_i32 to 6_i32 except 9_i32",
+            "test:1:41: 9_i32 is not in from 0_i32 to 6_i32, so it needs no except",
+        ),
+        (
+            "aka_i32 d is from 0_i32 to 6_i32 except 6_i32",
+            "test:1:41: 6_i32 is not in from 0_i32 to 6_i32",
+        ),
+        (
+            "aka_i32 d is from 0_i32 to 6_i32 except 4_i32 3_i32",
+            "test:1:47: the values of except are once each and increase, so 3_i32 cannot follow 4_i32",
+        ),
+        (
+            "aka_i32 d except 3_i32 3_i32",
+            "test:1:24: the values of except are once each and increase",
+        ),
+        (
+            "aka_i32 d is from 0_i32 to 6_i32 except 0_i32 3_i32",
+            "test:1:41: except is for values inside the range, and this one is at its edge, so write from 1_i32 to 6_i32",
+        ),
+        (
+            "aka_i32 d is from 0_i32 to 6_i32 except 2_i32 4_i32 5_i32",
+            "test:1:53: except is for values inside the range, and this one is at its edge, so write from 0_i32 to 4_i32",
+        ),
+        (
+            "aka_i32 d is from 0_i32 to 2_i32 except 0_i32 1_i32",
+            "test:1:41: d has no values, as except has them all",
+        ),
+        (
+            "aka_i32 d is from 0_i64 to 6_i32",
+            "test:1:19: aka_i32 needs i32, but '0_i64' is i64",
+        ),
+        ("aka_i32 d except nihil_i32", "test:1:18: aka_i32 needs i32"),
+        (
+            "bosonoga_global\ndi\n  val x is 1_i32\ndo\naka_i32 d except x",
+            "test:5:18: the values of an aka_i32 are literals or earlier constants, so 'x' cannot be one",
+        ),
+        (
+            "aka_i32 two_dice except 1_i32",
+            "test:1:9: the name of an aka_i32 is one word",
+        ),
+        (
+            "aka_i32 fn except 1_i32",
+            "test:1:9: the name of an aka_i32 is one word",
+        ),
+        (
+            "aka_i32 bool except 1_i32",
+            "test:1:9: 'bool' is already a type",
+        ),
+        (
+            "aka_i32 dir except 1_i32",
+            "test:1:9: 'dir' is already a type",
+        ),
+        (
+            "aka_i32 d except 1_i32\naka_i32 d except 2_i32",
+            "test:2:9: aka_i32 'd' already exists",
+        ),
+        (
+            "const d is 1_i32\naka_i32 d except 1_i32",
+            "test:2:9: a constant with this name already exists",
+        ),
+        (
+            "aka_i32 d except 1_i32\nconst d is 1_i32",
+            "test:2:7: 'd' is already an aka_i32",
+        ),
+        (
+            "aka_i32 d except 1_i32\nbosonoga_main\ndi\n  return exit_success\ndo",
+            "test:1:9: 'd' is never the type of a parameter",
+        ),
+    ];
+    let mut sources = Vec::new();
+    for (source, expected) in cases {
+        sources.push((format!("{source}\n"), expected));
+    }
+    assert_diagnostics(&sources);
+}
+
+#[test]
+fn aka_syntax_diagnostics() {
+    let cases = [
+        (
+            "aka_i32 d",
+            "test:2:1: expected is or except, got end of file",
+        ),
+        (
+            "aka_i32 d six",
+            "test:1:11: expected is or except, got 'six'",
+        ),
+        (
+            "aka_i32 d is except 3_i32",
+            "test:1:14: expected from, got 'except'",
+        ),
+        (
+            "aka_i32 d is 3_i32",
+            "test:1:14: expected from, got '3_i32'",
+        ),
+        (
+            "aka_i32 d is from 0_i32 to_add 6_i32",
+            "test:1:25: expected to, got 'to_add'",
+        ),
+        (
+            "aka_i32 d is from 0_i32 to 6_i32 3_i32",
+            "test:1:34: expected except, aka_i32, const, def",
+        ),
+        (
+            "aka_i32 d except",
+            "test:2:1: expected a value, got end of file",
+        ),
+        ("aka_i64 d except 3_i64", "test:1:1: expected "),
+        ("aka d except 3_i32", "test:1:1: expected "),
+        (
+            "const from is 1_i32",
+            "test:1:7: expected a variable name, got 'from'",
+        ),
+        (
+            "const except is 1_i32",
+            "test:1:7: expected a variable name, got 'except'",
+        ),
+        (
+            "const aka_x is 1_i32",
+            "test:1:7: expected a variable name, got 'aka_x'",
+        ),
+        (
+            "bosonoga_main\ndi\n  aka_i32 d except 1_i32\ndo",
+            "test:3:3: expected a statement, got 'aka_i32'",
+        ),
+    ];
+    let mut sources = Vec::new();
+    for (source, expected) in cases {
+        sources.push((format!("{source}\n"), expected));
+    }
+    assert_diagnostics(&sources);
+}
+
+#[test]
+fn aka_use_diagnostics() {
+    let cast = "test:4:LINE 'roll_dice' is dice, an aka_i32, which is converted before its other uses, as in val roll is to_i32 roll_dice";
+    let uses = [
+        ("val roll is roll_dice", 15),
+        ("var roll is 1_i32\n  set roll to roll_dice", 15),
+        ("var roll is 1_i32\n  set roll to_add roll_dice", 19),
+        ("val roll is to_i64 roll_dice", 22),
+        ("val roll is to_optional_i32 roll_dice", 31),
+        ("val roll is math_to_abs roll_dice", 27),
+        ("val roll is math_to_min 1_i32 roll_dice", 33),
+        ("info roll_dice", 8),
+        ("if roll_dice eq 5_i32 di\n nihil\n do", 6),
+        ("if 5_i32 eq roll_dice di\n nihil\n do", 15),
+        ("if some roll_dice di\n nihil\n do", 11),
+        ("return roll_dice", 10),
+        ("var xs is array 0_i32 with_len_col roll_dice", 38),
+    ];
+    for (line, column) in uses {
+        let source = dice_program(line, &dice_call("1_i32"));
+        let row = if line.contains("\n  set") { 5 } else { 4 };
+        let expected = cast.replace("4:LINE", &format!("{row}:{column}:"));
+        assert_eq!(diagnostic(&source), expected, "{line}");
+    }
+    let other = "aka_i32 pip is from 0_i32 to 6_i32\ndef pip_fn x_pip ret_void\ndi\n  val x is to_i32 x_pip\n  info x\ndo\n";
+    let cases = [
+        // Not the same aka_i32, even of more values.
+        (
+            format!(
+                "{other}{}",
+                dice_program("call pip_fn of roll_dice", &dice_call("1_i32"))
+            ),
+            "test:10:18: 'roll_dice' is dice, an aka_i32, which is converted",
+        ),
+        (
+            dice_program("set roll_dice to 1_i32", &dice_call("1_i32")),
+            "test:4:7: 'roll_dice' is a parameter, which is a val and cannot be set, but a copy can, as in var roll is to_i32 roll_dice",
+        ),
+        (
+            dice_program(TO_I32, &dice_call("dice")),
+            "test:9:28: 'dice' is an aka_i32, which is only the type of a parameter, as in value_dice",
+        ),
+        (
+            dice_program(TO_I32, &dice_call("1_i64")),
+            "test:9:28: score_fn needs i32, but '1_i64' is i64",
+        ),
+        (
+            dice_program(TO_I32, &dice_call("1_i32 2_i32")),
+            "test:9:34: 'score_fn' takes 1 value, dice, but is given more",
+        ),
+        (
+            dice_program(TO_I32, "val dice is 1_i32"),
+            "test:9:7: 'dice' is already an aka_i32",
+        ),
+        (
+            dice_program(TO_I32, &dice_call("1_dice")),
+            "test:9:28: number must have the suffix",
+        ),
+        (
+            format!("{DICE}def f_fn x_optional_dice ret_void\ndi\n  nihil\ndo\n"),
+            "test:2:10: 'dice' is an aka_i32, which cannot be optional",
+        ),
+        (
+            format!("{DICE}def f_fn x_dice ret 0_dice\ndi\n  return x_dice\ndo\n"),
+            "test:2:21: number must have the suffix",
+        ),
+        // Declared before the def.
+        (
+            format!("def f_fn x_dice ret_void\ndi\n  nihil\ndo\n{DICE}"),
+            "test:1:10: expected a parameter whose name ends with its type",
+        ),
+        (
+            dice_program("val roll is 1_i32", &dice_call("1_i32")),
+            "test:2:14: 'roll_dice' is never read",
+        ),
+    ];
+    assert_diagnostics(&cases);
+}
+
+// A module shows its pub aka_i32 to the file that reads it, and no other.
+#[test]
+fn aka_modules() {
+    let directory = std::env::temp_dir().join(format!("bosonoga_aka_{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap_or_else(|error| panic!("{error}"));
+    let private = "aka_i32 dice except 3_i32\npub def f_fn x_dice ret 0_i32\ndi\n  val x is to_i32 x_dice\n  return x\ndo\n";
+    let main = |def: &str, given: &str| {
+        format!(
+            "mod \"m.bosonoga\"_str\n{def}bosonoga_main\ndi\n  val x is f_fn of {given} with ret 0_i32\n  info x\n  return exit_success\ndo\n"
+        )
+    };
+    let def = "def g_fn y_dice ret_void\ndi\n  val y is to_i32 y_dice\n  info y\ndo\n";
+    let cases = [
+        // A pub def has a private aka_i32, whose values it still needs.
+        (private.to_owned(), main("", "2_i32"), None),
+        (
+            private.to_owned(),
+            main("", "3_i32"),
+            Some(":4:20: 'f_fn' needs dice, an i32 except 3_i32, but is given 3_i32".to_owned()),
+        ),
+        (
+            private.to_owned(),
+            main(def, "2_i32"),
+            Some(format!(
+                ":2:12: 'dice' is private to {}",
+                directory.join("m.bosonoga").display()
+            )),
+        ),
+        (
+            format!("pub {private}"),
+            main(&format!("{def}aka_i32 dice except 1_i32\n"), "2_i32"),
+            Some(":7:9: aka_i32 'dice' already exists".to_owned()),
+        ),
+    ];
+    for (module, program, expected) in cases {
+        let path = directory.join("main.bosonoga");
+        std::fs::write(directory.join("m.bosonoga"), module)
+            .unwrap_or_else(|error| panic!("{error}"));
+        std::fs::write(&path, program).unwrap_or_else(|error| panic!("{error}"));
+        let got = bosonoga::load(&path, &Settings::default()).err();
+        let wanted = expected.map(|message| format!("{}{message}", path.display()));
+        assert_eq!(got, wanted);
+    }
+    std::fs::remove_dir_all(&directory).unwrap_or_else(|error| panic!("{error}"));
 }
