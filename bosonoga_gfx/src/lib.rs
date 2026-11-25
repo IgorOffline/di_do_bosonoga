@@ -14,6 +14,7 @@ mod pacer;
 use std::path::Path;
 use std::process::ExitCode;
 
+use bosonoga::lega::Lega;
 use bosonoga::setting::{Asset, Settings};
 use macroquad::window::Conf;
 
@@ -39,9 +40,9 @@ fn read_assets(
 }
 
 // Runs the gfx program at default_program, or at the one argument of the
-// command line, with the settings of settings_file. It returns only when the
-// app cannot start; once the window is open, the process exits with the
-// status of the program.
+// command line, with the settings of settings_file and the lega.bosonoga next
+// to it, in the root of the app. It returns only when the app cannot start;
+// once the window is open, the process exits with the status of the program.
 pub fn main(settings_file: &str, default_program: &str) -> ExitCode {
     let settings = match Settings::read(Path::new(settings_file)) {
         Ok(settings) => settings,
@@ -64,7 +65,15 @@ pub fn main(settings_file: &str, default_program: &str) -> ExitCode {
             bosonoga::VERSION
         ));
     }
-    let program = match bosonoga::load(Path::new(&path), &settings) {
+    let root = match Path::new(settings_file).parent() {
+        Some(root) => root,
+        None => Path::new(""),
+    };
+    let lega = match Lega::read(root) {
+        Ok(lega) => lega,
+        Err(message) => return fail(&message),
+    };
+    let program = match bosonoga::load(Path::new(&path), &lega, &settings) {
         Ok(program) => program,
         Err(message) => return fail(&message),
     };

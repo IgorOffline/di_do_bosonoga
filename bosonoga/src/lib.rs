@@ -3,6 +3,7 @@ mod check;
 pub mod gfx;
 pub mod io;
 pub mod key;
+pub mod lega;
 pub mod lexer;
 mod module;
 mod program;
@@ -16,6 +17,7 @@ use std::path::Path;
 use lalrpop_util::lalrpop_mod;
 
 use ast::ExitStatus;
+use lega::Lega;
 use lexer::Lexer;
 pub use program::Program;
 use setting::Settings;
@@ -68,16 +70,16 @@ impl Diagnostic {
     }
 }
 
-pub fn parse(source: &str) -> Result<Program, Diagnostic> {
+pub fn parse(source: &str, lega: &Lega) -> Result<Program, Diagnostic> {
     let mut sources = Sources::default();
     sources.add(String::new(), source.to_owned());
-    match compile(sources, &Settings::default()) {
+    match compile(sources, lega, &Settings::default()) {
         Ok(program) => Ok(program),
         Err((_, diagnostic)) => Err(diagnostic),
     }
 }
 
-pub fn load(path: &Path, settings: &Settings) -> Result<Program, String> {
+pub fn load(path: &Path, lega: &Lega, settings: &Settings) -> Result<Program, String> {
     let shown = path.display().to_string();
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
@@ -85,7 +87,7 @@ pub fn load(path: &Path, settings: &Settings) -> Result<Program, String> {
     };
     let mut sources = Sources::default();
     sources.add(shown, text);
-    match compile(sources, settings) {
+    match compile(sources, lega, settings) {
         Ok(program) => Ok(program),
         Err((read, diagnostic)) => Err(read.located(&diagnostic)),
     }
@@ -95,8 +97,14 @@ pub fn run(program: &Program) -> Result<(String, ExitStatus), (String, Diagnosti
     program.run()
 }
 
-fn compile(mut sources: Sources, settings: &Settings) -> Result<Program, (Sources, Diagnostic)> {
-    let modules = match module::discover(&mut sources) {
+// The step lega reads every file and checks its words, and only then does the
+// next step parse and check the program.
+fn compile(
+    mut sources: Sources,
+    lega: &Lega,
+    settings: &Settings,
+) -> Result<Program, (Sources, Diagnostic)> {
+    let modules = match module::discover(&mut sources, lega) {
         Ok(modules) => modules,
         Err(diagnostic) => return Err((sources, diagnostic)),
     };

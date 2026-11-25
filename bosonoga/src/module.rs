@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use crate::ast::Item;
-use crate::source::Sources;
-use crate::{Diagnostic, io_message, parse_file};
+use crate::lega::Lega;
+use crate::lexer::{Lexer, Tok};
+use crate::source::{SourceFile, Sources};
+use crate::value::Value;
+use crate::{Diagnostic, io_message};
 
 const FILE_SUFFIX: &str = ".bosonoga";
 const EXPECTED_FILE_SUFFIX: &str = ".xp.bosonoga";
@@ -26,7 +28,7 @@ fn is_already_read(sources: &Sources, name: &str) -> bool {
     false
 }
 
-pub(crate) fn discover(sources: &mut Sources) -> Result<Vec<Vec<usize>>, Diagnostic> {
+pub(crate) fn discover(sources: &mut Sources, lega: &Lega) -> Result<Vec<Vec<usize>>, Diagnostic> {
     let main_path = PathBuf::from(sources.path());
     let directory = match main_path.parent() {
         Some(directory) => directory.to_path_buf(),
@@ -39,10 +41,19 @@ pub(crate) fn discover(sources: &mut Sources) -> Result<Vec<Vec<usize>>, Diagnos
     let mut modules = Vec::new();
     let mut read_by: Vec<Option<(usize, String)>> = vec![None];
     let mut index = 0;
-    while index < sources.files.len() {
-        let mod_names = mod_names(sources, index, &read_by)?;
+    while let Some(file) = sources.files.get(index) {
+        lega.check(file)?;
+        let tokens = tokens(file)?;
+        if tokens.is_empty()
+            && let Some(Some((at, name))) = read_by.get(index)
+        {
+            return Err(Diagnostic::new(
+                *at,
+                format!("{name} has no items, and a module has at least one"),
+            ));
+        }
         let mut indices = Vec::new();
-        for (at, name) in mod_names {
+        for (at, name) in mod_names(&tokens) {
             if !is_import_name(&name) {
                 return Err(Diagnostic::new(
                     at,
@@ -77,33 +88,25 @@ pub(crate) fn discover(sources: &mut Sources) -> Result<Vec<Vec<usize>>, Diagnos
     Ok(modules)
 }
 
-fn mod_names(
-    sources: &Sources,
-    index: usize,
-    read_by: &[Option<(usize, String)>],
-) -> Result<Vec<(usize, String)>, Diagnostic> {
-    let Some(file) = sources.files.get(index) else {
-        return Ok(Vec::new());
-    };
-    let parsed = parse_file(file)?;
-    if parsed.items.is_empty()
-        && let Some(Some((at, name))) = read_by.get(index)
-    {
-        return Err(Diagnostic::new(
-            *at,
-            format!("{name} has no items, and a module has at least one"),
-        ));
-    }
-    let mut names = Vec::new();
-    for item in &parsed.items {
-        match item {
-            Item::Mod(span, name) => names.push((span.start, name.clone())),
-            Item::Aka { .. }
-            | Item::Const { .. }
-            | Item::Def { .. }
-            | Item::Array { .. }
-            | Item::Section(..) => {}
+fn tokens(file: &SourceFile) -> Result<Vec<(usize, Tok<'_>)>, Diagnostic> {
+    let mut tokens = Vec::new();
+    for spanned in Lexer::starting_at(&file.text, file.base, file.base) {
+        let (start, token, _) = spanned?;
+        if token != Tok::End {
+            tokens.push((start, token));
         }
     }
-    Ok(names)
+    Ok(tokens)
+}
+
+// The files are found before any is parsed, so a mod without a file name is
+// left to the parser.
+fn mod_names(tokens: &[(usize, Tok<'_>)]) -> Vec<(usize, String)> {
+    let mut names = Vec::new();
+    for pair in tokens.windows(2) {
+        if let [(_, Tok::Mod), (at, Tok::Literal(Value::Str(name)))] = pair {
+            names.push((*at, name.clone()));
+        }
+    }
+    names
 }

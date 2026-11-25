@@ -3,12 +3,14 @@ use std::path::Path;
 use bosonoga::Program;
 use bosonoga::ast::ExitStatus;
 use bosonoga::gfx::{Camera, Cube, Input, KeyEvent, Scene, Shape, Window};
+use bosonoga::lega::Lega;
 use bosonoga::setting::Settings;
 
 #[cfg(test)]
 fn load(path: &str) -> Program {
     let settings = Settings::read(Path::new("test/regina.ini")).unwrap();
-    bosonoga::load(Path::new(path), &settings).unwrap_or_else(|message| panic!("{message}"))
+    let lega = Lega::read(Path::new("test")).unwrap();
+    bosonoga::load(Path::new(path), &lega, &settings).unwrap_or_else(|message| panic!("{message}"))
 }
 
 #[test]
@@ -43,7 +45,20 @@ fn programs() {
 }
 
 #[test]
+fn lega() {
+    assert_eq!(
+        Lega::read(Path::new("src")).unwrap_err(),
+        "src/lega.bosonoga: No such file or directory, and every bosonoga application has a lega.bosonoga in its root"
+    );
+    assert_eq!(
+        Lega::parse("lega.bosonoga", "lega di\nlega didi").unwrap_err(),
+        "lega.bosonoga:2:6: 'didi' cannot be lega, as bosonoga has no didi"
+    );
+}
+
+#[test]
 fn diagnostics() {
+    let lega = Lega::read(Path::new("test")).unwrap();
     let cases = [
         (
             "bosonoga_main di info 1_i32 do",
@@ -57,9 +72,22 @@ fn diagnostics() {
             "def f_fn n_i32 ret_void di set n_i32 to 1_i32 do",
             "'n_i32' is a parameter, which is a val and cannot be set, but a copy can, as in var n is n_i32",
         ),
+        // The step lega comes first, so the missing return is not reported.
+        (
+            "bosonoga_main di gfx_draw_hex do",
+            "'gfx_draw_hex' is not lega, as lega.bosonoga has no 'lega gfx_draw_hex'",
+        ),
+        (
+            "bosonoga_main di info 7_u64 do",
+            "'7_u64' is not lega, as lega.bosonoga has no 'lega _u64'",
+        ),
+        (
+            "bosonoga_main di break do",
+            "'break' cannot be lega, as bosonoga has no break",
+        ),
     ];
     for (source, expected) in cases {
-        match bosonoga::parse(source) {
+        match bosonoga::parse(source, &lega) {
             Ok(_) => panic!("expected a diagnostic for: {source}"),
             Err(diagnostic) => assert_eq!(diagnostic.message, expected),
         }
