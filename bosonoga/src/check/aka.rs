@@ -22,8 +22,8 @@ impl<'input> Checker<'_, 'input> {
         }
     }
 
-    // The name of a parameter without that of its aka_i32, as roll of
-    // roll_dice, for the variable that it is converted to.
+    // The name of a parameter without that of its aka_i32, as view of
+    // view_fov, for the variable that it is converted to.
     pub(super) fn aka_base(&self, span: Span, aka: usize) -> &str {
         let suffix = self.aka_name(aka).len() + 1;
         let shown = self.text(span);
@@ -100,7 +100,7 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(
                 span.start,
                 format!(
-                    "the name of an aka_i32 is one word, as parameters end with it, like value_dice of dice, so it cannot be '{shown}'"
+                    "the name of an aka_i32 is one word, as parameters end with it, like view_fov of fov, so it cannot be '{shown}'"
                 ),
             );
         }
@@ -164,7 +164,7 @@ impl<'input> Checker<'_, 'input> {
         Ok(())
     }
 
-    // The aka_i32 that the name of a parameter ends with, as roll_dice does.
+    // The aka_i32 that the name of a parameter ends with, as view_fov does.
     pub(super) fn parameter_aka(
         &mut self,
         (span, name): Named<'input>,
