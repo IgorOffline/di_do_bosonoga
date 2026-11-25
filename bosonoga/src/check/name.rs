@@ -1,3 +1,4 @@
+use super::aka::copy_name;
 use super::{Checker, Declaration, is_function_name};
 use crate::Diagnostic;
 use crate::ast::{Named, Span};
@@ -244,7 +245,7 @@ impl<'input> Checker<'_, 'input> {
         }
         if variable.origin == super::Origin::Parameter {
             let suffix = format!("_{}", variable.kind.name());
-            let copy = shown.strip_suffix(&suffix).unwrap_or("copy");
+            let copy = copy_name(shown.strip_suffix(&suffix).unwrap_or("copy"));
             return Self::fail(
                 span.start,
                 format!(

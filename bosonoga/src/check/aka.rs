@@ -1,9 +1,15 @@
 use super::{Aka, Checker, Declaration};
 use crate::Diagnostic;
 use crate::ast::{self, Named, Span, Term};
-use crate::lexer::is_type_name;
+use crate::lexer::{UNE_PREFIX, is_type_name};
 use crate::program::{self, Operand};
 use crate::value::{Kind, Value};
+
+// A name for the copy of a parameter in a message. What is before the type of
+// une_i32 is a keyword.
+pub(super) fn copy_name(base: &str) -> &str {
+    if base == "une" { "copy" } else { base }
+}
 
 impl<'input> Checker<'_, 'input> {
     pub(super) fn aka_any(&self, name: &str) -> Option<usize> {
@@ -27,7 +33,7 @@ impl<'input> Checker<'_, 'input> {
     pub(super) fn aka_base(&self, span: Span, aka: usize) -> &str {
         let suffix = self.aka_name(aka).len() + 1;
         let shown = self.text(span);
-        &shown[..shown.len().saturating_sub(suffix)]
+        copy_name(&shown[..shown.len().saturating_sub(suffix)])
     }
 
     // Declares an aka_i32 of a range, or of every i32, but some.
@@ -93,10 +99,11 @@ impl<'input> Checker<'_, 'input> {
 
     fn aka_new_name(&self, (span, name): Named<'input>) -> Result<(), Diagnostic> {
         let shown = self.text(span);
-        if is_type_name(name) {
-            return Self::fail(span.start, format!("'{shown}' is already a type"));
+        let base = name.strip_prefix(UNE_PREFIX).unwrap_or(name);
+        if is_type_name(base) {
+            return Self::fail(span.start, format!("'{base}' is already a type"));
         }
-        if name.contains('_') || name == "fn" {
+        if base.contains('_') || base == "fn" {
             return Self::fail(
                 span.start,
                 format!(
@@ -164,18 +171,31 @@ impl<'input> Checker<'_, 'input> {
         Ok(())
     }
 
+    // The aka_i32 at the end of a name, with the text before and of it. That
+    // of view_une_fov is une_fov, or else fov.
+    fn aka_suffix<'a>(&self, name: &'a str) -> Option<(usize, &'a str, &'a str)> {
+        let (base, suffix) = name.rsplit_once('_')?;
+        if let Some(start) = base.strip_suffix("_une")
+            && !start.is_empty()
+        {
+            let une_suffix = &name[start.len() + 1..];
+            if let Some(index) = self.aka_any(une_suffix) {
+                return Some((index, start, une_suffix));
+            }
+        }
+        if base.is_empty() {
+            return None;
+        }
+        let index = self.aka_any(suffix)?;
+        Some((index, base, suffix))
+    }
+
     // The aka_i32 that the name of a parameter ends with, as view_fov does.
     pub(super) fn parameter_aka(
         &mut self,
         (span, name): Named<'input>,
     ) -> Result<Option<usize>, Diagnostic> {
-        let Some((base, suffix)) = name.rsplit_once('_') else {
-            return Ok(None);
-        };
-        if base.is_empty() {
-            return Ok(None);
-        }
-        let Some(index) = self.aka_any(suffix) else {
+        let Some((index, base, suffix)) = self.aka_suffix(name) else {
             return Ok(None);
         };
         if base.ends_with("_optional") || base == "optional" {

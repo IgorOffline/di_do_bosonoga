@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::lexer::{Lexer, Tok};
+use crate::lexer::{Lexer, Tok, UNE_PREFIX};
 use crate::source::SourceFile;
 use crate::{Diagnostic, io_message, shown};
 
@@ -69,6 +69,9 @@ impl Lega {
         }
         if let Tok::Shift(_) = token {
             return vec!["shift_"];
+        }
+        if *token == Tok::Une {
+            return vec![UNE_PREFIX];
         }
         if let Some(quote) = text.rfind('"') {
             return vec![&text[quote + 1..]];

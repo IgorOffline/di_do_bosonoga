@@ -69,12 +69,16 @@ pub enum Tok<'input> {
     Name(&'input str),
     Result(&'input str),
     GfxValue(&'input str),
+    Une,
     Reserved(&'input str),
     IndexedType(&'input str),
     End,
 }
 
 pub type Spanned<'input> = Result<(usize, Tok<'input>, usize), Diagnostic>;
+
+// A name that starts with it can be unused.
+pub(crate) const UNE_PREFIX: &str = "une_";
 
 const RESERVED: &[&str] = &[
     "unset",
@@ -447,6 +451,7 @@ fn word(text: &str) -> Tok<'_> {
         "or" => Tok::Or,
         "not" => Tok::Not,
         "some" => Tok::Some,
+        "une" | UNE_PREFIX => Tok::Une,
         "shift_or" => Tok::ShiftOr,
         "true_bool" => Tok::Literal(Value::Bool(true)),
         "false_bool" => Tok::Literal(Value::Bool(false)),
