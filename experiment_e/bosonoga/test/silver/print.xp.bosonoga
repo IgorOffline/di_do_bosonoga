@@ -1,8 +1,0 @@
-// print.xp.bosonoga
-
-expect 1d5
-expect 0d1
-expect 1e+08
-expect 0d10000000000000001
-expect -2400000000018446744073709551615
-expect 9

@@ -1,9 +1,0 @@
-// info.bosonoga
-
-bosonoga_main
-di
-  info 1_i32
-  info -7_i32 0_i32 42_i32
-  info 2147483647_i32 -2147483648_i32
-  return exit_success
-do

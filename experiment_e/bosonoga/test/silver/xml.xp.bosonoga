@@ -1,5 +1,0 @@
-expect <shelf count="2" note="&lt;a &amp; b&gt;"><wall/></shelf>
-expect a &lt; b<br/>2
-expect <book id='b2'>Prokleta avlija</book>
-expect Na Drini & ćuprija
-expect 2

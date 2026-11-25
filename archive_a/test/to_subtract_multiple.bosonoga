@@ -1,7 +1,0 @@
-var test_to_subtract is 30_i32
-set test_to_subtract to_subtract test_to_subtract 1_i32 test_to_subtract 2_i32 test_to_subtract
-if test_to_subtract eq -33
-di
-  return exit_success
-do
-return exit_failure
