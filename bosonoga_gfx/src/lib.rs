@@ -97,7 +97,13 @@ pub fn main(settings_file: &str, default_program: &str) -> ExitCode {
     };
     macroquad::Window::from_config(
         conf,
-        host::run(program, fonts, icons, settings.skip_version_check),
+        host::run(
+            program,
+            fonts,
+            icons,
+            settings.skip_version_check,
+            settings.fps_max,
+        ),
     );
     ExitCode::FAILURE
 }

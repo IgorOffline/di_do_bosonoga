@@ -6,6 +6,8 @@ use crate::value::Value;
 // RRGGBB, or RRGGBBAA with an alpha.
 const COLOR_HEX_LENGTH: usize = 6;
 const COLOR_ALPHA_HEX_LENGTH: usize = 8;
+// The frames a second of a gfx app whose group gfx has no fps_max.
+pub const DEFAULT_FPS_MAX: u32 = 60;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Asset {
@@ -55,6 +57,9 @@ pub struct Settings {
     pub skip_version_check: bool,
     pub gfx_width: u32,
     pub gfx_height: u32,
+    /// The most frames a second the window shows, from the optional key
+    /// `fps_max` of the group gfx, [`DEFAULT_FPS_MAX`] by default.
+    pub fps_max: u32,
     pub background: u32,
     pub mouse: Mouse,
     colors: Vec<(String, u32)>,
@@ -139,11 +144,11 @@ impl Settings {
             name,
             version,
             skip_version_check,
+            fps_max: DEFAULT_FPS_MAX,
             ..Settings::default()
         };
         if file.has_group("gfx") {
-            settings.gfx_width = file.positive("gfx", "width")?;
-            settings.gfx_height = file.positive("gfx", "height")?;
+            parse_gfx(&file, &mut settings)?;
         }
         for key in file.keys("color") {
             let text = file.text("color", key)?;
@@ -226,6 +231,23 @@ fn parse_color(key: &str, text: &str) -> Result<u32, String> {
         ));
     }
     Ok(u32::from_be_bytes([u8::MAX - alpha, red, green, blue]))
+}
+
+// The group gfx has the keys width and height, and optionally fps_max.
+fn parse_gfx(file: &KeyFile<'_>, settings: &mut Settings) -> Result<(), String> {
+    for key in file.keys("gfx") {
+        if !matches!(key, "width" | "height" | "fps_max") {
+            return Err(format!(
+                "the group gfx has only the keys width, height and fps_max, not {key}"
+            ));
+        }
+    }
+    settings.gfx_width = file.positive("gfx", "width")?;
+    settings.gfx_height = file.positive("gfx", "height")?;
+    if file.raw("gfx", "fps_max").is_ok() {
+        settings.fps_max = file.positive("gfx", "fps_max")?;
+    }
+    Ok(())
 }
 
 // One literal and nothing else, as a value in regina.ini.

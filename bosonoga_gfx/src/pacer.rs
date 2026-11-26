@@ -8,8 +8,6 @@ use macroquad::miniquad::{EventHandler, KeyCode, KeyMods};
 
 use crate::key;
 
-const FRAME_TIME: Duration = Duration::from_micros(1_000_000 / 60);
-
 // The keys since the last frame. A key comes up only after it went down, so
 // that the program sees them in pairs, and the keys that are down all come
 // up when the window loses focus, which miniquad reports as minimized.
@@ -84,17 +82,25 @@ impl Mouse {
     }
 }
 
-// Keeps 60 frames a second, and collects the keys and the mouse since the
-// last frame.
+// The time a frame lasts at fps_max frames a second, to the nanosecond, as
+// 1_000_000 / 60 microseconds would round 60 to 60.0024.
+fn frame_time(fps_max: u32) -> Duration {
+    Duration::from_secs(1) / fps_max.max(1)
+}
+
+// Keeps at most fps_max frames a second, and collects the keys and the mouse
+// since the last frame. When vsync holds the window to a lower rate, the wait
+// is already over and it does not sleep.
 pub(crate) struct Pacer {
     keys: Keys,
     mouse: Mouse,
+    frame_time: Duration,
     next_frame_time: Instant,
     last_frame_start: Option<Instant>,
 }
 
 impl Pacer {
-    pub(crate) fn new() -> Pacer {
+    pub(crate) fn new(fps_max: u32) -> Pacer {
         Pacer {
             keys: Keys::default(),
             mouse: Mouse {
@@ -102,6 +108,7 @@ impl Pacer {
                 changed: false,
                 last: mouse_position(),
             },
+            frame_time: frame_time(fps_max),
             next_frame_time: Instant::now(),
             last_frame_start: None,
         }
@@ -116,14 +123,14 @@ impl Pacer {
         let now = Instant::now();
         if now < self.next_frame_time {
             thread::sleep(self.next_frame_time - now);
-            self.next_frame_time += FRAME_TIME;
+            self.next_frame_time += self.frame_time;
         } else {
-            self.next_frame_time = now + FRAME_TIME;
+            self.next_frame_time = now + self.frame_time;
         }
         let start = Instant::now();
         let elapsed = match self.last_frame_start {
             Some(last) => start - last,
-            None => FRAME_TIME,
+            None => self.frame_time,
         };
         self.last_frame_start = Some(start);
         repeat_all_miniquad_input(&mut self.keys, subscriber);
@@ -148,12 +155,21 @@ impl Pacer {
 
 #[cfg(test)]
 mod tests {
-    use super::Keys;
+    use super::{Keys, frame_time};
+    use std::time::Duration;
     use bosonoga::gfx::KeyEvent;
     use macroquad::miniquad::{EventHandler, KeyCode, KeyMods};
 
     fn code(name: &str) -> u32 {
         bosonoga::key::named(name).unwrap()
+    }
+
+    // A frame lasts a whole second over fps_max, to the nanosecond.
+    #[test]
+    fn frame_time_is_exact() {
+        assert_eq!(frame_time(60), Duration::from_nanos(16_666_666));
+        assert_eq!(frame_time(144), Duration::from_nanos(6_944_444));
+        assert_eq!(frame_time(1), Duration::from_secs(1));
     }
 
     // Each key that comes up went down before, a second down of a key that

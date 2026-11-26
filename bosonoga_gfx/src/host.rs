@@ -52,6 +52,7 @@ pub(crate) async fn run(
     fonts: Vec<(String, String, Vec<u8>)>,
     icons: Vec<(String, String, Vec<u8>)>,
     skip_version_check: bool,
+    fps_max: u32,
 ) {
     if !skip_version_check {
         crate::diagnostic::print();
@@ -82,7 +83,7 @@ pub(crate) async fn run(
         eprintln!("cannot start the interpreter: {error}");
         std::process::exit(1);
     }
-    let mut pacer = Pacer::new();
+    let mut pacer = Pacer::new(fps_max);
     loop {
         match received.recv() {
             Ok(Event::Info(text)) => print!("{text}"),

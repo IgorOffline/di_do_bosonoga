@@ -208,3 +208,26 @@ fn gfx_key_and_mouse() {
     }
     assert_eq!(captured, [false, false, true, true, false, true]);
 }
+
+// fps_max of the group gfx is optional and 60 when left out, must be a
+// positive number, and the group gfx has no other keys than width, height
+// and fps_max.
+#[test]
+fn gfx_fps_max() {
+    let parse = |gfx: &str| {
+        let text = format!("[meta]\nname = \"t\"\nversion = \"0\"\n\n[gfx]\n{gfx}");
+        Settings::parse("regina.ini", Path::new(""), &text)
+    };
+    let given = parse("width = 9\nheight = 9\nfps_max = 144\n").unwrap();
+    assert_eq!(given.fps_max, 144);
+    let left_out = parse("width = 9\nheight = 9\n").unwrap();
+    assert_eq!(left_out.fps_max, bosonoga::setting::DEFAULT_FPS_MAX);
+    assert_eq!(
+        parse("width = 9\nheight = 9\nfps_max = 0\n").unwrap_err(),
+        "regina.ini: fps_max must be positive"
+    );
+    assert_eq!(
+        parse("width = 9\nheight = 9\nfps = 144\n").unwrap_err(),
+        "regina.ini: the group gfx has only the keys width, height and fps_max, not fps"
+    );
+}
