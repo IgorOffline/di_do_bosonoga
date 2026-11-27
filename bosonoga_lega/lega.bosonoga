@@ -18,15 +18,15 @@ lega _bu
 lega _input_key
 lega _font
 lega _icon
-lega _optional_i32
-lega _optional_i64
-lega _optional_u32
-lega _optional_u64
-lega _optional_f32
-lega _optional_f64
-lega _optional_color
-lega _optional_str
-lega _optional_bu
+lega _opeto_i32
+lega _opeto_i64
+lega _opeto_u32
+lega _opeto_u64
+lega _opeto_f32
+lega _opeto_f64
+lega _opeto_color
+lega _opeto_str
+lega _opeto_bu
 
 // suffix of functions
 lega _fen
@@ -48,8 +48,8 @@ lega key_
 // values
 lega exit_failure
 lega exit_success
-lega fe_bu
-lega fe_optional_bu
+lega fales_bu
+lega fales_opeto_bu
 lega nihil_bu
 lega nihil_color
 lega nihil_f32
@@ -59,8 +59,8 @@ lega nihil_i64
 lega nihil_str
 lega nihil_u32
 lega nihil_u64
-lega ta_bu
-lega ta_optional_bu
+lega tara_bu
+lega tara_opeto_bu
 
 // sections
 lega bosonoga_global
@@ -140,15 +140,15 @@ lega to_f32
 lega to_f64
 lega to_i32
 lega to_i64
-lega to_optional_bu
-lega to_optional_color
-lega to_optional_f32
-lega to_optional_f64
-lega to_optional_i32
-lega to_optional_i64
-lega to_optional_str
-lega to_optional_u32
-lega to_optional_u64
+lega to_opeto_bu
+lega to_opeto_color
+lega to_opeto_f32
+lega to_opeto_f64
+lega to_opeto_i32
+lega to_opeto_i64
+lega to_opeto_str
+lega to_opeto_u32
+lega to_opeto_u64
 lega to_u32
 lega to_u64
 
@@ -230,9 +230,9 @@ lega gfx_align_y_top
 // lega io_raw_import
 // lega len_col
 // lega len_row
-// lega new
-// lega optional
+// lega neo
+// lega opeto
 // lega ret_
 // lega sleep_ms
 // lega to_
-// lega unset
+// lega uneset

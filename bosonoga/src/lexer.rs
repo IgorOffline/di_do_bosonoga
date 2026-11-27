@@ -81,8 +81,8 @@ pub type Spanned<'input> = Result<(usize, Tok<'input>, usize), Diagnostic>;
 pub(crate) const UNE_PREFIX: &str = "une_";
 
 const RESERVED: &[&str] = &[
-    "unset",
-    "new",
+    "uneset",
+    "neo",
     "io_raw_import",
     "sleep_ms",
     "break",
@@ -90,7 +90,7 @@ const RESERVED: &[&str] = &[
     "len_col",
     "len_row",
     "expect",
-    "optional",
+    "opeto",
 ];
 
 const INDEXED_TYPES: &[&str] = &[
@@ -220,8 +220,8 @@ impl<'input> Lexer<'input> {
         let Some(name) = suffix.strip_prefix('_') else {
             return Err(suffix_error(self.base + start));
         };
-        // 7_optional_i32 is a present optional, and 0_optional_str an index.
-        let (plain, optional) = match name.strip_prefix("optional_") {
+        // 7_opeto_i32 is a present optional, and 0_opeto_str an index.
+        let (plain, optional) = match name.strip_prefix("opeto_") {
             Some(inner) => (inner, true),
             None => (name, false),
         };
@@ -296,10 +296,10 @@ impl<'input> Lexer<'input> {
         let value = Value::Str(text.to_owned());
         match self.consume_word() {
             "_str" => Ok(Tok::Literal(value)),
-            "_optional_str" => Ok(Tok::Literal(Value::present(value))),
+            "_opeto_str" => Ok(Tok::Literal(Value::present(value))),
             _ => Err(Diagnostic::new(
                 self.base + start,
-                "a string must have the suffix _str, as in \"text\"_str, or _optional_str",
+                "a string must have the suffix _str, as in \"text\"_str, or _opeto_str",
             )),
         }
     }
@@ -317,7 +317,7 @@ fn is_number_name(name: &str) -> bool {
 fn suffix_error(start: usize) -> Diagnostic {
     Diagnostic::new(
         start,
-        "number must have the suffix _i32, _i64, _u32, _u64, _f32 or _f64, or _optional_ and one of these, as in 7_optional_i32",
+        "number must have the suffix _i32, _i64, _u32, _u64, _f32 or _f64, or _opeto_ and one of these, as in 7_opeto_i32",
     )
 }
 
@@ -351,13 +351,13 @@ fn is_result_name(text: &str) -> bool {
     }
 }
 
-// An absent optional, as nihil_i32 of optional_i32. The word nihil says
+// An absent optional, as nihil_i32 of opeto_i32. The word nihil says
 // optional, so its suffix is the type of the value that is absent.
 fn nihil_literal(text: &str, start: usize) -> Result<Option<Value>, Diagnostic> {
     let Some(name) = text.strip_prefix("nihil_") else {
         return Ok(None);
     };
-    if let Some(inner) = name.strip_prefix("optional_") {
+    if let Some(inner) = name.strip_prefix("opeto_") {
         return Err(Diagnostic::new(
             start,
             format!("nihil is always optional, so it is written nihil_{inner}, not {text}"),
@@ -453,10 +453,10 @@ fn word(text: &str) -> Tok<'_> {
         "some" => Tok::Some,
         "une" | UNE_PREFIX => Tok::Une,
         "shift_or" => Tok::ShiftOr,
-        "ta_bu" => Tok::Literal(Value::Bool(true)),
-        "fe_bu" => Tok::Literal(Value::Bool(false)),
-        "ta_optional_bu" => Tok::Literal(Value::present(Value::Bool(true))),
-        "fe_optional_bu" => Tok::Literal(Value::present(Value::Bool(false))),
+        "tara_bu" => Tok::Literal(Value::Bool(true)),
+        "fales_bu" => Tok::Literal(Value::Bool(false)),
+        "tara_opeto_bu" => Tok::Literal(Value::present(Value::Bool(true))),
+        "fales_opeto_bu" => Tok::Literal(Value::present(Value::Bool(false))),
         "gfx_delta_time" | "gfx_heap_bytes" | "gfx_key" | "gfx_mouse_move_x"
         | "gfx_mouse_move_y" | "gfx_mouse_captured" => Tok::GfxValue(text),
         _ if is_numbered(text, "shift_") => Tok::Shift(text),

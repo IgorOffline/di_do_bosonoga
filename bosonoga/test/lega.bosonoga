@@ -10,11 +10,11 @@ lega _f32
 lega _f64
 lega _str
 lega _bu
-lega _optional_i32
-lega _optional_i64
-lega _optional_f32
-lega _optional_str
-lega _optional_bu
+lega _opeto_i32
+lega _opeto_i64
+lega _opeto_f32
+lega _opeto_str
+lega _opeto_bu
 
 // suffix of functions
 lega _fen
@@ -29,11 +29,11 @@ lega key_
 // values
 lega exit_failure
 lega exit_success
-lega fe_bu
-lega fe_optional_bu
+lega fales_bu
+lega fales_opeto_bu
 lega nihil_i32
 lega nihil_str
-lega ta_bu
+lega tara_bu
 
 // sections
 lega bosonoga_global
@@ -104,7 +104,7 @@ lega to_subtract
 // conversions
 lega to_f32
 lega to_i32
-lega to_optional_i32
+lega to_opeto_i32
 lega to_u32
 
 // math

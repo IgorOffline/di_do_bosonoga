@@ -493,8 +493,8 @@ impl<'input> Checker<'_, 'input> {
         })
     }
 
-    // to_optional_i32 of an i32 variable, which a literal does not need, as
-    // it is written 7_optional_i32.
+    // to_opeto_i32 of an i32 variable, which a literal does not need, as
+    // it is written 7_opeto_i32.
     fn optional_conversion(
         &mut self,
         slot: Slot,

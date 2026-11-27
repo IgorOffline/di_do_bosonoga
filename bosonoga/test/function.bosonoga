@@ -13,9 +13,9 @@ di
   set steps math_to_max steps s_steps
   if steps le board_radius
   di
-    return ta_bu
+    return tara_bu
   do
-  return fe_bu
+  return fales_bu
 do
 
 def factorial_fen n_i64 ret 0_i64

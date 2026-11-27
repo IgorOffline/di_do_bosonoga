@@ -198,7 +198,7 @@ impl<'input> Checker<'_, 'input> {
         let Some((index, base, suffix)) = self.aka_suffix(name) else {
             return Ok(None);
         };
-        if base.ends_with("_optional") || base == "optional" {
+        if base.ends_with("_opeto") || base == "opeto" {
             return Self::fail(
                 span.start,
                 format!("'{suffix}' is an aka_i32, which cannot be optional"),

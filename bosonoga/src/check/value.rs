@@ -4,10 +4,10 @@ use crate::ast::{self, Section, Span, Term};
 use crate::program::{Comparison, Condition, Operand, Program, Slot};
 use crate::value::{Compare, Kind, Value};
 
-// The present literal of a literal, as 7_optional_i32 of 7_i32.
+// The present literal of a literal, as 7_opeto_i32 of 7_i32.
 pub(super) fn present_literal(text: &str) -> Option<String> {
     let (value, kind) = text.rsplit_once('_')?;
-    Some(format!("{value}_optional_{kind}"))
+    Some(format!("{value}_opeto_{kind}"))
 }
 
 fn shift_bit(word: &str) -> Option<u32> {
@@ -45,7 +45,7 @@ impl<'input> Checker<'_, 'input> {
         }
         if actual != kind {
             let shown = self.text(operand.span);
-            // nihil_i32 says i32, but is an optional_i32 that is absent.
+            // nihil_i32 says i32, but is an opeto_i32 that is absent.
             let mut nihil = String::new();
             if let Term::Literal(Value::Optional { value: None, .. }) = operand.term {
                 nihil = format!(", as {shown} is an absent {}", actual.name());
@@ -360,7 +360,7 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(
                 some.start,
                 format!(
-                    "some tests an optional, like optional_i32, but '{}' is {}",
+                    "some tests an optional, like opeto_i32, but '{}' is {}",
                     self.text(operand.span),
                     kind.name()
                 ),

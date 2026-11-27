@@ -30,7 +30,7 @@ pub enum Conversion {
     Log1p,
     Expm1,
     Hypot,
-    // A present optional of a value of the kind, as to_optional_i32 of i32.
+    // A present optional of a value of the kind, as to_opeto_i32 of i32.
     ToOptional(Kind),
 }
 
@@ -81,17 +81,17 @@ impl Conversion {
     pub fn word(self) -> &'static str {
         if let Conversion::ToOptional(inner) = self {
             return match inner {
-                Kind::I32 => "to_optional_i32",
-                Kind::I64 => "to_optional_i64",
-                Kind::U32 => "to_optional_u32",
-                Kind::U64 => "to_optional_u64",
-                Kind::F32 => "to_optional_f32",
-                Kind::F64 => "to_optional_f64",
-                Kind::Color => "to_optional_color",
-                Kind::Str => "to_optional_str",
-                Kind::Bool => "to_optional_bu",
+                Kind::I32 => "to_opeto_i32",
+                Kind::I64 => "to_opeto_i64",
+                Kind::U32 => "to_opeto_u32",
+                Kind::U64 => "to_opeto_u64",
+                Kind::F32 => "to_opeto_f32",
+                Kind::F64 => "to_opeto_f64",
+                Kind::Color => "to_opeto_color",
+                Kind::Str => "to_opeto_str",
+                Kind::Bool => "to_opeto_bu",
                 Kind::Flags | Kind::InputKey | Kind::Font | Kind::Icon | Kind::Optional(_) => {
-                    "to_optional"
+                    "to_opeto"
                 }
             };
         }
