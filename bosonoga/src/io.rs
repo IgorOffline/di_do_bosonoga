@@ -1,7 +1,7 @@
 //! Configured-directory I/O for Bosonoga programs.
 //!
 //! File operations take a `dir_*` setting and a single filename, or a filename
-//! prefix and suffix for `io_latest`. Use `with ret INDEX_TYPE as NAME` to bind
+//! prefix and suffix for `io_latest`. Use `vit ret INDEX_TYPE as NAME` to bind
 //! whichever results the following block uses.
 //!
 //! All file operations return success at index 0 and an error message at index

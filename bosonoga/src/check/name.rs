@@ -44,7 +44,7 @@ impl<'input> Checker<'_, 'input> {
         {
             return true;
         }
-        if let Some(key) = name.strip_prefix("global_")
+        if let Some(key) = name.strip_prefix("golobal_")
             && settings.global(key).is_some()
         {
             return true;
@@ -78,7 +78,7 @@ impl<'input> Checker<'_, 'input> {
                 text: asset.text.clone(),
             });
         }
-        let key = name.strip_prefix("global_")?;
+        let key = name.strip_prefix("golobal_")?;
         let value = settings.global(key)?;
         Some(value.clone())
     }
@@ -147,7 +147,7 @@ impl<'input> Checker<'_, 'input> {
         {
             return Self::fail(
                 span.start,
-                format!("'{shown}' is an array, which is read with var, set ... to or call"),
+                format!("'{shown}' is an array, which is read with var, set ... tu or call"),
             );
         }
         if let Some(index) = self.function(name) {
@@ -158,7 +158,7 @@ impl<'input> Checker<'_, 'input> {
             };
             return Self::fail(
                 span.start,
-                format!("'{shown}' is {what}, which is {done} with var, set ... to or call"),
+                format!("'{shown}' is {what}, which is {done} with var, set ... tu or call"),
             );
         }
         if is_function_name(name) {
@@ -230,7 +230,7 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(
                 span.start,
                 format!(
-                    "'{shown}' is an array, whose rows are set with set {shown} at INDEX to and one value per column"
+                    "'{shown}' is an array, whose rows are set with set {shown} at INDEX tu and one value per column"
                 ),
             );
         }
@@ -239,7 +239,7 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(
                 span.start,
                 format!(
-                    "'{shown}' is a parameter, which is a val and cannot be set, but a copy can, as in var {copy} is to_i32 {shown}"
+                    "'{shown}' is a parameter, which is a val and cannot be set, but a copy can, as in var {copy} is tu_i32 {shown}"
                 ),
             );
         }

@@ -401,9 +401,9 @@ fn word(text: &str) -> Tok<'_> {
         return Tok::AlignY(vertical);
     }
     match text {
-        "to_join" => Tok::Join,
+        "tu_join" => Tok::Join,
         "aka_i32" => Tok::Aka,
-        "from" => Tok::From,
+        "ferom" => Tok::From,
         "except" => Tok::Except,
         "as" => Tok::As,
         "di" => Tok::Di,
@@ -419,11 +419,11 @@ fn word(text: &str) -> Tok<'_> {
         "pub" => Tok::Pub,
         "mod" => Tok::Mod,
         "def" => Tok::Def,
-        "from_global" => Tok::FromGlobal,
+        "ferom_golobal" => Tok::FromGlobal,
         "ret" => Tok::Ret,
         "ret_void" => Tok::RetVoid,
         "of" => Tok::Of,
-        "with" => Tok::With,
+        "vit" => Tok::With,
         "at" => Tok::At,
         "array" => Tok::Array,
         "roa" => Tok::Row,
@@ -441,7 +441,7 @@ fn word(text: &str) -> Tok<'_> {
         "gfx_draw_grid" => Tok::GfxDrawGrid,
         "gfx_mouse_capture" => Tok::GfxMouseCapture,
         "gfx_mouse_release" => Tok::GfxMouseRelease,
-        "with_len_kol" => Tok::WithLenCol,
+        "vit_len_kol" => Tok::WithLenCol,
         "var" => Tok::Var,
         "val" => Tok::Val,
         "is" => Tok::Is,
@@ -463,7 +463,7 @@ fn word(text: &str) -> Tok<'_> {
         _ if is_result_name(text) => Tok::Result(text),
         // Only aka_i32 is a keyword so far, and the others are kept for later.
         _ if text == "aka" || text.starts_with("aka_") => Tok::Reserved(text),
-        _ if is_numbered(text, "to_") || RESERVED.contains(&text) => Tok::Reserved(text),
+        _ if is_numbered(text, "tu_") || RESERVED.contains(&text) => Tok::Reserved(text),
         _ => Tok::Name(text),
     }
 }

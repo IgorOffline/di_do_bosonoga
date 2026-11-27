@@ -141,7 +141,7 @@ impl<'input> Checker<'_, 'input> {
         if section == Section::Global
             && (has_main || has_gfx || self.seen.contains(&Section::Global))
         {
-            return Self::fail(span.start, "bosonoga_global must be the first section");
+            return Self::fail(span.start, "bosonoga_golobal must be the first section");
         }
         if has_main {
             return self.expected_at(span, "aka_i32, kona, def, val or end of file");
@@ -304,7 +304,7 @@ impl<'input> Checker<'_, 'input> {
         checked
     }
 
-    // Declares a variable of bosonoga_global that with from_global lists, in
+    // Declares a variable of bosonoga_golobal that vit ferom_golobal lists, in
     // its first frame, which the function reads and sets.
     fn capture(
         &mut self,
@@ -313,18 +313,18 @@ impl<'input> Checker<'_, 'input> {
     ) -> Result<(), Diagnostic> {
         let shown = self.text(span);
         if self.is_reserved(name) {
-            return self.expected_at(span, "a variable of bosonoga_global");
+            return self.expected_at(span, "a variable of bosonoga_golobal");
         }
         if let Some(index) = self.variable_any(name) {
             if self.variables[index].origin == Origin::Captured {
                 return Self::fail(
                     span.start,
-                    format!("'{shown}' is already in with from_global"),
+                    format!("'{shown}' is already in vit ferom_golobal"),
                 );
             }
             return Self::fail(
                 span.start,
-                format!("'{shown}' is a parameter, so it is not also in with from_global"),
+                format!("'{shown}' is a parameter, so it is not also in vit ferom_golobal"),
             );
         }
         let mut found = None;
@@ -340,11 +340,11 @@ impl<'input> Checker<'_, 'input> {
             let before = if self.seen.contains(&Section::Global) {
                 ""
             } else {
-                ", and with from_global needs bosonoga_global before the function"
+                ", and vit ferom_golobal needs bosonoga_golobal before the function"
             };
             return Self::fail(
                 span.start,
-                format!("'{shown}' is not a variable of bosonoga_global{before}"),
+                format!("'{shown}' is not a variable of bosonoga_golobal{before}"),
             );
         };
         let variable = Variable {

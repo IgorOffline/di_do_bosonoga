@@ -167,8 +167,8 @@ impl Settings {
         if file.has_group("mouse") {
             settings.mouse = parse_mouse(&file)?;
         }
-        for key in file.keys("global") {
-            let text = file.text("global", key)?;
+        for key in file.keys("golobal") {
+            let text = file.text("golobal", key)?;
             let value = parse_global(key, &text)?;
             settings.globals.push((key.to_owned(), value));
         }

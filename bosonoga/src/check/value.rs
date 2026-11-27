@@ -72,12 +72,12 @@ impl<'input> Checker<'_, 'input> {
             return format!("so write {present}");
         }
         format!(
-            "so convert it first, as in val present is to_{} {shown}",
+            "so convert it first, as in val present is tu_{} {shown}",
             kind.name()
         )
     }
 
-    // A value that info, to_join or gfx_draw_text shows, which an optional is not.
+    // A value that info, tu_join or gfx_draw_text shows, which an optional is not.
     pub(super) fn shown_value(
         &mut self,
         operand: &ast::Operand<'input>,
@@ -115,7 +115,7 @@ impl<'input> Checker<'_, 'input> {
             Term::Result(_) => Self::fail(
                 at,
                 format!(
-                    "{text} is not a value, a call names the values that it takes, as in call ... with ret 0_i32 as count"
+                    "{text} is not a value, a call names the values that it takes, as in call ... vit ret 0_i32 as count"
                 ),
             ),
             Term::GfxValue(word) => self.gfx_value(at, word),

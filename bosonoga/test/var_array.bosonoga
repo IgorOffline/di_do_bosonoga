@@ -2,15 +2,15 @@
 
 bosonoga_main
 di
-  var counts is array 0_i32 with_len_kol 4_i32
-  set counts at 2_i32 to 7_i32
+  var counts is array 0_i32 vit_len_kol 4_i32
+  set counts at 2_i32 tu 7_i32
   var total is 0_i32
   var index is 0_i32
   while index lt 4_i32
   di
-    val count is counts at index with ret 0_i32
-    set total to_add count
-    set index to_add 1_i32
+    val count is counts at index vit ret 0_i32
+    set total tu_add count
+    set index tu_add 1_i32
   do
   var pairs is array 0_i32
   di
@@ -18,8 +18,8 @@ di
     roa 5_i32
   do
   var last is 0_i32
-  set last to pairs at 1_i32 with ret 0_i32
-  set total to_add last
+  set last tu pairs at 1_i32 vit ret 0_i32
+  set total tu_add last
   if total eq 12_i32
   di
     return exit_success

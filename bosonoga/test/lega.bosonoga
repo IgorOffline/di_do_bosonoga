@@ -36,7 +36,7 @@ lega nihil_str
 lega tara_bu
 
 // sections
-lega bosonoga_global
+lega bosonoga_golobal
 lega bosonoga_main
 lega gfx_frame
 lega gfx_key_down
@@ -52,8 +52,8 @@ lega aka_i32
 lega kona
 lega def
 lega except
-lega from
-lega from_global
+lega ferom
+lega ferom_golobal
 lega mod
 lega pub
 lega ret
@@ -76,8 +76,8 @@ lega set
 lega val
 lega var
 lega while
-lega with
-lega with_len_kol
+lega vit
+lega vit_len_kol
 
 // conditions
 lega and
@@ -94,24 +94,24 @@ lega or
 lega some
 
 // operations
-lega to
-lega to_add
-lega to_divide
-lega to_mod
-lega to_multiply
-lega to_subtract
+lega tu
+lega tu_add
+lega tu_divide
+lega tu_mod
+lega tu_multiply
+lega tu_subtract
 
 // conversions
-lega to_f32
-lega to_i32
-lega to_opeto_i32
-lega to_u32
+lega tu_f32
+lega tu_i32
+lega tu_opeto_i32
+lega tu_u32
 
 // math
-lega math_to_abs
-lega math_to_max
-lega math_to_pow
-lega math_to_sqrt
+lega math_tu_abs
+lega math_tu_max
+lega math_tu_pow
+lega math_tu_sqrt
 
 // io, str and xml
 lega str_parse

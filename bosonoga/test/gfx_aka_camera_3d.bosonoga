@@ -9,29 +9,29 @@ kona side is 6_i32
 aka_i32 away except origin
 
 // The slices of a grid are even.
-aka_i32 slices is from 2_i32 to 9_i32 except 3_i32 5_i32 7_i32
+aka_i32 slices is ferom 2_i32 tu 9_i32 except 3_i32 5_i32 7_i32
 
-bosonoga_global
+bosonoga_golobal
 di
   var eye_y is 0d0_f32
 do
 
 def eye_fen step_away ret 0_f32
 di
-  val step is to_i32 step_away
-  val eye is to_f32 step
+  val step is tu_i32 step_away
+  val eye is tu_f32 step
   return eye
 do
 
 // Its own call is given its own parameter.
-def raise_fen step_away times_i32 with from_global eye_y ret_void
+def raise_fen step_away times_i32 vit ferom_golobal eye_y ret_void
 di
   if times_i32 gt 0_i32
   di
-    val step is eye_fen of step_away with ret 0_f32
-    set eye_y to_add step
+    val step is eye_fen of step_away vit ret 0_f32
+    set eye_y tu_add step
     var less is times_i32
-    set less to_subtract 1_i32
+    set less tu_subtract 1_i32
     call raise_fen of step_away less
   do
 do
@@ -39,32 +39,32 @@ do
 // The aka_i32 of a module is that of a parameter here too.
 def half_fen view_fov ret 0_f32
 di
-  var half is degrees_fen of view_fov with ret 0_f32
-  set half to_multiply 0d5_f32
+  var half is degrees_fen of view_fov vit ret 0_f32
+  set half tu_multiply 0d5_f32
   return half
 do
 
 def slices_fen count_slices ret 0_u32
 di
   var count is 0_i32
-  set count to_i32 count_slices
-  val slices_count is to_u32 count
+  set count tu_i32 count_slices
+  val slices_count is tu_u32 count
   return slices_count
 do
 
 gfx_frame
 di
-  set eye_y to 0d0_f32
+  set eye_y tu 0d0_f32
   call raise_fen of 2_i32 2_i32
   // Known before the program runs: a constant, a literal and a val.
-  val eye_x is eye_fen of side with ret 0_f32
-  val view is half_fen of 179_i32 with ret 0_f32
+  val eye_x is eye_fen of side vit ret 0_f32
+  val view is half_fen of 179_i32 vit ret 0_f32
   val eight is 8_i32
-  val grid_slices is slices_fen of eight with ret 0_u32
+  val grid_slices is slices_fen of eight vit ret 0_u32
   // Not known, so checked by the call.
   var steps is -17_i32
-  set steps to_mod 6_i32
-  val eye_z is eye_fen of steps with ret 0_f32
+  set steps tu_mod 6_i32
+  val eye_z is eye_fen of steps vit ret 0_f32
   gfx_camera_3d eye_x eye_y eye_z 0d0_f32 0d0_f32 0d0_f32 0d0_f32 1d0_f32 0d0_f32 view
   di
     gfx_draw_grid grid_slices 1d0_f32 color_cube color_grid

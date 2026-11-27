@@ -22,7 +22,7 @@ extern {
         "info" => Tok::Info,
         "call" => Tok::Call,
         "given_operation" => Tok::Given(<crate::io::Builtin>),
-        "to_join" => Tok::Join,
+        "tu_join" => Tok::Join,
         "as" => Tok::As,
         "nihil" => Tok::Nihil,
         "return" => Tok::Return,
@@ -32,21 +32,21 @@ extern {
         "val" => Tok::Val,
         "is" => Tok::Is,
         "set" => Tok::Set,
-        "to" => Tok::To,
+        "tu" => Tok::To,
         "operation" => Tok::Operation(<Operation>),
         "conversion" => Tok::Conversion(<Conversion>),
         "aka_i32" => Tok::Aka,
-        "from" => Tok::From,
+        "ferom" => Tok::From,
         "except" => Tok::Except,
         "kona" => Tok::Const,
         "pub" => Tok::Pub,
         "mod" => Tok::Mod,
         "def" => Tok::Def,
-        "from_global" => Tok::FromGlobal,
+        "ferom_golobal" => Tok::FromGlobal,
         "ret" => Tok::Ret,
         "ret_void" => Tok::RetVoid,
         "of" => Tok::Of,
-        "with" => Tok::With,
+        "vit" => Tok::With,
         "at" => Tok::At,
         "array" => Tok::Array,
         "roa" => Tok::Row,
@@ -66,7 +66,7 @@ extern {
         "gfx_mouse_release" => Tok::GfxMouseRelease,
         "gfx_align_x" => Tok::AlignX(<Horizontal>),
         "gfx_align_y" => Tok::AlignY(<Vertical>),
-        "with_len_kol" => Tok::WithLenCol,
+        "vit_len_kol" => Tok::WithLenCol,
         "if" => Tok::If,
         "else" => Tok::Else,
         "and" => Tok::And,
@@ -96,7 +96,7 @@ Item: Item<'input> = {
             error: Diagnostic::new(start, "expected a file name, as in mod \"lorem.bosonoga\"_str"),
         }),
     },
-    <public:Public?> "aka_i32" <name:Named> "is" "from" <from:Operand> "to" <to:Operand> <except:Except?> =>
+    <public:Public?> "aka_i32" <name:Named> "is" "ferom" <from:Operand> "tu" <to:Operand> <except:Except?> =>
         Item::Aka { public, name, range: Some((from, to)), except: except.unwrap_or_default() },
     <public:Public?> "aka_i32" <name:Named> <except:Except> => Item::Aka { public, name, range: None, except },
     <public:Public?> "kona" <name:Named> "is" <value:Operand> => Item::Const { public, name, value },
@@ -109,8 +109,8 @@ Item: Item<'input> = {
         Item::Section(Span { start, end }, section, block, after),
 };
 
-// The variables of bosonoga_global that a def reads or sets.
-FromGlobal: Vec<Named<'input>> = "with" "from_global" <Named+>;
+// The variables of bosonoga_golobal that a def reads or sets.
+FromGlobal: Vec<Named<'input>> = "vit" "ferom_golobal" <Named+>;
 
 Public: Span = <start:@L> "pub" <end:@R> => Span { start, end };
 
@@ -132,7 +132,7 @@ Row: (Span, Vec<Operand<'input>>) =
 
 Rows: Rows<'input> = {
     "di" <rows:Row+> "do" => Rows::Literal(rows),
-    <start:@L> "with_len_kol" <end:@R> <count:Operand> => Rows::Zeroed(Span { start, end }, count),
+    <start:@L> "vit_len_kol" <end:@R> <count:Operand> => Rows::Zeroed(Span { start, end }, count),
 };
 
 Block: Block<'input> =
@@ -152,8 +152,8 @@ Statement: Statement<'input> = {
     "info" <values:Operand+> => Statement::Info(values),
     <start:@L> "call" <end:@R> <name:Named> <arguments:CallArguments> <taking:Taking?> =>
         Statement::Call { span: Span { start, end }, name, arguments, taking },
-    "set" <name:Named> "to_join" <values:Operand+> => Statement::Join(name, values),
-    <operation:Spanned<"given_operation">> <values:Operand+> "with" "ret"
+    "set" <name:Named> "tu_join" <values:Operand+> => Statement::Join(name, values),
+    <operation:Spanned<"given_operation">> <values:Operand+> "vit" "ret"
         <results:GivenResult+> <block:Block> => Statement::Given { operation, values, results, block },
     "set" <name:Named> <operation:Spanned<Operation>> <values:Operand+> =>
         Statement::Set { name, operation, values },
@@ -256,13 +256,13 @@ CallArguments: Arguments<'input> = {
 };
 
 Taking: Taking<'input> =
-    <start:@L> "with" <end:@R> "ret" <results:GivenResult+> <block:Block> =>
+    <start:@L> "vit" <end:@R> "ret" <results:GivenResult+> <block:Block> =>
         Taking { with: Span { start, end }, results, block };
 
 GivenResult: (Span, Named<'input>) = <index:Indexed> "as" <name:Named> => (index, name);
 
 Operation: Operation = {
-    "to" => Operation::Copy,
+    "tu" => Operation::Copy,
     "operation" => <>,
 };
 
@@ -280,11 +280,11 @@ Initial: Initial<'input> = {
 };
 
 Call: Call<'input> = {
-    <name:Named> <start:@L> "of" <end:@R> <values:Operand+> "with" "ret" <taken:Indexed> =>
+    <name:Named> <start:@L> "of" <end:@R> <values:Operand+> "vit" "ret" <taken:Indexed> =>
         Call { name, arguments: Arguments::Of(Span { start, end }, values), taken },
-    <name:Named> <start:@L> "at" <end:@R> <index:Operand> "with" "ret" <taken:Indexed> =>
+    <name:Named> <start:@L> "at" <end:@R> <index:Operand> "vit" "ret" <taken:Indexed> =>
         Call { name, arguments: Arguments::At(Span { start, end }, index), taken },
-    <name:Named> "with" "ret" <taken:Indexed> => Call { name, arguments: Arguments::None, taken },
+    <name:Named> "vit" "ret" <taken:Indexed> => Call { name, arguments: Arguments::None, taken },
 };
 
 Named: Named<'input> = <start:@L> <name:"name"> <end:@R> => (Span { start, end }, name);

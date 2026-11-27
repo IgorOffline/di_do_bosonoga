@@ -41,7 +41,7 @@ lega une_
 lega color_
 lega dir_
 lega font_
-lega global_
+lega golobal_
 lega icon_
 lega key_
 
@@ -63,7 +63,7 @@ lega tara_bu
 lega tara_opeto_bu
 
 // sections
-lega bosonoga_global
+lega bosonoga_golobal
 lega bosonoga_main
 lega gfx_cleanup
 lega gfx_frame
@@ -81,8 +81,8 @@ lega aka_i32
 lega kona
 lega def
 lega except
-lega from
-lega from_global
+lega ferom
+lega ferom_golobal
 lega mod
 lega pub
 lega ret
@@ -105,8 +105,8 @@ lega set
 lega val
 lega var
 lega while
-lega with
-lega with_len_kol
+lega vit
+lega vit_len_kol
 
 // conditions
 lega and
@@ -127,52 +127,52 @@ lega some
 
 // operations
 lega shift_or
-lega to
-lega to_add
-lega to_divide
-lega to_join
-lega to_mod
-lega to_multiply
-lega to_subtract
+lega tu
+lega tu_add
+lega tu_divide
+lega tu_join
+lega tu_mod
+lega tu_multiply
+lega tu_subtract
 
 // conversions
-lega to_f32
-lega to_f64
-lega to_i32
-lega to_i64
-lega to_opeto_bu
-lega to_opeto_color
-lega to_opeto_f32
-lega to_opeto_f64
-lega to_opeto_i32
-lega to_opeto_i64
-lega to_opeto_str
-lega to_opeto_u32
-lega to_opeto_u64
-lega to_u32
-lega to_u64
+lega tu_f32
+lega tu_f64
+lega tu_i32
+lega tu_i64
+lega tu_opeto_bu
+lega tu_opeto_color
+lega tu_opeto_f32
+lega tu_opeto_f64
+lega tu_opeto_i32
+lega tu_opeto_i64
+lega tu_opeto_str
+lega tu_opeto_u32
+lega tu_opeto_u64
+lega tu_u32
+lega tu_u64
 
 // math
-lega math_to_abs
-lega math_to_acos
-lega math_to_asin
-lega math_to_atan2
-lega math_to_ceil
-lega math_to_cos
-lega math_to_exp
-lega math_to_expm1
-lega math_to_floor
-lega math_to_hypot
-lega math_to_log
-lega math_to_log10
-lega math_to_log1p
-lega math_to_max
-lega math_to_min
-lega math_to_pow
-lega math_to_round
-lega math_to_sin
-lega math_to_sqrt
-lega math_to_tan
+lega math_tu_abs
+lega math_tu_acos
+lega math_tu_asin
+lega math_tu_atan2
+lega math_tu_ceil
+lega math_tu_cos
+lega math_tu_exp
+lega math_tu_expm1
+lega math_tu_floor
+lega math_tu_hypot
+lega math_tu_log
+lega math_tu_log10
+lega math_tu_log1p
+lega math_tu_max
+lega math_tu_min
+lega math_tu_pow
+lega math_tu_round
+lega math_tu_sin
+lega math_tu_sqrt
+lega math_tu_tan
 
 // io, str and xml
 lega io_latest
@@ -234,5 +234,5 @@ lega gfx_align_y_top
 // lega opeto
 // lega ret_
 // lega sleep_ms
-// lega to_
+// lega tu_
 // lega uneset

@@ -21,9 +21,9 @@ impl<'input> Checker<'_, 'input> {
             ast::Statement::Join(name, values) => {
                 let (slot, kind) = self.target(*name)?;
                 if kind != Kind::Str {
-                    return Self::fail(name.0.start, "to_join needs a str variable");
+                    return Self::fail(name.0.start, "tu_join needs a str variable");
                 }
-                Statement::Join(slot, self.operands(values, "to_join")?)
+                Statement::Join(slot, self.operands(values, "tu_join")?)
             }
             ast::Statement::Given {
                 operation,
@@ -278,7 +278,7 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(
                 name.0.start,
                 format!(
-                    "'{}' is {}, but '{called}' {gives} {}, so take it first, as in val found is {called} ... with ret 0_{}, then set {} {} found",
+                    "'{}' is {}, but '{called}' {gives} {}, so take it first, as in val found is {called} ... vit ret 0_{}, then set {} {} found",
                     self.text(name.0),
                     kind.name(),
                     result_kind.name(),
@@ -446,11 +446,11 @@ impl<'input> Checker<'_, 'input> {
                     ),
                 );
             }
-            let initial = self.value_of_kind(first, kind, "set ... to")?;
+            let initial = self.value_of_kind(first, kind, "set ... tu")?;
             if let Some(extra) = values.get(1) {
                 return Self::fail(
                     extra.span.start,
-                    format!("set ... to sets '{shown}' to a single value"),
+                    format!("set ... tu sets '{shown}' to a single value"),
                 );
             }
             return Ok(Statement::Assign {
@@ -464,12 +464,12 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(
                 span.start,
                 format!(
-                    "'{shown}' is {}, which cannot be used in arithmetic, but set ... to sets it",
+                    "'{shown}' is {}, which cannot be used in arithmetic, but set ... tu sets it",
                     kind.name()
                 ),
             );
         }
-        // As += of C, set count to_add 1_i32 2_i32 adds 1 and 2 to count, so
+        // As += of C, set count tu_add 1_i32 2_i32 adds 1 and 2 to count, so
         // the operation starts from the variable, which is not repeated.
         let mut operands = vec![Operand::Slot(slot)];
         for value in values {
@@ -493,7 +493,7 @@ impl<'input> Checker<'_, 'input> {
         })
     }
 
-    // to_opeto_i32 of an i32 variable, which a literal does not need, as
+    // tu_opeto_i32 of an i32 variable, which a literal does not need, as
     // it is written 7_opeto_i32.
     fn optional_conversion(
         &mut self,
@@ -540,7 +540,7 @@ impl<'input> Checker<'_, 'input> {
         if let Conversion::ToOptional(inner) = conversion {
             return self.optional_conversion(slot, (span, inner), first, values.get(1));
         }
-        // to_i32 is how an aka_i32 becomes an i32.
+        // tu_i32 is how an aka_i32 becomes an i32.
         let (left, source) = match self.aka_parameter(first) {
             Some((operand, _)) if conversion == Conversion::ToI32 => (operand, Kind::I32),
             Some(_) | None => self.value(first)?,

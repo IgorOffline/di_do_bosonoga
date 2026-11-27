@@ -23,7 +23,7 @@ impl Target {
 
     fn needs_call_message(&self, shown: &str) -> String {
         format!(
-            "'{shown}' {} {}, which call ... with ret takes for its block, each named, as in call {} with ret 0_{} as value di ... do",
+            "'{shown}' {} {}, which call ... vit ret takes for its block, each named, as in call {} vit ret 0_{} as value di ... do",
             self.gives,
             kinds_named(&self.results),
             self.example(shown),
@@ -34,7 +34,7 @@ impl Target {
     fn needs_val_message(&self, shown: &str) -> String {
         let kind = self.results.first().map_or("i32", |kind| kind.name());
         format!(
-            "'{shown}' {} {kind}, which val, var or set ... to takes, as in val value is {} with ret 0_{kind}",
+            "'{shown}' {} {kind}, which val, var or set ... tu takes, as in val value is {} vit ret 0_{kind}",
             self.gives,
             self.example(shown)
         )
@@ -146,7 +146,7 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(
                 call.taken.start,
                 format!(
-                    "'{shown}' {gives} {}, so its call ends with ret 0_{}, not '{text}'",
+                    "'{shown}' {gives} {}, so its call ends vit ret 0_{}, not '{text}'",
                     result.name(),
                     result.name()
                 ),
@@ -183,9 +183,7 @@ impl<'input> Checker<'_, 'input> {
         if target.results.is_empty() {
             return Self::fail(
                 taking.with.start,
-                format!(
-                    "'{shown}' returns no values, so its call has neither with ret nor a block"
-                ),
+                format!("'{shown}' returns no values, so its call has neither vit ret nor a block"),
             );
         }
         if target.results.len() == 1 {
@@ -204,7 +202,7 @@ impl<'input> Checker<'_, 'input> {
         Ok(Statement::Invoke(program::Invoke { call, slots, block }))
     }
 
-    // Declares the values that with ret takes, each once by its index and
+    // Declares the values that vit ret takes, each once by its index and
     // type, by increasing index, and gives their (index, slot) pairs.
     pub(super) fn take_results(
         &mut self,
