@@ -59,7 +59,7 @@ impl Kind {
             Kind::Flags => "flags",
             Kind::Color => "color",
             Kind::Str => "str",
-            Kind::Bool => "bool",
+            Kind::Bool => "bu",
             Kind::InputKey => "input_key",
             Kind::Font => "font",
             Kind::Icon => "icon",
@@ -77,7 +77,7 @@ impl Kind {
             Kind::F64 => "optional_f64",
             Kind::Color => "optional_color",
             Kind::Str => "optional_str",
-            Kind::Bool => "optional_bool",
+            Kind::Bool => "optional_bu",
             Kind::Flags | Kind::InputKey | Kind::Font | Kind::Icon | Kind::Optional(_) => {
                 "optional"
             }
@@ -389,7 +389,7 @@ impl Display for Value {
                 }
                 Ok(())
             }
-            Value::Bool(v) => f.write_str(if *v { "true" } else { "false" }),
+            Value::Bool(v) => f.write_str(if *v { "ta" } else { "fe" }),
             Value::Str(v) | Value::Font { text: v, .. } | Value::Icon { text: v, .. } => {
                 f.write_str(v)
             }

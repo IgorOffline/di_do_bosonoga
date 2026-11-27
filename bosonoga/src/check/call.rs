@@ -12,7 +12,7 @@ struct Target {
 }
 
 impl Target {
-    // How a call of the target is written, as in double_fn of ... or rows at 0_i32.
+    // How a call of the target is written, as in double_fen of ... or rows at 0_i32.
     fn example(&self, shown: &str) -> String {
         match self.callable {
             Callable::Array(_) | Callable::VarArray(_) => format!("{shown} at 0_i32"),

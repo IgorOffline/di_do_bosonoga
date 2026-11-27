@@ -89,7 +89,7 @@ impl Conversion {
                 Kind::F64 => "to_optional_f64",
                 Kind::Color => "to_optional_color",
                 Kind::Str => "to_optional_str",
-                Kind::Bool => "to_optional_bool",
+                Kind::Bool => "to_optional_bu",
                 Kind::Flags | Kind::InputKey | Kind::Font | Kind::Icon | Kind::Optional(_) => {
                     "to_optional"
                 }

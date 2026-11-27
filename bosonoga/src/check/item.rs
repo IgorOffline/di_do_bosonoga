@@ -9,7 +9,7 @@ use crate::ast::{self, Item, Named, Results, Section, Span};
 use crate::program::{self, Array, Operand};
 use crate::value::Kind;
 
-const OPTIONAL_TYPES: &str = "optional_ and i32, i64, u32, u64, f32, f64, bool, str or color, as in 0_optional_i32 or count_optional_i32";
+const OPTIONAL_TYPES: &str = "optional_ and i32, i64, u32, u64, f32, f64, bu, str or color, as in 0_optional_i32 or count_optional_i32";
 
 fn parameter_kind(name: &str) -> Option<Kind> {
     let bytes = name.as_bytes();
@@ -144,12 +144,12 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(span.start, "bosonoga_global must be the first section");
         }
         if has_main {
-            return self.expected_at(span, "aka_i32, const, def, val or end of file");
+            return self.expected_at(span, "aka_i32, kona, def, val or end of file");
         }
         if section == Section::Main && has_gfx {
             return self.expected_at(
                 span,
-                "aka_i32, const, def, val, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main",
+                "aka_i32, kona, def, val, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main",
             );
         }
         let is_main = section == Section::Main || section == Section::GfxMain;
@@ -209,7 +209,7 @@ impl<'input> Checker<'_, 'input> {
                 }
                 return self.expected_at(
                     *span,
-                    "a type with its index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bool, or optional_ and one of these but flags",
+                    "a type with its index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bu, or optional_ and one of these but flags",
                 );
             };
             if kinds.len() == FUNCTION_VALUES_MAX {
@@ -245,21 +245,21 @@ impl<'input> Checker<'_, 'input> {
         }
         let shown = self.text(span);
         if !is_function_name(name) {
-            if name == "_fn" {
+            if name == "_fen" {
                 return Self::fail(
                     span.start,
-                    "the name of a function has more before _fn, as in double_fn",
+                    "the name of a function has more before _fen, as in double_fen",
                 );
             }
             let mut base = shown;
-            if let Some(rest) = shown.strip_prefix("fn_")
+            if let Some(rest) = shown.strip_prefix("fen_")
                 && !rest.is_empty()
             {
                 base = rest;
             }
             return Self::fail(
                 span.start,
-                format!("the name of a function ends with _fn, as in {base}_fn"),
+                format!("the name of a function ends with _fen, as in {base}_fen"),
             );
         }
         if let Some(index) = self.function_any(name) {

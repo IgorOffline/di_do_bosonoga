@@ -1,8 +1,8 @@
 // function.bosonoga
 
-const board_radius is 4_i32
+kona board_radius is 4_i32
 
-def in_bounds_fn q_i32 r_i32 ret 0_bool
+def in_bounds_fen q_i32 r_i32 ret 0_bu
 di
   var s is 0_i32
   set s to_subtract q_i32 r_i32
@@ -13,12 +13,12 @@ di
   set steps math_to_max steps s_steps
   if steps le board_radius
   di
-    return true_bool
+    return ta_bu
   do
-  return false_bool
+  return fe_bu
 do
 
-def factorial_fn n_i64 ret 0_i64
+def factorial_fen n_i64 ret 0_i64
 di
   if n_i64 le 1_i64
   di
@@ -26,7 +26,7 @@ di
   do
   var smaller is n_i64
   set smaller to_subtract 1_i64
-  val rest is factorial_fn of smaller with ret 0_i64
+  val rest is factorial_fen of smaller with ret 0_i64
   var product is n_i64
   set product to_multiply rest
   return product
@@ -34,9 +34,9 @@ do
 
 bosonoga_main
 di
-  val inside is in_bounds_fn of 2_i32 -3_i32 with ret 0_bool
-  val outside is in_bounds_fn of 3_i32 2_i32 with ret 0_bool
-  val twenty is factorial_fn of 20_i64 with ret 0_i64
+  val inside is in_bounds_fen of 2_i32 -3_i32 with ret 0_bu
+  val outside is in_bounds_fen of 3_i32 2_i32 with ret 0_bu
+  val twenty is factorial_fen of 20_i64 with ret 0_i64
   if inside and not outside and twenty eq 2432902008176640000_i64
   di
     return exit_success

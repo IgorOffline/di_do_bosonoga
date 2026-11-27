@@ -3,7 +3,7 @@
 // The degrees of a field of view, above 0 and below 180.
 pub aka_i32 fov is from 1_i32 to 180_i32
 
-pub def degrees_fn view_fov ret 0_f32
+pub def degrees_fen view_fov ret 0_f32
 di
   val view is to_i32 view_fov
   val degrees is to_f32 view

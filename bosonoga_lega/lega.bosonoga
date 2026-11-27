@@ -14,7 +14,7 @@ lega _f64
 lega _flags
 lega _color
 lega _str
-lega _bool
+lega _bu
 lega _input_key
 lega _font
 lega _icon
@@ -26,10 +26,10 @@ lega _optional_f32
 lega _optional_f64
 lega _optional_color
 lega _optional_str
-lega _optional_bool
+lega _optional_bu
 
 // suffix of functions
-lega _fn
+lega _fen
 
 // prefix of flags, shift_0 to shift_31
 lega shift_
@@ -48,9 +48,9 @@ lega key_
 // values
 lega exit_failure
 lega exit_success
-lega false_bool
-lega false_optional_bool
-lega nihil_bool
+lega fe_bu
+lega fe_optional_bu
+lega nihil_bu
 lega nihil_color
 lega nihil_f32
 lega nihil_f64
@@ -59,8 +59,8 @@ lega nihil_i64
 lega nihil_str
 lega nihil_u32
 lega nihil_u64
-lega true_bool
-lega true_optional_bool
+lega ta_bu
+lega ta_optional_bu
 
 // sections
 lega bosonoga_global
@@ -78,7 +78,7 @@ lega do
 
 // items
 lega aka_i32
-lega const
+lega kona
 lega def
 lega except
 lega from
@@ -140,7 +140,7 @@ lega to_f32
 lega to_f64
 lega to_i32
 lega to_i64
-lega to_optional_bool
+lega to_optional_bu
 lega to_optional_color
 lega to_optional_f32
 lega to_optional_f64
