@@ -70,7 +70,7 @@ fn diagnostics() {
             "this is never reached, as the statement before it always returns",
         ),
         (
-            "def f_fen n_i32 ret_void di set n_i32 to 1_i32 do",
+            "def f_fen n_i32 ret_void di set n_i32 tu 1_i32 do",
             "'n_i32' is a parameter, which is a val and cannot be set, but a copy can, as in var n is n_i32",
         ),
         (

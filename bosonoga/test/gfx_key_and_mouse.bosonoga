@@ -1,8 +1,8 @@
 // gfx_key_and_mouse.bosonoga
 
-bosonoga_global
+bosonoga_golobal
 di
-  var held is fe_bu
+  var held is fales_bu
   var downs is 0_i32
   var ups is 0_i32
   var turned is 0d0_f32
@@ -14,8 +14,8 @@ gfx_key_down
 di
   if gfx_key eq key_walk
   di
-    set held to ta_bu
-    set downs to_add 1_i32
+    set held tu tara_bu
+    set downs tu_add 1_i32
   do
   else if gfx_key eq key_mouse
   di
@@ -34,18 +34,18 @@ gfx_key_up
 di
   if gfx_key eq key_walk
   di
-    set held to fe_bu
-    set ups to_add 1_i32
+    set held tu fales_bu
+    set ups tu_add 1_i32
   do
 do
 
 gfx_frame
 di
-  set turned to_add gfx_mouse_move_x
-  set tilted to_add gfx_mouse_move_y
+  set turned tu_add gfx_mouse_move_x
+  set tilted tu_add gfx_mouse_move_y
   if gfx_mouse_captured
   di
-    set captured_frames to_add 1_i32
+    set captured_frames tu_add 1_i32
   do
 do
 

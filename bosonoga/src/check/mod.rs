@@ -37,7 +37,7 @@ struct Variable<'input> {
     declaration: Declaration,
     origin: Origin,
     written: bool,
-    // The aka_i32 of a parameter, which is only converted with to_i32 or
+    // The aka_i32 of a parameter, which is only converted with tu_i32 or
     // given to a parameter of the same aka_i32.
     aka: Option<usize>,
     // The value of an i32 val that is a literal, which is known before the
@@ -50,7 +50,7 @@ enum Origin {
     Declared,
     // A parameter of a def, which is a val.
     Parameter,
-    // A variable of bosonoga_global that a def lists in with from_global,
+    // A variable of bosonoga_golobal that a def lists in vit ferom_golobal,
     // which is used once it is read or set.
     Captured,
 }
@@ -412,7 +412,7 @@ impl<'a, 'input> Checker<'a, 'input> {
         }
     }
 
-    // Whether a declaration here is a variable of bosonoga_global.
+    // Whether a declaration here is a variable of bosonoga_golobal.
     fn in_global(&self) -> bool {
         self.section == Some(Section::Global) && self.function.is_none()
     }
@@ -469,7 +469,7 @@ impl<'a, 'input> Checker<'a, 'input> {
                     return Self::fail(
                         span.start,
                         format!(
-                            "'{}' is in with from_global, but the function never uses it",
+                            "'{}' is in vit ferom_golobal, but the function never uses it",
                             self.text(span)
                         ),
                     );

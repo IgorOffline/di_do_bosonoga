@@ -40,7 +40,7 @@ fn unrecognized(
         return Diagnostic::new(
             start,
             format!(
-                "a {declaration} declares one variable, and the values of a call are taken with call ... with ret, one per line"
+                "a {declaration} declares one variable, and the values of a call are taken with call ... vit ret, one per line"
             ),
         );
     }
@@ -62,7 +62,7 @@ fn wanted(expected: &[String], before: &[Tok<'_>]) -> String {
             ""
         };
         return format!(
-            "{except}aka_i32, kona, def, val, bosonoga_global, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main"
+            "{except}aka_i32, kona, def, val, bosonoga_golobal, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main"
         );
     }
     if has(expected, "section") {
@@ -79,7 +79,7 @@ fn wanted(expected: &[String], before: &[Tok<'_>]) -> String {
     }
     let literal = has(expected, "literal");
     let indexed_type = has(expected, "indexed_type");
-    // After with ret 0_bu as found, which another taken value or the block follows.
+    // After vit ret 0_bu as found, which another taken value or the block follows.
     if has(expected, "di")
         && indexed_type
         && let [.., Tok::As, Tok::Name(_)] = before
@@ -129,7 +129,7 @@ fn terminal_word(terminal: &str) -> &str {
         "gfx_align_y" => {
             "gfx_align_y_top, gfx_align_y_middle, gfx_align_y_baseline or gfx_align_y_bottom"
         }
-        "operation" => "to, to_add, to_subtract, to_multiply, to_divide, to_mod or a conversion",
+        "operation" => "tu, tu_add, tu_subtract, tu_multiply, tu_divide, tu_mod or a conversion",
         word => word,
     }
 }
@@ -138,7 +138,7 @@ fn listed(expected: &[String]) -> String {
     // The words of an operation have to among them.
     let mut terminals = Vec::new();
     for terminal in expected {
-        if terminal != "\"to\"" || !has(expected, "operation") {
+        if terminal != "\"tu\"" || !has(expected, "operation") {
             terminals.push(terminal);
         }
     }

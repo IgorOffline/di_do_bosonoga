@@ -1,21 +1,21 @@
 // optional.bosonoga
 
-bosonoga_global
+bosonoga_golobal
 di
   var best is nihil_i32
 do
 
 kona no_name is nihil_str
-kona default_ratio is 1d5_optional_f32
+kona default_ratio is 1d5_opeto_f32
 
 // A number that may be missing, as Rust's Option<i32>.
-def parsed_fen text_str ret 0_optional_i32
+def parsed_fen text_str ret 0_opeto_i32
 di
-  str_parse text_str with ret 0_bu as parsed 1_i32 as number
+  str_parse text_str vit ret 0_bu as parsed 1_i32 as number
   di
     if parsed
     di
-      val found is to_optional_i32 number
+      val found is tu_opeto_i32 number
       return found
     do
   do
@@ -23,62 +23,62 @@ di
 do
 
 // An optional parameter, given a present literal, none or an optional.
-def or_zero_fen count_optional_i32 ret 0_i32
+def or_zero_fen count_opeto_i32 ret 0_i32
 di
-  if some count_optional_i32 as count
+  if some count_opeto_i32 as count
   di
     return count
   do
   return 0_i32
 do
 
-def first_fen ret 0_optional_str 1_optional_f32 2_optional_bu
+def first_fen ret 0_opeto_str 1_opeto_f32 2_opeto_bu
 di
-  return "first"_optional_str default_ratio fe_optional_bu
+  return "first"_opeto_str default_ratio fales_opeto_bu
 do
 
-def keep_best_fen candidate_i32 with from_global best ret_void
+def keep_best_fen candidate_i32 vit ferom_golobal best ret_void
 di
   if not some best
   di
-    set best to_optional_i32 candidate_i32
+    set best tu_opeto_i32 candidate_i32
   do
   else if some best as known
   di
     if candidate_i32 gt known
     di
-      set best to_optional_i32 candidate_i32
+      set best tu_opeto_i32 candidate_i32
     do
   do
 do
 
 bosonoga_main
 di
-  var ok is ta_bu
-  val seven is parsed_fen of "7"_str with ret 0_optional_i32
-  val missing is parsed_fen of "seven"_str with ret 0_optional_i32
+  var ok is tara_bu
+  val seven is parsed_fen of "7"_str vit ret 0_opeto_i32
+  val missing is parsed_fen of "seven"_str vit ret 0_opeto_i32
   // A number has one form, so +7 is not one.
-  val plus is parsed_fen of "+7"_str with ret 0_optional_i32
+  val plus is parsed_fen of "+7"_str vit ret 0_opeto_i32
   if some plus
   di
-    set ok to fe_bu
+    set ok tu fales_bu
   do
   if some seven as number
   di
     info "seven "_str number
     if number not_eq 7_i32
     di
-      set ok to fe_bu
+      set ok tu fales_bu
     do
   do
   else
   di
-    set ok to fe_bu
+    set ok tu fales_bu
   do
   if some missing as number
   di
     info "missing "_str number
-    set ok to fe_bu
+    set ok tu fales_bu
   do
   else if some seven and not some missing
   di
@@ -86,29 +86,29 @@ di
   do
   if some missing or not some seven
   di
-    set ok to fe_bu
+    set ok tu fales_bu
   do
-  val zero is or_zero_fen of missing with ret 0_i32
-  val also_seven is or_zero_fen of seven with ret 0_i32
-  val three is or_zero_fen of 3_optional_i32 with ret 0_i32
-  val negative is or_zero_fen of -4_optional_i32 with ret 0_i32
-  val absent_given is or_zero_fen of nihil_i32 with ret 0_i32
+  val zero is or_zero_fen of missing vit ret 0_i32
+  val also_seven is or_zero_fen of seven vit ret 0_i32
+  val three is or_zero_fen of 3_opeto_i32 vit ret 0_i32
+  val negative is or_zero_fen of -4_opeto_i32 vit ret 0_i32
+  val absent_given is or_zero_fen of nihil_i32 vit ret 0_i32
   if zero not_eq 0_i32 or also_seven not_eq 7_i32 or three not_eq 3_i32
     or negative not_eq -4_i32 or absent_given not_eq 0_i32
   di
-    set ok to fe_bu
+    set ok tu fales_bu
   do
   var label is no_name
   if some label
   di
-    set ok to fe_bu
+    set ok tu fales_bu
   do
-  set label to "label"_optional_str
-  call first_fen with ret 0_optional_str as name 1_optional_f32 as ratio 2_optional_bu as flag
+  set label tu "label"_opeto_str
+  call first_fen vit ret 0_opeto_str as name 1_opeto_f32 as ratio 2_opeto_bu as flag
   di
     if not some name or not some ratio or not some flag
     di
-      set ok to fe_bu
+      set ok tu fales_bu
     do
     if some name as text
     di
@@ -118,14 +118,14 @@ di
     di
       if value not_eq_6 1d5_f32
       di
-        set ok to fe_bu
+        set ok tu fales_bu
       do
     do
     if some flag as raised
     di
       if raised
       di
-        set ok to fe_bu
+        set ok tu fales_bu
       do
     do
   do
@@ -133,13 +133,13 @@ di
   di
     if text not_eq "label"_str
     di
-      set ok to fe_bu
+      set ok tu fales_bu
     do
   do
-  set label to nihil_str
+  set label tu nihil_str
   if some label
   di
-    set ok to fe_bu
+    set ok tu fales_bu
   do
   call keep_best_fen of 4_i32
   call keep_best_fen of 9_i32
@@ -149,15 +149,15 @@ di
     info "best "_str most
     if most not_eq 9_i32
     di
-      set ok to fe_bu
+      set ok tu fales_bu
     do
   do
-  val maybe_big is 9000000000_optional_i64
+  val maybe_big is 9000000000_opeto_i64
   if some maybe_big as big
   di
     if big not_eq 9000000000_i64
     di
-      set ok to fe_bu
+      set ok tu fales_bu
     do
   do
   if ok

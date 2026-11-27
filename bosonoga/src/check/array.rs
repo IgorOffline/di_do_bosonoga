@@ -178,7 +178,7 @@ impl<'input> Checker<'_, 'input> {
     ) -> Result<usize, Diagnostic> {
         let mut row_count = 0;
         if let Operand::Literal(Value::I32(given)) =
-            self.value_of_kind(count, Kind::I32, "with_len_col")?
+            self.value_of_kind(count, Kind::I32, "vit_len_kol")?
             && let Ok(rows) = usize::try_from(given)
         {
             row_count = rows;
@@ -186,7 +186,7 @@ impl<'input> Checker<'_, 'input> {
         if row_count == 0 {
             return Self::fail(
                 count.span.start,
-                "with_len_col needs an i32 literal or constant above zero, as the size of an array is known before the program runs",
+                "vit_len_kol needs an i32 literal or constant above zero, as the size of an array is known before the program runs",
             );
         }
         self.check_array_size(count.span, name, row_count, kinds)?;
@@ -212,14 +212,14 @@ impl<'input> Checker<'_, 'input> {
             self.target((span, name))?;
             return self.expected(
                 span.end,
-                "to, to_add, to_subtract, to_multiply, to_divide, to_mod or a conversion",
+                "tu, tu_add, tu_subtract, tu_multiply, tu_divide, tu_mod or a conversion",
             );
         };
         let shown = self.text(span);
         let index_operand =
             self.value_of_kind(index, Kind::I32, &format!("the index of '{shown}'"))?;
         if operation != Operation::Copy {
-            return self.expected_at(operation_span, "to");
+            return self.expected_at(operation_span, "tu");
         }
         let types = values_shown(&kinds);
         let context = format!("a row of '{shown}'");

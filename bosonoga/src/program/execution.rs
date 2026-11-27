@@ -155,7 +155,7 @@ impl<'a> Execution<'a> {
 
     fn run_window(&mut self) -> Result<Option<ExitStatus>, Diagnostic> {
         let program = self.program;
-        self.section("bosonoga_global", &program.sections.global)?;
+        self.section("bosonoga_golobal", &program.sections.global)?;
         self.section("gfx_init", &program.sections.init)?;
         if let Flow::Closed = self.next_frame()? {
             return Ok(None);
