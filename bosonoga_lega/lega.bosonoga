@@ -100,13 +100,13 @@ lega is
 lega nihil
 lega of
 lega return
-lega row
+lega roa
 lega set
 lega val
 lega var
 lega while
 lega with
-lega with_len_col
+lega with_len_kol
 
 // conditions
 lega and
@@ -228,8 +228,8 @@ lega gfx_align_y_top
 // lega continue
 // lega expect
 // lega io_raw_import
-// lega len_col
-// lega len_row
+// lega len_kol
+// lega len_roa
 // lega neo
 // lega opeto
 // lega ret_

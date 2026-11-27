@@ -4,7 +4,7 @@ bosonoga_global
 di
   var total is 0_i32
   var count is 0_i32
-  var history is array 0_i32 with_len_col 4_i32
+  var history is array 0_i32 with_len_kol 4_i32
   val step is 10_i32
 do
 

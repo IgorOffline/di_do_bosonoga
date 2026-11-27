@@ -178,7 +178,7 @@ impl<'input> Checker<'_, 'input> {
     ) -> Result<usize, Diagnostic> {
         let mut row_count = 0;
         if let Operand::Literal(Value::I32(given)) =
-            self.value_of_kind(count, Kind::I32, "with_len_col")?
+            self.value_of_kind(count, Kind::I32, "with_len_kol")?
             && let Ok(rows) = usize::try_from(given)
         {
             row_count = rows;
@@ -186,7 +186,7 @@ impl<'input> Checker<'_, 'input> {
         if row_count == 0 {
             return Self::fail(
                 count.span.start,
-                "with_len_col needs an i32 literal or constant above zero, as the size of an array is known before the program runs",
+                "with_len_kol needs an i32 literal or constant above zero, as the size of an array is known before the program runs",
             );
         }
         self.check_array_size(count.span, name, row_count, kinds)?;

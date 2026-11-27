@@ -49,7 +49,7 @@ extern {
         "with" => Tok::With,
         "at" => Tok::At,
         "array" => Tok::Array,
-        "row" => Tok::Row,
+        "roa" => Tok::Row,
         "while" => Tok::While,
         "gfx_await_next_frame" => Tok::AwaitNextFrame,
         "gfx_clear" => Tok::GfxClear,
@@ -66,7 +66,7 @@ extern {
         "gfx_mouse_release" => Tok::GfxMouseRelease,
         "gfx_align_x" => Tok::AlignX(<Horizontal>),
         "gfx_align_y" => Tok::AlignY(<Vertical>),
-        "with_len_col" => Tok::WithLenCol,
+        "with_len_kol" => Tok::WithLenCol,
         "if" => Tok::If,
         "else" => Tok::Else,
         "and" => Tok::And,
@@ -128,11 +128,11 @@ Indexed: Span = {
 };
 
 Row: (Span, Vec<Operand<'input>>) =
-    <start:@L> "row" <end:@R> <values:Operand+> => (Span { start, end }, values);
+    <start:@L> "roa" <end:@R> <values:Operand+> => (Span { start, end }, values);
 
 Rows: Rows<'input> = {
     "di" <rows:Row+> "do" => Rows::Literal(rows),
-    <start:@L> "with_len_col" <end:@R> <count:Operand> => Rows::Zeroed(Span { start, end }, count),
+    <start:@L> "with_len_kol" <end:@R> <count:Operand> => Rows::Zeroed(Span { start, end }, count),
 };
 
 Block: Block<'input> =

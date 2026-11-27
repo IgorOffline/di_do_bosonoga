@@ -10,7 +10,7 @@ aka_i32 une_dice is from 0_i32 to 6_i32
 
 val une_pairs is array 0_i32
 di
-  row 1_i32
+  roa 1_i32
 do
 
 bosonoga_global
