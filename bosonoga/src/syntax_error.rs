@@ -62,7 +62,7 @@ fn wanted(expected: &[String], before: &[Tok<'_>]) -> String {
             ""
         };
         return format!(
-            "{except}aka_i32, const, def, val, bosonoga_global, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main"
+            "{except}aka_i32, kona, def, val, bosonoga_global, bosonoga_main, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main"
         );
     }
     if has(expected, "section") {
@@ -79,7 +79,7 @@ fn wanted(expected: &[String], before: &[Tok<'_>]) -> String {
     }
     let literal = has(expected, "literal");
     let indexed_type = has(expected, "indexed_type");
-    // After with ret 0_bool as found, which another taken value or the block follows.
+    // After with ret 0_bu as found, which another taken value or the block follows.
     if has(expected, "di")
         && indexed_type
         && let [.., Tok::As, Tok::Name(_)] = before
@@ -93,7 +93,7 @@ fn wanted(expected: &[String], before: &[Tok<'_>]) -> String {
         return "a value".to_owned();
     }
     if indexed_type {
-        return "a type with its index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bool".to_owned();
+        return "a type with its index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bu".to_owned();
     }
     listed(expected)
 }

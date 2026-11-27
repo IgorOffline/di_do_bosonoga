@@ -120,7 +120,7 @@ pub struct Call<'input> {
 }
 
 // The values of a call statement, taken for its block, as in
-// with ret 0_bool as found 1_i32 as number di ... do.
+// with ret 0_bu as found 1_i32 as number di ... do.
 #[derive(Debug, PartialEq)]
 pub struct Taking<'input> {
     pub with: Span,

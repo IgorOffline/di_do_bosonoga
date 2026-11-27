@@ -285,7 +285,7 @@ fn parse_mouse(file: &KeyFile<'_>) -> Result<Mouse, String> {
             },
             "invert_north" | "invert_west" => {
                 let Some(Value::Bool(invert)) = one_literal(text) else {
-                    return Err(format!("{key} must be true_bool or false_bool"));
+                    return Err(format!("{key} must be ta_bu or fe_bu"));
                 };
                 if key == "invert_north" {
                     mouse.invert_north = invert;

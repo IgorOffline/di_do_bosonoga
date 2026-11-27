@@ -192,7 +192,7 @@ pub(crate) fn check(
 }
 
 fn is_function_name(name: &str) -> bool {
-    name.len() > "_fn".len() && name.ends_with("_fn")
+    name.len() > "_fen".len() && name.ends_with("_fen")
 }
 
 // Whether a statement always returns, so that nothing after it runs: a

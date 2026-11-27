@@ -1,7 +1,7 @@
 // une.bosonoga
 
 // A name that starts with une_ can be unused.
-const une_limit is 10_i32
+kona une_limit is 10_i32
 
 aka_i32 une_fov is from 1_i32 to 180_i32
 
@@ -19,17 +19,17 @@ di
   var une_count is 0_i32
 do
 
-def une_hello_fn with from_global une_count ret_void
+def une_hello_fen with from_global une_count ret_void
 di
   nihil
 do
 
-def both_fn left_i32 une_i32 une_roll_une_dice ret 0_i32 1_i32
+def both_fen left_i32 une_i32 une_roll_une_dice ret 0_i32 1_i32
 di
   return left_i32 left_i32
 do
 
-def rolled_fn roll_une_dice with from_global total ret 0_i32
+def rolled_fen roll_une_dice with from_global total ret 0_i32
 di
   val roll is to_i32 roll_une_dice
   var sum is total
@@ -43,11 +43,11 @@ di
   var une_set is 0_i32
   set une_set to 1_i32
   val une_read is 2_i32
-  call both_fn of une_read 3_i32 4_i32 with ret 0_i32 as une_left
+  call both_fen of une_read 3_i32 4_i32 with ret 0_i32 as une_left
   di
     nihil
   do
-  val three is rolled_fn of une_read with ret 0_i32
+  val three is rolled_fen of une_read with ret 0_i32
   if three eq 3_i32
   di
     return exit_success

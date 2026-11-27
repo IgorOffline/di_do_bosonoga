@@ -38,7 +38,7 @@ extern {
         "aka_i32" => Tok::Aka,
         "from" => Tok::From,
         "except" => Tok::Except,
-        "const" => Tok::Const,
+        "kona" => Tok::Const,
         "pub" => Tok::Pub,
         "mod" => Tok::Mod,
         "def" => Tok::Def,
@@ -99,7 +99,7 @@ Item: Item<'input> = {
     <public:Public?> "aka_i32" <name:Named> "is" "from" <from:Operand> "to" <to:Operand> <except:Except?> =>
         Item::Aka { public, name, range: Some((from, to)), except: except.unwrap_or_default() },
     <public:Public?> "aka_i32" <name:Named> <except:Except> => Item::Aka { public, name, range: None, except },
-    <public:Public?> "const" <name:Named> "is" <value:Operand> => Item::Const { public, name, value },
+    <public:Public?> "kona" <name:Named> "is" <value:Operand> => Item::Const { public, name, value },
     <public:Public?> "def" <name:Named> <parameters:Named*> <globals:FromGlobal?> <results:Results>
         <block:Block> =>
         Item::Def { public, name, parameters, globals: globals.unwrap_or_default(), results, block },

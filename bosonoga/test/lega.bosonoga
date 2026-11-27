@@ -9,15 +9,15 @@ lega _u32
 lega _f32
 lega _f64
 lega _str
-lega _bool
+lega _bu
 lega _optional_i32
 lega _optional_i64
 lega _optional_f32
 lega _optional_str
-lega _optional_bool
+lega _optional_bu
 
 // suffix of functions
-lega _fn
+lega _fen
 
 // prefix of names that can be unused
 lega une_
@@ -29,11 +29,11 @@ lega key_
 // values
 lega exit_failure
 lega exit_success
-lega false_bool
-lega false_optional_bool
+lega fe_bu
+lega fe_optional_bu
 lega nihil_i32
 lega nihil_str
-lega true_bool
+lega ta_bu
 
 // sections
 lega bosonoga_global
@@ -49,7 +49,7 @@ lega do
 
 // items
 lega aka_i32
-lega const
+lega kona
 lega def
 lega except
 lega from

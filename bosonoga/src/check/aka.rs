@@ -103,7 +103,7 @@ impl<'input> Checker<'_, 'input> {
         if is_type_name(base) {
             return Self::fail(span.start, format!("'{base}' is already a type"));
         }
-        if base.contains('_') || base == "fn" {
+        if base.contains('_') || base == "fen" {
             return Self::fail(
                 span.start,
                 format!(

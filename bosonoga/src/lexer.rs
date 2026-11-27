@@ -97,7 +97,7 @@ const INDEXED_TYPES: &[&str] = &[
     "flags",
     "color",
     "str",
-    "bool",
+    "bu",
     "input_key",
     "font",
     "icon",
@@ -370,7 +370,7 @@ fn nihil_literal(text: &str, start: usize) -> Result<Option<Value>, Diagnostic> 
         })),
         Some(_) | None => Err(Diagnostic::new(
             start,
-            "nihil is followed by the type that is absent, i32, i64, u32, u64, f32, f64, bool, str or color, as in nihil_i32",
+            "nihil is followed by the type that is absent, i32, i64, u32, u64, f32, f64, bu, str or color, as in nihil_i32",
         )),
     }
 }
@@ -415,7 +415,7 @@ fn word(text: &str) -> Tok<'_> {
         "exit_success" => Tok::ExitSuccess,
         "exit_failure" => Tok::ExitFailure,
         "set" => Tok::Set,
-        "const" => Tok::Const,
+        "kona" => Tok::Const,
         "pub" => Tok::Pub,
         "mod" => Tok::Mod,
         "def" => Tok::Def,
@@ -453,10 +453,10 @@ fn word(text: &str) -> Tok<'_> {
         "some" => Tok::Some,
         "une" | UNE_PREFIX => Tok::Une,
         "shift_or" => Tok::ShiftOr,
-        "true_bool" => Tok::Literal(Value::Bool(true)),
-        "false_bool" => Tok::Literal(Value::Bool(false)),
-        "true_optional_bool" => Tok::Literal(Value::present(Value::Bool(true))),
-        "false_optional_bool" => Tok::Literal(Value::present(Value::Bool(false))),
+        "ta_bu" => Tok::Literal(Value::Bool(true)),
+        "fe_bu" => Tok::Literal(Value::Bool(false)),
+        "ta_optional_bu" => Tok::Literal(Value::present(Value::Bool(true))),
+        "fe_optional_bu" => Tok::Literal(Value::present(Value::Bool(false))),
         "gfx_delta_time" | "gfx_heap_bytes" | "gfx_key" | "gfx_mouse_move_x"
         | "gfx_mouse_move_y" | "gfx_mouse_captured" => Tok::GfxValue(text),
         _ if is_numbered(text, "shift_") => Tok::Shift(text),

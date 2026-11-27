@@ -184,7 +184,7 @@ impl<'input> Checker<'_, 'input> {
         if is_function_name(name) {
             return Self::fail(
                 span.start,
-                format!("'{shown}' ends with _fn, which only the name of a function does"),
+                format!("'{shown}' ends with _fen, which only the name of a function does"),
             );
         }
         if let Some(index) = self.function_any(name) {
