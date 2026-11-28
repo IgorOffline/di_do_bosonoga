@@ -13,8 +13,8 @@ use crate::source::Sources;
 use crate::value::{Compare, Conversion, Operation, Value};
 
 // Where a variable lives: in the frame of the running function or section,
-// or, for a variable of bosonoga_golobal, in the first frame, which a def
-// reaches vit ferom_golobal.
+// or, for a variable of global, in the first frame, which a def
+// reaches with from_global.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Slot {
     Local(usize),
@@ -72,7 +72,7 @@ pub(crate) enum Callee {
     VarArray(usize),
 }
 
-// The values of an aka_i32: those of the range, which is ferom, inclusive, and
+// The values of an aka_i32: those of the range, which is from, inclusive, and
 // to, exclusive, or else every i32, but not those of except, which increase.
 #[derive(Debug)]
 pub(crate) struct Aka {
@@ -103,11 +103,11 @@ impl Aka {
     }
 }
 
-// As it is written, as in ferom 0_i32 to 6_i32 except 3_i32 4_i32.
+// As it is written, as in from 0_i32 to 6_i32 except 3_i32 4_i32.
 impl Display for Aka {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         if let Some((from, to)) = self.range {
-            write!(formatter, " ferom {from}_i32 tu {to}_i32")?;
+            write!(formatter, " from {from}_i32 to {to}_i32")?;
         }
         if !self.except.is_empty() {
             write!(formatter, " except")?;

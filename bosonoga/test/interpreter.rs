@@ -62,32 +62,32 @@ fn diagnostics() {
     let lega = Lega::read(Path::new("test")).unwrap();
     let cases = [
         (
-            "bosonoga_main di info 1_i32 do",
-            "bosonoga_main can reach its end without a return, which gives exit_success or exit_failure",
+            "main di info 1_i32 do",
+            "main can reach its end without a return, which gives exit_success or exit_failure",
         ),
         (
-            "bosonoga_main di return exit_success info 1_i32 do",
+            "main di return exit_success info 1_i32 do",
             "this is never reached, as the statement before it always returns",
         ),
         (
-            "def f_fen n_i32 ret_void di set n_i32 tu 1_i32 do",
+            "def f_fn n_i32 ret_void di set n_i32 to 1_i32 do",
             "'n_i32' is a parameter, which is a val and cannot be set, but a copy can, as in var n is n_i32",
         ),
         (
-            "bosonoga_main di var une is 1_i32 return exit_success do",
+            "main di var une is 1_i32 return exit_success do",
             "expected a variable name, got 'une'",
         ),
         // The step lega comes first, so the missing return is not reported.
         (
-            "bosonoga_main di gfx_draw_hex do",
+            "main di gfx_draw_hex do",
             "'gfx_draw_hex' is not lega, as lega.bosonoga has no 'lega gfx_draw_hex'",
         ),
         (
-            "bosonoga_main di info 7_u64 do",
+            "main di info 7_u64 do",
             "'7_u64' is not lega, as lega.bosonoga has no 'lega _u64'",
         ),
         (
-            "bosonoga_main di break do",
+            "main di break do",
             "'break' cannot be lega, as bosonoga has no break",
         ),
         (

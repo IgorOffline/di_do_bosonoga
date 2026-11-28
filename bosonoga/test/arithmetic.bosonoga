@@ -1,20 +1,20 @@
 // arithmetic.bosonoga
 
-bosonoga_main
+main
 di
   var count is 1_f32 // 1
-  set count tu_add 2_f32 3_f32 // 6
-  set count math_tu_pow count 3_f32 // 216
-  set count tu_subtract 6_f32 10_f32 // 200
-  set count tu_divide 10_f32 // 20
-  set count tu_add 5_f32 // 25
-  set count math_tu_sqrt count // 5
+  set count to_add 2_f32 3_f32 // 6
+  set count math_to_pow count 3_f32 // 216
+  set count to_subtract 6_f32 10_f32 // 200
+  set count to_divide 10_f32 // 20
+  set count to_add 5_f32 // 25
+  set count math_to_sqrt count // 5
   // Each operation starts from its variable, as += does in C.
   var left is 17_i32
-  set left tu_mod 5_i32 // 2
-  set left tu_multiply 3_i32 4_i32 // 24
-  set left tu_subtract 30_i32 // -6
-  set left tu_divide -2_i32 // 3
+  set left to_mod 5_i32 // 2
+  set left to_multiply 3_i32 4_i32 // 24
+  set left to_subtract 30_i32 // -6
+  set left to_divide -2_i32 // 3
 
   // eq_3 and eq_6 hold if the difference is at most 0.001 or 0.000001,
   // however large the values are.

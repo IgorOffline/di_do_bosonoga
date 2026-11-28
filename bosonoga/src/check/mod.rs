@@ -37,7 +37,7 @@ struct Variable<'input> {
     declaration: Declaration,
     origin: Origin,
     written: bool,
-    // The aka_i32 of a parameter, which is only converted with tu_i32 or
+    // The aka_i32 of a parameter, which is only converted with to_i32 or
     // given to a parameter of the same aka_i32.
     aka: Option<usize>,
     // The value of an i32 val that is a literal, which is known before the
@@ -50,7 +50,7 @@ enum Origin {
     Declared,
     // A parameter of a def, which is a val.
     Parameter,
-    // A variable of bosonoga_golobal that a def lists in vit ferom_golobal,
+    // A variable of global that a def lists in with from_global,
     // which is used once it is read or set.
     Captured,
 }
@@ -182,7 +182,7 @@ pub(crate) fn check(
         let message = if checker.program.is_gfx {
             "a gfx program needs a gfx_main block"
         } else {
-            "a program needs a bosonoga_main block"
+            "a program needs a main block"
         };
         return Err(Diagnostic::new(end, message));
     }
@@ -192,7 +192,7 @@ pub(crate) fn check(
 }
 
 fn is_function_name(name: &str) -> bool {
-    name.len() > "_fen".len() && name.ends_with("_fen")
+    name.len() > "_fn".len() && name.ends_with("_fn")
 }
 
 // Whether a statement always returns, so that nothing after it runs: a
@@ -230,7 +230,7 @@ pub(super) fn returns(statement: &ast::Statement<'_>) -> bool {
         | ast::Statement::Draw { .. }
         | ast::Statement::Camera3d { .. }
         | ast::Statement::MouseCapture(..)
-        | ast::Statement::Nihil => false,
+        | ast::Statement::Empty => false,
     }
 }
 
@@ -412,7 +412,7 @@ impl<'a, 'input> Checker<'a, 'input> {
         }
     }
 
-    // Whether a declaration here is a variable of bosonoga_golobal.
+    // Whether a declaration here is a variable of global.
     fn in_global(&self) -> bool {
         self.section == Some(Section::Global) && self.function.is_none()
     }
@@ -469,7 +469,7 @@ impl<'a, 'input> Checker<'a, 'input> {
                     return Self::fail(
                         span.start,
                         format!(
-                            "'{}' is in vit ferom_golobal, but the function never uses it",
+                            "'{}' is in with from_global, but the function never uses it",
                             self.text(span)
                         ),
                     );

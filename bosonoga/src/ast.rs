@@ -29,8 +29,8 @@ impl Section {
     #[must_use]
     pub fn named(word: &str) -> Option<Section> {
         Some(match word {
-            "bosonoga_golobal" => Section::Global,
-            "bosonoga_main" => Section::Main,
+            "global" => Section::Global,
+            "main" => Section::Main,
             "gfx_init" => Section::GfxInit,
             "gfx_frame" => Section::GfxFrame,
             "gfx_cleanup" => Section::GfxCleanup,
@@ -44,8 +44,8 @@ impl Section {
     #[must_use]
     pub fn word(self) -> &'static str {
         match self {
-            Section::Global => "bosonoga_golobal",
-            Section::Main => "bosonoga_main",
+            Section::Global => "global",
+            Section::Main => "main",
             Section::GfxInit => "gfx_init",
             Section::GfxFrame => "gfx_frame",
             Section::GfxCleanup => "gfx_cleanup",
@@ -120,7 +120,7 @@ pub struct Call<'input> {
 }
 
 // The values of a call statement, taken for its block, as in
-// vit ret 0_bu as found 1_i32 as number di ... do.
+// with ret 0_bool as found 1_i32 as number di ... do.
 #[derive(Debug, PartialEq)]
 pub struct Taking<'input> {
     pub with: Span,
@@ -232,7 +232,7 @@ pub enum Statement<'input> {
     },
     // gfx_mouse_capture when true, and gfx_mouse_release when false.
     MouseCapture(Span, bool),
-    Nihil,
+    Empty,
     Return(Span, ExitStatus),
     ReturnValues(Span, Vec<Operand<'input>>),
 }
@@ -252,7 +252,7 @@ pub enum Results {
 #[derive(Debug, PartialEq)]
 pub enum Item<'input> {
     Mod(Span, String),
-    // The range is ferom, inclusive, and to, exclusive, and is every i32 if
+    // The range is from, inclusive, and to, exclusive, and is every i32 if
     // it is not given.
     Aka {
         public: Option<Span>,

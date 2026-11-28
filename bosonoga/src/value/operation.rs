@@ -16,12 +16,12 @@ impl Operation {
     #[must_use]
     pub fn named(word: &str) -> Option<Operation> {
         Some(match word {
-            "tu" => Self::Copy,
-            "tu_add" => Self::Add,
-            "tu_subtract" => Self::Subtract,
-            "tu_multiply" => Self::Multiply,
-            "tu_divide" => Self::Divide,
-            "tu_mod" => Self::Modulo,
+            "to" => Self::Copy,
+            "to_add" => Self::Add,
+            "to_subtract" => Self::Subtract,
+            "to_multiply" => Self::Multiply,
+            "to_divide" => Self::Divide,
+            "to_mod" => Self::Modulo,
             _ => return None,
         })
     }

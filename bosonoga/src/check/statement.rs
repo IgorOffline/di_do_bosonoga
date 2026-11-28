@@ -21,9 +21,9 @@ impl<'input> Checker<'_, 'input> {
             ast::Statement::Join(name, values) => {
                 let (slot, kind) = self.target(*name)?;
                 if kind != Kind::Str {
-                    return Self::fail(name.0.start, "tu_join needs a str variable");
+                    return Self::fail(name.0.start, "to_join needs a str variable");
                 }
-                Statement::Join(slot, self.operands(values, "tu_join")?)
+                Statement::Join(slot, self.operands(values, "to_join")?)
             }
             ast::Statement::Given {
                 operation,
@@ -97,7 +97,7 @@ impl<'input> Checker<'_, 'input> {
                 block,
             } => self.camera_3d(*span, values, block)?,
             ast::Statement::MouseCapture(span, capture) => self.mouse_capture(*span, *capture)?,
-            ast::Statement::Nihil => return Ok(None),
+            ast::Statement::Empty => return Ok(None),
             ast::Statement::Return(span, status) => self.return_status(*span, *status)?,
             ast::Statement::ReturnValues(span, values) => self.return_values(*span, values)?,
         };
@@ -278,7 +278,7 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(
                 name.0.start,
                 format!(
-                    "'{}' is {}, but '{called}' {gives} {}, so take it first, as in val found is {called} ... vit ret 0_{}, then set {} {} found",
+                    "'{}' is {}, but '{called}' {gives} {}, so take it first, as in val found is {called} ... with ret 0_{}, then set {} {} found",
                     self.text(name.0),
                     kind.name(),
                     result_kind.name(),
@@ -311,11 +311,11 @@ impl<'input> Checker<'_, 'input> {
             let (at, _) = self.next_token(span.end);
             return Self::fail(
                 at,
-                "only bosonoga_main and gfx_main return an exit status, a function returns its values",
+                "only main and gfx_main return an exit status, a function returns its values",
             );
         }
         if !self.in_main() {
-            return Self::fail(span.start, "only bosonoga_main and gfx_main can return");
+            return Self::fail(span.start, "only main and gfx_main can return");
         }
         Ok(Statement::Return(status))
     }
@@ -329,7 +329,7 @@ impl<'input> Checker<'_, 'input> {
             return self.function_return(index, span, values);
         }
         if !self.in_main() {
-            return Self::fail(span.start, "only bosonoga_main and gfx_main can return");
+            return Self::fail(span.start, "only main and gfx_main can return");
         }
         self.expected(span.end, "exit_success or exit_failure")
     }
@@ -446,11 +446,11 @@ impl<'input> Checker<'_, 'input> {
                     ),
                 );
             }
-            let initial = self.value_of_kind(first, kind, "set ... tu")?;
+            let initial = self.value_of_kind(first, kind, "set ... to")?;
             if let Some(extra) = values.get(1) {
                 return Self::fail(
                     extra.span.start,
-                    format!("set ... tu sets '{shown}' to a single value"),
+                    format!("set ... to sets '{shown}' to a single value"),
                 );
             }
             return Ok(Statement::Assign {
@@ -464,12 +464,12 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(
                 span.start,
                 format!(
-                    "'{shown}' is {}, which cannot be used in arithmetic, but set ... tu sets it",
+                    "'{shown}' is {}, which cannot be used in arithmetic, but set ... to sets it",
                     kind.name()
                 ),
             );
         }
-        // As += of C, set count tu_add 1_i32 2_i32 adds 1 and 2 to count, so
+        // As += of C, set count to_add 1_i32 2_i32 adds 1 and 2 to count, so
         // the operation starts from the variable, which is not repeated.
         let mut operands = vec![Operand::Slot(slot)];
         for value in values {
@@ -493,8 +493,8 @@ impl<'input> Checker<'_, 'input> {
         })
     }
 
-    // tu_opeto_i32 of an i32 variable, which a literal does not need, as
-    // it is written 7_opeto_i32.
+    // to_optional_i32 of an i32 variable, which a literal does not need, as
+    // it is written 7_optional_i32.
     fn optional_conversion(
         &mut self,
         slot: Slot,
@@ -540,7 +540,7 @@ impl<'input> Checker<'_, 'input> {
         if let Conversion::ToOptional(inner) = conversion {
             return self.optional_conversion(slot, (span, inner), first, values.get(1));
         }
-        // tu_i32 is how an aka_i32 becomes an i32.
+        // to_i32 is how an aka_i32 becomes an i32.
         let (left, source) = match self.aka_parameter(first) {
             Some((operand, _)) if conversion == Conversion::ToI32 => (operand, Kind::I32),
             Some(_) | None => self.value(first)?,
