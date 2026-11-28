@@ -1,17 +1,18 @@
 use std::mem;
 
 use super::{
-    Callable, Checker, FUNCTION_VALUES_MAX, Function, Origin, Parameter, Scope, Variable,
-    block_returns, is_function_name, kinds_named, split_indexed,
+    Callable, Checker, Columns, FUNCTION_VALUES_MAX, Function, Origin, Parameter, Scope, Variable,
+    block_returns, is_function_name,
 };
 use crate::Diagnostic;
 use crate::ast::{self, Item, Named, Results, Section, Span};
-use crate::program::{self, Array, Operand};
+use crate::program::{self, Array};
 use crate::value::Kind;
 
-const OPTIONAL_TYPES: &str = "optional_ and i32, i64, u32, u64, f32, f64, bool, str or color, as in 0_optional_i32 or count_optional_i32";
+const OPTIONAL_TYPES: &str =
+    "optional_ and i32, i64, u32, u64, f32, f64, bool, str or color, as in count_optional_i32";
 
-fn parameter_kind(name: &str) -> Option<Kind> {
+pub(super) fn parameter_kind(name: &str) -> Option<Kind> {
     let bytes = name.as_bytes();
     for start in 2..name.len() {
         if bytes[start - 1] != b'_' {
@@ -60,8 +61,9 @@ impl<'input> Checker<'_, 'input> {
                 Item::Const {
                     public,
                     name,
-                    value,
-                } => self.constant_item(*public, *name, value)?,
+                    initial,
+                    then,
+                } => self.constant_item(*public, *name, initial, then)?,
                 Item::Def {
                     public,
                     name,
@@ -73,9 +75,9 @@ impl<'input> Checker<'_, 'input> {
                 Item::Array {
                     public,
                     name,
-                    kinds,
+                    columns,
                     rows,
-                } => self.array(*public, *name, kinds, rows)?,
+                } => self.array(*public, *name, columns, rows)?,
                 Item::Section(span, section, block, after) => {
                     self.section(*span, *section, block, *after)?;
                 }
@@ -100,17 +102,12 @@ impl<'input> Checker<'_, 'input> {
         &mut self,
         public: Option<Span>,
         name: Named<'input>,
-        value: &ast::Operand<'input>,
+        initial: &ast::Initial<'input>,
+        then: &[ast::Then<'input>],
     ) -> Result<(), Diagnostic> {
         let is_public = self.public(public)?;
         self.new_name(name)?;
-        let (checked, _) = self.value(value)?;
-        let Operand::Literal(literal) = checked else {
-            return Self::fail(
-                value.span.start,
-                "a constant needs a literal or an earlier constant",
-            );
-        };
+        let literal = self.known_value(initial, then)?;
         let declaration = self.declaration(name.0, is_public);
         self.constants.push(super::Constant {
             name: name.1,
@@ -199,44 +196,13 @@ impl<'input> Checker<'_, 'input> {
         Ok(())
     }
 
-    pub(super) fn types(&self, spans: &[Span], too_many: &str) -> Result<Vec<Kind>, Diagnostic> {
-        let mut kinds = Vec::new();
-        for span in spans {
-            let text = self.text(*span);
-            let Some((index, kind)) = split_indexed(text) else {
-                if text.contains("_optional_") {
-                    return self.expected_at(*span, OPTIONAL_TYPES);
-                }
-                return self.expected_at(
-                    *span,
-                    "a type with its index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bool, or optional_ and one of these but flags",
-                );
-            };
-            if kinds.len() == FUNCTION_VALUES_MAX {
-                return Self::fail(span.start, too_many);
-            }
-            if index != kinds.len() {
-                return Self::fail(
-                    span.start,
-                    format!(
-                        "the values are numbered from 0 in order, so '{text}' is {}_{}",
-                        kinds.len(),
-                        kind.name()
-                    ),
-                );
-            }
-            kinds.push(kind);
-        }
-        Ok(kinds)
-    }
-
     fn def(
         &mut self,
         public: Option<Span>,
         (span, name): Named<'input>,
         parameters: &[Named<'input>],
         globals: &[Named<'input>],
-        results: &(Span, Results),
+        results: &(Span, Results<'input>),
         block: &[ast::Located<'input>],
     ) -> Result<(), Diagnostic> {
         let is_public = self.public(public)?;
@@ -369,7 +335,7 @@ impl<'input> Checker<'_, 'input> {
         public: bool,
         parameters: &[Named<'input>],
         (globals, outer): (&[Named<'input>], &[Variable<'input>]),
-        results: &Results,
+        results: &Results<'input>,
         block: &[ast::Located<'input>],
     ) -> Result<(), Diagnostic> {
         let mut kinds = Vec::new();
@@ -407,19 +373,19 @@ impl<'input> Checker<'_, 'input> {
         for global in globals {
             self.capture(*global, outer)?;
         }
-        let result_kinds = match results {
-            Results::Void => Vec::new(),
-            Results::Indexed(spans) => self.types(
-                spans,
-                &format!("a function returns at most {FUNCTION_VALUES_MAX} values"),
-            )?,
+        let returned = match results {
+            Results::Void => Columns {
+                names: Vec::new(),
+                kinds: Vec::new(),
+            },
+            Results::Named(values) => self.named_values(values, Values::Def)?,
         };
         let code = self.program.functions.len();
         self.program.functions.push(program::Function {
             name: name.to_owned(),
             slot_count: 0,
             statements: Vec::new(),
-            returns_values: !result_kinds.is_empty(),
+            returns_values: !returned.kinds.is_empty(),
             end: span.start,
         });
         let declaration = self.declaration(span, public);
@@ -428,8 +394,11 @@ impl<'input> Checker<'_, 'input> {
             name,
             callable: Callable::Function(code),
             parameters: kinds,
-            results: result_kinds,
+            results: returned.kinds,
+            columns: returned.names,
             declaration,
+            draws: None,
+            input: false,
         });
         let statements = self.block(block)?;
         self.check_variables_used(0)?;
@@ -442,7 +411,7 @@ impl<'input> Checker<'_, 'input> {
                 span.start,
                 format!(
                     "'{name}' returns {}, but can reach its end without a return",
-                    kinds_named(&function.results)
+                    function.columns.join(" ")
                 ),
             );
         }
@@ -457,13 +426,13 @@ impl<'input> Checker<'_, 'input> {
         &mut self,
         public: Option<Span>,
         (span, name): Named<'input>,
-        kind_spans: &[Span],
+        column_list: &[ast::Column<'input>],
         rows: &[(Span, Vec<ast::Operand<'input>>)],
     ) -> Result<(), Diagnostic> {
         let is_public = self.public(public)?;
         self.new_name((span, name))?;
-        let kinds = self.array_kinds(kind_spans)?;
-        let table = self.literal_rows(span, &kinds, rows, false)?;
+        let columns = self.named_values(column_list, Values::Array)?;
+        let table = self.literal_rows(span, &columns.kinds, rows, false)?;
         let index = self.program.arrays.len();
         self.program.arrays.push(Array {
             name: self.text(span).to_owned(),
@@ -474,25 +443,90 @@ impl<'input> Checker<'_, 'input> {
             name,
             callable: Callable::Array(index),
             parameters: vec![Parameter::plain(Kind::I32)],
-            results: kinds,
+            results: columns.kinds,
+            columns: columns.names,
             declaration,
+            draws: None,
+            input: false,
         });
         Ok(())
     }
 
-    pub(super) fn array_kinds(&self, spans: &[Span]) -> Result<Vec<Kind>, Diagnostic> {
-        let kinds = self.types(
-            spans,
-            &format!("a row of an array has at most {FUNCTION_VALUES_MAX} values"),
-        )?;
-        for (span, kind) in spans.iter().zip(&kinds) {
-            if kind.is_optional() {
+    // The columns of an array, or the values that a def returns, each named
+    // once with its type, as in count_i32 marked_bool. An array has no
+    // optionals.
+    pub(super) fn named_values(
+        &self,
+        list: &[ast::Column<'input>],
+        of: Values,
+    ) -> Result<Columns<'input>, Diagnostic> {
+        let (noun, plural) = match of {
+            Values::Array => ("column", "the columns of an array"),
+            Values::Def => ("value", "the values that a def returns"),
+        };
+        let mut columns = Columns {
+            names: Vec::new(),
+            kinds: Vec::new(),
+        };
+        for column in list {
+            let (span, name) = match column {
+                ast::Column::Named(named) => *named,
+                ast::Column::Literal(span) => {
+                    let text = self.text(*span);
+                    let kind = text.split_once('_').map_or("i32", |(_, kind)| kind);
+                    return Self::fail(
+                        span.start,
+                        format!(
+                            "{plural} are named with their type, as in value_{kind}, not numbered, as '{text}'"
+                        ),
+                    );
+                }
+            };
+            let Some(kind) = parameter_kind(name) else {
+                if name.contains("_optional_") {
+                    return self.expected_at(span, OPTIONAL_TYPES);
+                }
+                return self.expected_at(
+                    span,
+                    &format!("a {noun} whose name ends with its type, like count_i32"),
+                );
+            };
+            if kind.is_optional() && of == Values::Array {
                 return Self::fail(
                     span.start,
                     format!("an array cannot have {}, but a variable can", kind.name()),
                 );
             }
+            if columns.position(name).is_some() {
+                let owner = match of {
+                    Values::Array => "this array",
+                    Values::Def => "this def",
+                };
+                return Self::fail(
+                    span.start,
+                    format!("'{name}' is already a {noun} of {owner}"),
+                );
+            }
+            if columns.kinds.len() == FUNCTION_VALUES_MAX {
+                let most = match of {
+                    Values::Array => "a row of an array has",
+                    Values::Def => "a function returns",
+                };
+                return Self::fail(
+                    span.start,
+                    format!("{most} at most {FUNCTION_VALUES_MAX} values"),
+                );
+            }
+            columns.names.push(name);
+            columns.kinds.push(kind);
         }
-        Ok(kinds)
+        Ok(columns)
     }
+}
+
+// Whose values named_values checks.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Values {
+    Array,
+    Def,
 }

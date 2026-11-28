@@ -232,6 +232,23 @@ impl Builtin {
         }
     }
 
+    // The names of the values of signature, which with ret takes, each
+    // ending with its type.
+    pub(crate) fn result_names(self) -> &'static [&'static str] {
+        match self {
+            Self::Read | Self::Latest => &["ok_bool", "text_str", "error_str", "missing_bool"],
+            Self::Write => &["ok_bool", "taken_bool", "error_str"],
+            Self::Modified => &["ok_bool", "nanos_i64", "error_str"],
+            Self::XmlChild => &["found_bool", "child_str"],
+            Self::XmlAttribute => &["found_bool", "value_str"],
+            Self::XmlName => &["found_bool", "name_str"],
+            Self::XmlEscape => &["ok_bool", "escaped_str"],
+            Self::Parse => &["parsed_bool", "number_i32"],
+            Self::Length => &["fits_bool", "len_i32"],
+            Self::Digit => &["found_bool", "digit_i32"],
+        }
+    }
+
     pub(crate) fn evaluate(
         self,
         directory: Option<&Path>,
@@ -470,8 +487,37 @@ fn is_blank(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{FileIo, Io, Staging};
+    use super::{Builtin, FileIo, Io, Staging};
     use std::io::ErrorKind;
+
+    #[test]
+    fn result_names_end_with_their_types() {
+        let words = [
+            "io_read",
+            "io_write",
+            "io_modified",
+            "io_latest",
+            "xml_child",
+            "xml_attribute",
+            "xml_name",
+            "xml_escape",
+            "str_parse",
+            "str_digit",
+            "str_len",
+        ];
+        for word in words {
+            let builtin = Builtin::named(word).unwrap();
+            let (_, kinds) = builtin.signature();
+            let names = builtin.result_names();
+            assert_eq!(names.len(), kinds.len(), "{word}");
+            for (name, kind) in names.iter().zip(kinds) {
+                assert!(
+                    name.ends_with(&format!("_{}", kind.name())),
+                    "{word} {name}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn file_io_publishes_once_and_reads_only_named_files() {

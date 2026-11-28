@@ -10,6 +10,7 @@ lega _f32
 lega _f64
 lega _str
 lega _bool
+lega _input_key
 lega _optional_i32
 lega _optional_i64
 lega _optional_f32
@@ -25,6 +26,7 @@ lega une_
 // prefixes of regina.ini
 lega color_
 lega key_
+lega setting_
 
 // values
 lega exit_failure
@@ -32,6 +34,7 @@ lega exit_success
 lega false_bool
 lega false_optional_bool
 lega none_i32
+lega none_i64
 lega none_str
 lega true_bool
 
@@ -65,14 +68,16 @@ lega as
 lega at
 lega call
 lega else
+lega for
 lega if
 lega info
 lega is
-lega none
+lega pass
 lega of
 lega return
 lega row
 lega set
+lega then
 lega val
 lega var
 lega while
@@ -97,6 +102,7 @@ lega some
 lega to
 lega to_add
 lega to_divide
+lega to_join
 lega to_mod
 lega to_multiply
 lega to_subtract
@@ -104,13 +110,17 @@ lega to_subtract
 // conversions
 lega to_f32
 lega to_i32
+lega to_i64
+lega to_optional_i64
 lega to_optional_i32
 lega to_u32
 
 // math
 lega math_to_abs
 lega math_to_max
+lega math_to_min
 lega math_to_pow
+lega math_to_round
 lega math_to_sqrt
 
 // io, str and xml
@@ -121,16 +131,20 @@ lega gfx_await_next_frame
 lega gfx_camera_3d
 lega gfx_draw_circle
 lega gfx_draw_cube
+lega gfx_draw_rectangle
 lega gfx_draw_grid
 lega gfx_draw_text
 lega gfx_mouse_capture
 lega gfx_mouse_release
 
 // gfx values
+lega gfx_height
 lega gfx_key
+lega gfx_key_held
 lega gfx_mouse_captured
 lega gfx_mouse_move_x
 lega gfx_mouse_move_y
+lega gfx_width
 
 // alignments of gfx_draw_text
 lega gfx_align_y_top

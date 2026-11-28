@@ -121,7 +121,7 @@ impl<'input> Checker<'_, 'input> {
     fn aka_value(&mut self, operand: &ast::Operand<'input>) -> Result<i32, Diagnostic> {
         match self.value_of_kind(operand, Kind::I32, "aka_i32")? {
             Operand::Literal(Value::I32(value)) => Ok(value),
-            Operand::Literal(_) | Operand::Slot(_) => Self::fail(
+            Operand::Literal(_) | Operand::Slot(_) | Operand::KeyHeld(_) => Self::fail(
                 operand.span.start,
                 format!(
                     "the values of an aka_i32 are literals or earlier constants, so '{}' cannot be one",

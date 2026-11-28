@@ -116,6 +116,8 @@ struct Execution<'a> {
     // Whether the mouse is captured, as the program asked or as the window
     // last said.
     mouse_captured: bool,
+    // The keys that are down, which gfx_key_held reads.
+    held: Vec<u32>,
     io: &'a mut dyn Io,
     // The section that runs, its statements since its start or since
     // gfx_await_next_frame, and the while or call that a step error names.
@@ -134,6 +136,7 @@ impl<'a> Execution<'a> {
             scene: Scene::default(),
             camera_3d: false,
             mouse_captured: false,
+            held: Vec::new(),
             io,
             running: "",
             steps: 0,
@@ -168,11 +171,7 @@ impl<'a> Execution<'a> {
         let Some((statements, end)) = &program.sections.main else {
             return Err(Diagnostic::new(0, "a program needs a main block"));
         };
-        self.running = if program.is_gfx {
-            "gfx_main"
-        } else {
-            "main"
-        };
+        self.running = if program.is_gfx { "gfx_main" } else { "main" };
         self.steps = 0;
         let flow = self.block(statements);
         match flow? {
@@ -192,6 +191,14 @@ impl<'a> Execution<'a> {
                     && let Some(value) = frame.get(slot.index())
                 {
                     return value;
+                }
+                &Value::Bool(false)
+            }
+            Operand::KeyHeld(key) => {
+                if let Value::InputKey(code) = self.get(key)
+                    && self.held.contains(code)
+                {
+                    return &Value::Bool(true);
                 }
                 &Value::Bool(false)
             }
@@ -335,8 +342,16 @@ impl<'a> Execution<'a> {
         self.set_section_slot(program.mouse_move_y_slot, Value::F32(move_y));
         for event in input.keys {
             let (key, word, statements) = match event {
-                KeyEvent::Down(key) => (key, "gfx_key_down", &program.sections.key_down),
-                KeyEvent::Up(key) => (key, "gfx_key_up", &program.sections.key_up),
+                KeyEvent::Down(key) => {
+                    if !self.held.contains(&key) {
+                        self.held.push(key);
+                    }
+                    (key, "gfx_key_down", &program.sections.key_down)
+                }
+                KeyEvent::Up(key) => {
+                    self.held.retain(|down| *down != key);
+                    (key, "gfx_key_up", &program.sections.key_up)
+                }
             };
             self.set_section_slot(program.key_slot, Value::InputKey(key));
             self.section(word, statements)?;
@@ -609,7 +624,7 @@ impl<'a> Execution<'a> {
 
     fn write_array(
         &mut self,
-        array: usize,
+        (array, first): (usize, usize),
         index: &Operand,
         operands: &[Operand],
         offset: usize,
@@ -618,7 +633,7 @@ impl<'a> Execution<'a> {
             return Ok(());
         };
         let row = row_start(&target.name, target.rows, self.get(index), offset)?;
-        let start = target.slot.after(row * target.columns);
+        let start = target.slot.after(row * target.columns + first);
         let values = self.values(operands);
         for (column, value) in values.into_iter().enumerate() {
             self.set(start.after(column), value);
@@ -819,9 +834,9 @@ impl<'a> Execution<'a> {
                 let flow = self.call(call)?;
                 match flow {
                     Flow::Values(mut values) => {
-                        if !values.is_empty() {
-                            let first = values.remove(0);
-                            self.set(*slot, first);
+                        if call.column < values.len() {
+                            let taken = values.swap_remove(call.column);
+                            self.set(*slot, taken);
                         }
                     }
                     Flow::Exit(_) | Flow::Closed => return Ok(flow),
@@ -836,9 +851,10 @@ impl<'a> Execution<'a> {
             Statement::ArrayWrite {
                 array,
                 index,
+                first,
                 values,
                 offset,
-            } => self.write_array(*array, index, values, *offset)?,
+            } => self.write_array((*array, *first), index, values, *offset)?,
             Statement::If {
                 branches,
                 otherwise,

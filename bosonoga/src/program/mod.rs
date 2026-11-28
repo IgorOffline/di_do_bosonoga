@@ -53,6 +53,8 @@ impl Slot {
 pub(crate) enum Operand {
     Literal(Value),
     Slot(Slot),
+    // gfx_key_held of a key: whether it is down.
+    KeyHeld(Box<Operand>),
 }
 
 #[derive(Debug)]
@@ -134,6 +136,9 @@ pub(crate) struct Call {
     pub(crate) arguments: Vec<Operand>,
     pub(crate) aka_checks: Vec<AkaCheck>,
     pub(crate) offset: usize,
+    // The value that a val, var or set takes: the column of an array that
+    // with ret names, or the value of a function.
+    pub(crate) column: usize,
 }
 
 #[derive(Debug)]
@@ -204,9 +209,11 @@ pub(crate) enum Statement {
         values: Vec<Value>,
         repeat: usize,
     },
+    // The values of a row from its column first, which is 0 for a whole row.
     ArrayWrite {
         array: usize,
         index: Operand,
+        first: usize,
         values: Vec<Operand>,
         offset: usize,
     },

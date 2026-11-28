@@ -5,6 +5,7 @@ mod draw;
 mod item;
 mod name;
 mod statement;
+mod then;
 mod value;
 
 use crate::ast::{self, Section, Span};
@@ -17,7 +18,6 @@ use crate::{Diagnostic, shown};
 
 const SHIFT_BIT_MAX: u64 = 31;
 const FUNCTION_VALUES_MAX: usize = 16;
-const INDEX_DIGITS_MAX: usize = 9;
 const ARRAY_VALUES_MAX: usize = 65_536;
 
 #[derive(Clone, Copy)]
@@ -28,12 +28,34 @@ struct Declaration {
     used: bool,
 }
 
+// The columns of an array, each named with its type, as in count_i32.
+#[derive(Clone)]
+struct Columns<'input> {
+    names: Vec<&'input str>,
+    kinds: Vec<Kind>,
+}
+
+impl Columns<'_> {
+    fn position(&self, name: &str) -> Option<usize> {
+        self.names.iter().position(|column| *column == name)
+    }
+
+    // As they are written, as in column_i32 rank_i32 loaded_bool.
+    fn shown(&self) -> String {
+        self.names.join(" ")
+    }
+
+    fn first(&self) -> &str {
+        self.names.first().copied().unwrap_or("count_i32")
+    }
+}
+
 struct Variable<'input> {
     name: &'input str,
     kind: Kind,
     slot: Slot,
     mutable: bool,
-    array: Option<(usize, Vec<Kind>)>,
+    array: Option<(usize, Columns<'input>)>,
     declaration: Declaration,
     origin: Origin,
     written: bool,
@@ -92,12 +114,28 @@ impl Callable {
     }
 }
 
+// Where a def that draws is called: in gfx_frame, outside the block of
+// gfx_camera_3d when it draws in 2D or has a camera of its own, and inside
+// it when it draws in 3D.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Space {
+    Flat,
+    Camera,
+}
+
 struct Function<'input> {
     name: &'input str,
     callable: Callable,
     parameters: Vec<Parameter>,
     results: Vec<Kind>,
+    // The names of the columns of an array, or of the values of a def.
+    columns: Vec<&'input str>,
     declaration: Declaration,
+    // Whether the def draws, and where, so that only gfx_frame calls it.
+    draws: Option<Space>,
+    // Whether the def reads gfx_key_held, so that only gfx_frame,
+    // gfx_key_down and gfx_key_up call it.
+    input: bool,
 }
 
 impl Function<'_> {
@@ -113,7 +151,7 @@ impl Function<'_> {
         if self.callable.is_function() {
             "returns"
         } else {
-            "has rows of"
+            "has the columns"
         }
     }
 }
@@ -226,11 +264,12 @@ pub(super) fn returns(statement: &ast::Statement<'_>) -> bool {
         | ast::Statement::DeclareArray { .. }
         | ast::Statement::SetAt { .. }
         | ast::Statement::While(..)
+        | ast::Statement::For { .. }
         | ast::Statement::AwaitNextFrame(_)
         | ast::Statement::Draw { .. }
         | ast::Statement::Camera3d { .. }
         | ast::Statement::MouseCapture(..)
-        | ast::Statement::Empty => false,
+        | ast::Statement::Pass => false,
     }
 }
 
@@ -241,23 +280,6 @@ pub(super) fn block_returns(block: &[ast::Located<'_>]) -> bool {
         }
     }
     false
-}
-
-fn split_indexed(text: &str) -> Option<(usize, Kind)> {
-    let mut digits = 0;
-    for byte in text.bytes() {
-        if !byte.is_ascii_digit() {
-            break;
-        }
-        digits += 1;
-    }
-    let (number, rest) = text.split_at(digits);
-    if digits == 0 || digits > INDEX_DIGITS_MAX || (digits > 1 && number.starts_with('0')) {
-        return None;
-    }
-    let kind = Kind::named(rest.strip_prefix('_')?)?;
-    let index = number.parse().ok()?;
-    Some((index, kind))
 }
 
 fn values_shown(kinds: &[Kind]) -> String {
@@ -274,19 +296,6 @@ fn names_shown(names: &[&str]) -> String {
     }
     let noun = if names.len() == 1 { "value" } else { "values" };
     format!("{} {noun}, {}", names.len(), names.join(" "))
-}
-
-fn kinds_named(kinds: &[Kind]) -> String {
-    let mut named = String::new();
-    for (index, kind) in kinds.iter().enumerate() {
-        if index > 0 {
-            named.push_str(", ");
-        }
-        named.push_str(&index.to_string());
-        named.push('_');
-        named.push_str(kind.name());
-    }
-    named
 }
 
 impl<'a, 'input> Checker<'a, 'input> {
@@ -526,8 +535,7 @@ impl<'a, 'input> Checker<'a, 'input> {
             }
             returned = returns(&located.statement);
             match self.statement(&located.statement) {
-                Ok(Some(checked)) => statements.push(checked),
-                Ok(None) => {}
+                Ok(checked) => statements.extend(checked),
                 Err(diagnostic) => {
                     self.depth -= 1;
                     return Err(diagnostic);

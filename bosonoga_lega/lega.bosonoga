@@ -41,8 +41,8 @@ lega une_
 lega color_
 lega dir_
 lega font_
-lega global_
 lega icon_
+lega setting_
 lega key_
 
 // values
@@ -94,14 +94,16 @@ lega as
 lega at
 lega call
 lega else
+lega for
 lega if
 lega info
 lega is
-lega none
 lega of
+lega pass
 lega return
 lega row
 lega set
+lega then
 lega val
 lega var
 lega while
@@ -205,10 +207,13 @@ lega gfx_mouse_release
 // gfx values
 lega gfx_delta_time
 lega gfx_heap_bytes
+lega gfx_height
 lega gfx_key
+lega gfx_key_held
 lega gfx_mouse_captured
 lega gfx_mouse_move_x
 lega gfx_mouse_move_y
+lega gfx_width
 
 // alignments of gfx_draw_text
 lega gfx_align_x_center
@@ -231,6 +236,7 @@ lega gfx_align_y_top
 // lega len_col
 // lega len_row
 // lega new
+// lega none
 // lega optional
 // lega ret_
 // lega sleep_ms

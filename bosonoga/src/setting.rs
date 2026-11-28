@@ -63,7 +63,7 @@ pub struct Settings {
     pub background: u32,
     pub mouse: Mouse,
     colors: Vec<(String, u32)>,
-    globals: Vec<(String, Value)>,
+    values: Vec<(String, Value)>,
     keys: Vec<(String, u32)>,
     fonts: Vec<(String, Asset)>,
     icons: Vec<(String, Asset)>,
@@ -86,8 +86,8 @@ impl Settings {
     }
 
     #[must_use]
-    pub fn global(&self, key: &str) -> Option<&Value> {
-        find(&self.globals, key)
+    pub fn value(&self, key: &str) -> Option<&Value> {
+        find(&self.values, key)
     }
 
     #[must_use]
@@ -167,10 +167,10 @@ impl Settings {
         if file.has_group("mouse") {
             settings.mouse = parse_mouse(&file)?;
         }
-        for key in file.keys("global") {
-            let text = file.text("global", key)?;
-            let value = parse_global(key, &text)?;
-            settings.globals.push((key.to_owned(), value));
+        for key in file.keys("setting") {
+            let text = file.text("setting", key)?;
+            let value = parse_value(key, &text)?;
+            settings.values.push((key.to_owned(), value));
         }
         for key in file.keys("key") {
             let key_name = file.text("key", key)?;
@@ -303,7 +303,7 @@ fn parse_mouse(file: &KeyFile<'_>) -> Result<Mouse, String> {
     Ok(mouse)
 }
 
-fn parse_global(key: &str, text: &str) -> Result<Value, String> {
+fn parse_value(key: &str, text: &str) -> Result<Value, String> {
     let mut lexer = Lexer::new(text);
     let first = lexer.next();
     let second = lexer.next();
