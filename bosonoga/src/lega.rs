@@ -123,10 +123,16 @@ fn has(words: &[String], word: &str) -> bool {
 }
 
 fn not_in_language(start: usize, text: &str, word: &str) -> Diagnostic {
+    // none was the statement that does nothing, and is pass now.
+    let hint = if word == "none" {
+        ", and pass is the statement that does nothing"
+    } else {
+        ""
+    };
     Diagnostic::new(
         start,
         format!(
-            "'{}' cannot be lega, as bosonoga has no {}",
+            "'{}' cannot be lega, as bosonoga has no {}{hint}",
             shown(text),
             shown(word)
         ),

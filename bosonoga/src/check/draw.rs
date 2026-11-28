@@ -1,4 +1,4 @@
-use super::Checker;
+use super::{Checker, Space};
 use crate::Diagnostic;
 use crate::ast::{self, Section, Span};
 use crate::gfx::{Align, Horizontal, Vertical};
@@ -37,9 +37,87 @@ fn take<const N: usize>(operands: &mut Vec<Operand>) -> [Operand; N] {
     })
 }
 
+// What only gfx_frame has: a draw, a gfx_camera_3d, or a call of a def that
+// has one.
+pub(super) enum Need<'a> {
+    Statement(&'a str),
+    Call(&'a str),
+}
+
+impl Need<'_> {
+    fn outside(&self) -> String {
+        match self {
+            Need::Statement(word) => {
+                format!("{word} can only be in gfx_frame, or in a def that gfx_frame calls")
+            }
+            Need::Call(name) => format!(
+                "'{name}' draws, so it can only be called in gfx_frame, or in a def that gfx_frame calls"
+            ),
+        }
+    }
+
+    fn needs_camera(&self) -> String {
+        match self {
+            Need::Statement(word) => format!("{word} can only be in the block of {CAMERA}"),
+            Need::Call(name) => {
+                format!("'{name}' draws in 3D, so it is called in the block of {CAMERA}")
+            }
+        }
+    }
+
+    fn needs_flat(&self) -> String {
+        match self {
+            Need::Statement(word) => {
+                format!("{word} draws in 2D, so it goes before or after the block of {CAMERA}")
+            }
+            Need::Call(name) => format!(
+                "'{name}' draws in 2D, so it is called before or after the block of {CAMERA}"
+            ),
+        }
+    }
+}
+
 impl<'input> Checker<'_, 'input> {
-    fn in_frame(&self) -> bool {
-        self.section == Some(Section::GfxFrame) && self.function.is_none()
+    // Checks where a draw is, or a call of a def that draws: in gfx_frame, in
+    // 2D or in the block of the camera, or in a def, which then draws there.
+    pub(super) fn need_frame(
+        &mut self,
+        at: usize,
+        space: Space,
+        need: &Need<'_>,
+    ) -> Result<(), Diagnostic> {
+        if self.function.is_none() && self.section != Some(Section::GfxFrame) {
+            return Self::fail(at, need.outside());
+        }
+        if self.camera {
+            if space == Space::Flat {
+                return Self::fail(at, need.needs_flat());
+            }
+            return Ok(());
+        }
+        let Some(index) = self.function else {
+            if space == Space::Camera {
+                return Self::fail(at, need.needs_camera());
+            }
+            return Ok(());
+        };
+        let Some(function) = self.functions.get_mut(index) else {
+            return Ok(());
+        };
+        match function.draws {
+            None => function.draws = Some(space),
+            Some(drawn) if drawn == space => {}
+            Some(_) => {
+                let name = function.name;
+                return Self::fail(
+                    at,
+                    format!(
+                        "'{name}' draws both outside and inside the block of {CAMERA}, so it is two defs, one called before or after that block and one called in it"
+                    ),
+                );
+            }
+        }
+        Ok(())
     }
 
     pub(super) fn draw(
@@ -50,21 +128,12 @@ impl<'input> Checker<'_, 'input> {
         values: &[ast::Operand<'input>],
     ) -> Result<Statement, Diagnostic> {
         let word = self.text(span);
-        if draw.is_3d() && !self.camera {
-            return Self::fail(
-                span.start,
-                format!("{word} can only be in the block of {CAMERA}, in gfx_frame"),
-            );
-        }
-        if !self.in_frame() {
-            return Self::fail(span.start, format!("{word} can only be in gfx_frame"));
-        }
-        if !draw.is_3d() && self.camera {
-            return Self::fail(
-                span.start,
-                format!("{word} draws in 2D, so it goes before or after the block of {CAMERA}"),
-            );
-        }
+        let space = if draw.is_3d() {
+            Space::Camera
+        } else {
+            Space::Flat
+        };
+        self.need_frame(span.start, space, &Need::Statement(word))?;
         let kinds = draw_kinds(draw);
         let mut operands = Vec::new();
         let mut parts = Vec::new();
@@ -112,15 +181,13 @@ impl<'input> Checker<'_, 'input> {
         values: &[ast::Operand<'input>],
         block: &[ast::Located<'input>],
     ) -> Result<Statement, Diagnostic> {
-        if !self.in_frame() {
-            return Self::fail(span.start, format!("{CAMERA} can only be in gfx_frame"));
-        }
         if self.camera {
             return Self::fail(
                 span.start,
                 format!("{CAMERA} cannot be in the block of another {CAMERA}"),
             );
         }
+        self.need_frame(span.start, Space::Flat, &Need::Statement(CAMERA))?;
         let mut operands = Vec::new();
         for value in values {
             operands.push(self.value_of_kind(value, Kind::F32, CAMERA)?);

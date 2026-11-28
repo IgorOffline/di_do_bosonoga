@@ -4,12 +4,12 @@ global
 di
   var total is 0_i32
   var count is 0_i32
-  var history is array 0_i32 with_len_col 4_i32
+  var history is array total_i32 with_len_col 4_i32
   val step is 10_i32
 do
 
 // Adds to the total and keeps it in the history.
-def add_fn amount_i32 with from_global total count history step ret 0_i32
+def add_fn amount_i32 with from_global total count history step ret total_i32
 di
   set total to_add amount_i32 step
   set history at count to total
@@ -17,9 +17,9 @@ di
   return total
 do
 
-def recorded_fn index_i32 with from_global history ret 0_i32
+def recorded_fn index_i32 with from_global history ret total_i32
 di
-  val value is history at index_i32 with ret 0_i32
+  val value is history at index_i32 with ret total_i32
   return value
 do
 
@@ -28,7 +28,7 @@ def fill_fn times_i32 with from_global count ret_void
 di
   if times_i32 gt 0_i32
   di
-    val added is add_fn of 1_i32 with ret 0_i32
+    val added is add_fn of 1_i32 with ret total_i32
     info "added "_str added " as "_str count
     var less is times_i32
     set less to_subtract 1_i32
@@ -39,8 +39,8 @@ do
 main
 di
   call fill_fn of 2_i32
-  val first is recorded_fn of 0_i32 with ret 0_i32
-  val second is recorded_fn of 1_i32 with ret 0_i32
+  val first is recorded_fn of 0_i32 with ret total_i32
+  val second is recorded_fn of 1_i32 with ret total_i32
   if total eq 22_i32 and count eq 2_i32 and first eq 11_i32 and second eq 22_i32
   di
     return exit_success

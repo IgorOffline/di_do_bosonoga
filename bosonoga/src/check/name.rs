@@ -44,8 +44,8 @@ impl<'input> Checker<'_, 'input> {
         {
             return true;
         }
-        if let Some(key) = name.strip_prefix("global_")
-            && settings.global(key).is_some()
+        if let Some(key) = name.strip_prefix("setting_")
+            && settings.value(key).is_some()
         {
             return true;
         }
@@ -78,8 +78,8 @@ impl<'input> Checker<'_, 'input> {
                 text: asset.text.clone(),
             });
         }
-        let key = name.strip_prefix("global_")?;
-        let value = settings.global(key)?;
+        let key = name.strip_prefix("setting_")?;
+        let value = settings.value(key)?;
         Some(value.clone())
     }
 
@@ -226,11 +226,12 @@ impl<'input> Checker<'_, 'input> {
             return self.fail_unknown_variable(span, name);
         };
         let variable = &self.variables[index];
-        if variable.array.is_some() {
+        if let Some((_, columns)) = &variable.array {
             return Self::fail(
                 span.start,
                 format!(
-                    "'{shown}' is an array, whose rows are set with set {shown} at INDEX to and one value per column"
+                    "'{shown}' is an array, whose rows are set with set {shown} at INDEX to and one value per column, and one column with set {shown} at INDEX {} to",
+                    columns.first()
                 ),
             );
         }

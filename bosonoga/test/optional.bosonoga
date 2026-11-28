@@ -9,13 +9,13 @@ const no_name is none_str
 const default_ratio is 1d5_optional_f32
 
 // A number that may be missing, as Rust's Option<i32>.
-def parsed_fn text_str ret 0_optional_i32
+def parsed_fn text_str ret number_optional_i32
 di
-  str_parse text_str with ret 0_bool as parsed 1_i32 as number
+  str_parse text_str with ret parsed_bool number_i32
   di
-    if parsed
+    if parsed_bool
     di
-      val found is to_optional_i32 number
+      val found is to_optional_i32 number_i32
       return found
     do
   do
@@ -23,7 +23,7 @@ di
 do
 
 // An optional parameter, given a present literal, none or an optional.
-def or_zero_fn count_optional_i32 ret 0_i32
+def or_zero_fn count_optional_i32 ret count_i32
 di
   if some count_optional_i32 as count
   di
@@ -32,7 +32,7 @@ di
   return 0_i32
 do
 
-def first_fn ret 0_optional_str 1_optional_f32 2_optional_bool
+def first_fn ret name_optional_str ratio_optional_f32 flag_optional_bool
 di
   return "first"_optional_str default_ratio false_optional_bool
 do
@@ -55,10 +55,10 @@ do
 main
 di
   var ok is true_bool
-  val seven is parsed_fn of "7"_str with ret 0_optional_i32
-  val missing is parsed_fn of "seven"_str with ret 0_optional_i32
+  val seven is parsed_fn of "7"_str with ret number_optional_i32
+  val missing is parsed_fn of "seven"_str with ret number_optional_i32
   // A number has one form, so +7 is not one.
-  val plus is parsed_fn of "+7"_str with ret 0_optional_i32
+  val plus is parsed_fn of "+7"_str with ret number_optional_i32
   if some plus
   di
     set ok to false_bool
@@ -88,11 +88,11 @@ di
   di
     set ok to false_bool
   do
-  val zero is or_zero_fn of missing with ret 0_i32
-  val also_seven is or_zero_fn of seven with ret 0_i32
-  val three is or_zero_fn of 3_optional_i32 with ret 0_i32
-  val negative is or_zero_fn of -4_optional_i32 with ret 0_i32
-  val absent_given is or_zero_fn of none_i32 with ret 0_i32
+  val zero is or_zero_fn of missing with ret count_i32
+  val also_seven is or_zero_fn of seven with ret count_i32
+  val three is or_zero_fn of 3_optional_i32 with ret count_i32
+  val negative is or_zero_fn of -4_optional_i32 with ret count_i32
+  val absent_given is or_zero_fn of none_i32 with ret count_i32
   if zero not_eq 0_i32 or also_seven not_eq 7_i32 or three not_eq 3_i32
     or negative not_eq -4_i32 or absent_given not_eq 0_i32
   di
@@ -104,17 +104,17 @@ di
     set ok to false_bool
   do
   set label to "label"_optional_str
-  call first_fn with ret 0_optional_str as name 1_optional_f32 as ratio 2_optional_bool as flag
+  call first_fn with ret name_optional_str ratio_optional_f32 flag_optional_bool as flag
   di
-    if not some name or not some ratio or not some flag
+    if not some name_optional_str or not some ratio_optional_f32 or not some flag
     di
       set ok to false_bool
     do
-    if some name as text
+    if some name_optional_str as text
     di
       info text
     do
-    if some ratio as value
+    if some ratio_optional_f32 as value
     di
       if value not_eq_6 1d5_f32
       di

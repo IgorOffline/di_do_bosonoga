@@ -1,4 +1,4 @@
-use super::{Checker, values_shown};
+use super::Checker;
 use crate::Diagnostic;
 use crate::ast::{self, ExitStatus, Initial, Named, Section, Span};
 use crate::io::Builtin;
@@ -6,10 +6,12 @@ use crate::program::{self, Operand, Slot, Statement};
 use crate::value::{Compare, Conversion, Kind, Operation, Value};
 
 impl<'input> Checker<'_, 'input> {
+    // The statements that a statement runs as: none for pass, and more than
+    // one for then and for.
     pub(super) fn statement(
         &mut self,
         statement: &ast::Statement<'input>,
-    ) -> Result<Option<Statement>, Diagnostic> {
+    ) -> Result<Vec<Statement>, Diagnostic> {
         let checked = match statement {
             ast::Statement::Info(values) => Statement::Info(self.operands(values, "info")?),
             ast::Statement::Call {
@@ -35,47 +37,54 @@ impl<'input> Checker<'_, 'input> {
                 name,
                 operation,
                 values,
-            } => self.set(*name, *operation, values)?,
+                then,
+            } => return self.set(*name, *operation, values, then),
             ast::Statement::SetConversion {
                 name,
                 conversion,
                 values,
-            } => self.set_conversion(*name, *conversion, values)?,
+                then,
+            } => return self.set_conversion(*name, *conversion, values, then),
             ast::Statement::SetCall {
                 name,
                 operation,
                 call,
-            } => self.set_call(*name, *operation, call)?,
+                then,
+            } => return self.set_call(*name, *operation, call, then),
             ast::Statement::Declare {
                 name,
                 mutable,
                 initial,
-            } => self.declaration_statement(*name, *mutable, initial)?,
+                then,
+            } => return self.declaration_statement(*name, *mutable, initial, then),
             ast::Statement::DeclareArray {
                 name,
                 mutable,
                 array,
-                kinds,
+                columns,
                 rows,
-            } => self.var_array(*name, *mutable, *array, kinds, rows)?,
+            } => self.var_array(*name, *mutable, *array, columns, rows)?,
             ast::Statement::SetAt {
                 name,
                 index,
+                column,
                 operation,
                 values,
-            } => self.set_at(*name, index, *operation, values)?,
+            } => return self.set_at(*name, index, *column, *operation, values),
             ast::Statement::If {
                 branches,
                 otherwise,
             } => self.if_statement(branches, otherwise.as_ref())?,
             ast::Statement::While(span, condition, block) => {
-                let holds = self.condition(condition)?;
-                Statement::While {
-                    condition: holds,
-                    block: self.block(block)?,
-                    offset: span.start,
-                }
+                self.while_statement(*span, condition, block)?
             }
+            ast::Statement::For {
+                span,
+                name,
+                from,
+                to,
+                block,
+            } => return self.for_statement(*span, *name, (from, to), block),
             ast::Statement::AwaitNextFrame(span) => {
                 if self.section != Some(Section::GfxMain) || self.function.is_some() {
                     return Self::fail(
@@ -97,11 +106,25 @@ impl<'input> Checker<'_, 'input> {
                 block,
             } => self.camera_3d(*span, values, block)?,
             ast::Statement::MouseCapture(span, capture) => self.mouse_capture(*span, *capture)?,
-            ast::Statement::Empty => return Ok(None),
+            ast::Statement::Pass => return Ok(Vec::new()),
             ast::Statement::Return(span, status) => self.return_status(*span, *status)?,
             ast::Statement::ReturnValues(span, values) => self.return_values(*span, values)?,
         };
-        Ok(Some(checked))
+        Ok(vec![checked])
+    }
+
+    fn while_statement(
+        &mut self,
+        span: Span,
+        condition: &ast::Condition<'input>,
+        block: &ast::Block<'input>,
+    ) -> Result<Statement, Diagnostic> {
+        let holds = self.condition(condition)?;
+        Ok(Statement::While {
+            condition: holds,
+            block: self.block(block)?,
+            offset: span.start,
+        })
     }
 
     // gfx_mouse_capture or gfx_mouse_release.
@@ -194,7 +217,7 @@ impl<'input> Checker<'_, 'input> {
         &mut self,
         (span, builtin): (Span, Builtin),
         values: &[ast::Operand<'input>],
-        results: &[(Span, Named<'input>)],
+        results: &[ast::Taken<'input>],
         block: &ast::Block<'input>,
     ) -> Result<Statement, Diagnostic> {
         let word = self.text(span);
@@ -225,7 +248,11 @@ impl<'input> Checker<'_, 'input> {
             arguments.push(self.value_of_kind(value, *kind, word)?);
         }
         let visible = self.variables.len();
-        let slots = self.take_results(&format!("'{word}'"), "gives", kinds, results)?;
+        let columns = super::Columns {
+            names: builtin.result_names().to_vec(),
+            kinds: kinds.to_vec(),
+        };
+        let slots = self.take_results(&format!("'{word}'"), "gives", &columns, results)?;
         let checked = self.block(block)?;
         self.check_variables_used(visible)?;
         self.variables.truncate(visible);
@@ -243,9 +270,14 @@ impl<'input> Checker<'_, 'input> {
         name: Named<'input>,
         conversion: (Span, Conversion),
         values: &[ast::Operand<'input>],
-    ) -> Result<Statement, Diagnostic> {
+        then: &[ast::Then<'input>],
+    ) -> Result<Vec<Statement>, Diagnostic> {
         let (slot, kind) = self.target(name)?;
-        let (converted, converted_kind) = self.conversion(slot, conversion, values)?;
+        let (mut converted, converted_kind) = self.conversion(slot, conversion, values)?;
+        if !then.is_empty() {
+            let from = self.retarget(&mut converted, (slot, kind), converted_kind);
+            return self.set_then(name, (slot, kind), (converted, from, converted_kind), then);
+        }
         if converted_kind != kind {
             return Self::fail(
                 conversion.0.start,
@@ -257,7 +289,7 @@ impl<'input> Checker<'_, 'input> {
                 ),
             );
         }
-        Ok(converted)
+        Ok(vec![converted])
     }
 
     fn set_call(
@@ -265,12 +297,21 @@ impl<'input> Checker<'_, 'input> {
         name: Named<'input>,
         (_, operation): (Span, Operation),
         call: &ast::Call<'input>,
-    ) -> Result<Statement, Diagnostic> {
+        then: &[ast::Then<'input>],
+    ) -> Result<Vec<Statement>, Diagnostic> {
         let (slot, kind) = self.target(name)?;
         if operation != Operation::Copy {
             return self.fail_unknown_variable(call.name.0, call.name.1);
         }
         let (checked, result_kind, gives) = self.call(call)?;
+        if !then.is_empty() {
+            let mut called = Statement::Call {
+                slot,
+                call: checked,
+            };
+            let from = self.retarget(&mut called, (slot, kind), result_kind);
+            return self.set_then(name, (slot, kind), (called, from, result_kind), then);
+        }
         if let Kind::Optional(inner) = kind
             && result_kind == *inner
         {
@@ -278,11 +319,11 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(
                 name.0.start,
                 format!(
-                    "'{}' is {}, but '{called}' {gives} {}, so take it first, as in val found is {called} ... with ret 0_{}, then set {} {} found",
+                    "'{}' is {}, but '{called}' {gives} {}, so take it first, as in val found is {called} ... with ret {}, then set {} {} found",
                     self.text(name.0),
                     kind.name(),
                     result_kind.name(),
-                    result_kind.name(),
+                    self.text(call.taken.span()),
                     self.text(name.0),
                     Conversion::ToOptional(*inner).word()
                 ),
@@ -300,10 +341,10 @@ impl<'input> Checker<'_, 'input> {
                 ),
             );
         }
-        Ok(Statement::Call {
+        Ok(vec![Statement::Call {
             slot,
             call: checked,
-        })
+        }])
     }
 
     fn return_status(&self, span: Span, status: ExitStatus) -> Result<Statement, Diagnostic> {
@@ -345,7 +386,7 @@ impl<'input> Checker<'_, 'input> {
         };
         let results = function.results.clone();
         let name = function.name;
-        let shown = values_shown(&results);
+        let shown = function.columns.join(" ");
         let mut operands = Vec::new();
         for (position, kind) in results.iter().enumerate() {
             let Some(value) = values.get(position) else {
@@ -370,8 +411,32 @@ impl<'input> Checker<'_, 'input> {
         name: Named<'input>,
         mutable: bool,
         initial: &Initial<'input>,
-    ) -> Result<Statement, Diagnostic> {
+        then: &[ast::Then<'input>],
+    ) -> Result<Vec<Statement>, Diagnostic> {
         self.new_name(name)?;
+        let (statement, kind, slot) = self.initial(initial)?;
+        let (steps, last, last_kind) = self.then_steps(None, (slot, kind), (slot, kind), then)?;
+        self.declare(name, last_kind, last, mutable);
+        if let Statement::Assign {
+            initial: Operand::Literal(Value::I32(value)),
+            ..
+        } = &statement
+            && !mutable
+            && then.is_empty()
+            && let Some(variable) = self.variables.last_mut()
+        {
+            variable.known = Some(*value);
+        }
+        let mut statements = vec![statement];
+        statements.extend(steps);
+        Ok(statements)
+    }
+
+    // The first value of a val or var, and the slot it is in.
+    fn initial(
+        &mut self,
+        initial: &Initial<'input>,
+    ) -> Result<(Statement, Kind, Slot), Diagnostic> {
         let (statement, kind, slot) = match initial {
             Initial::Value { value, shift_or } => {
                 let (first, first_kind) = self.value(value)?;
@@ -405,26 +470,43 @@ impl<'input> Checker<'_, 'input> {
                 (call_statement, result_kind, slot)
             }
         };
-        self.declare(name, kind, slot, mutable);
-        if let Statement::Assign {
-            initial: Operand::Literal(Value::I32(value)),
-            ..
-        } = &statement
-            && !mutable
-            && let Some(variable) = self.variables.last_mut()
-        {
-            variable.known = Some(*value);
-        }
-        Ok(statement)
+        Ok((statement, kind, slot))
     }
 
     fn set(
         &mut self,
         name: Named<'input>,
+        operation: (Span, Operation),
+        values: &[ast::Operand<'input>],
+        then: &[ast::Then<'input>],
+    ) -> Result<Vec<Statement>, Diagnostic> {
+        let (slot, kind) = self.target(name)?;
+        // set ... to with steps starts from a value of any kind, in a slot of
+        // its own, as long as the steps end with the kind of the variable.
+        if operation.1 == Operation::Copy
+            && !then.is_empty()
+            && let [first] = values
+        {
+            let (initial, given) = self.value(first)?;
+            let from = if given == kind { slot } else { self.allocate() };
+            let assign = Statement::Assign {
+                slot: from,
+                initial,
+                shift_or: Vec::new(),
+            };
+            return self.set_then(name, (slot, kind), (assign, from, given), then);
+        }
+        let first = self.set_first(name, (slot, kind), operation, values)?;
+        self.set_then(name, (slot, kind), (first, slot, kind), then)
+    }
+
+    pub(super) fn set_first(
+        &mut self,
+        name: Named<'input>,
+        (slot, kind): (Slot, Kind),
         (span, operation): (Span, Operation),
         values: &[ast::Operand<'input>],
     ) -> Result<Statement, Diagnostic> {
-        let (slot, kind) = self.target(name)?;
         let shown = self.text(name.0);
         if operation == Operation::Copy {
             let Some(first) = values.first() else {
@@ -493,82 +575,13 @@ impl<'input> Checker<'_, 'input> {
         })
     }
 
-    // to_optional_i32 of an i32 variable, which a literal does not need, as
-    // it is written 7_optional_i32.
-    fn optional_conversion(
-        &mut self,
-        slot: Slot,
-        (span, inner): (Span, Kind),
-        first: &ast::Operand<'input>,
-        extra: Option<&ast::Operand<'input>>,
-    ) -> Result<(Statement, Kind), Diagnostic> {
-        let conversion = Conversion::ToOptional(inner);
-        let word = conversion.word();
-        let shown = self.text(first.span);
-        if let ast::Term::Literal(_) = first.term
-            && let Some(present) = super::value::present_literal(shown)
-        {
-            return Self::fail(
-                first.span.start,
-                format!("a literal needs no {word}, write {present}"),
-            );
-        }
-        let left = self.value_of_kind(first, inner, word)?;
-        if let Some(more) = extra {
-            return self.expected_at(more.span, "a statement");
-        }
-        let statement = Statement::Convert {
-            slot,
-            conversion,
-            left,
-            right: None,
-            offset: span.start,
-        };
-        Ok((statement, conversion.result_kind(inner)))
-    }
-
     fn conversion(
         &mut self,
         slot: Slot,
         (span, conversion): (Span, Conversion),
         values: &[ast::Operand<'input>],
     ) -> Result<(Statement, Kind), Diagnostic> {
-        let word = conversion.word();
-        let Some(first) = values.first() else {
-            return self.expected(span.end, "a value");
-        };
-        if let Conversion::ToOptional(inner) = conversion {
-            return self.optional_conversion(slot, (span, inner), first, values.get(1));
-        }
-        // to_i32 is how an aka_i32 becomes an i32.
-        let (left, source) = match self.aka_parameter(first) {
-            Some((operand, _)) if conversion == Conversion::ToI32 => (operand, Kind::I32),
-            Some(_) | None => self.value(first)?,
-        };
-        let accepts_integer = conversion.accepts_integer();
-        if !(source.is_real() || (accepts_integer && source.is_integer())) {
-            let needed = if accepts_integer {
-                "a number"
-            } else {
-                "f32 or f64"
-            };
-            return Self::fail(
-                first.span.start,
-                format!("{word} needs {needed}, got {}", source.name()),
-            );
-        }
-        let mut right = None;
-        let mut taken = 1;
-        if conversion.is_binary() {
-            let Some(second) = values.get(1) else {
-                return self.expected(first.span.end, "a value");
-            };
-            right = Some(self.value_of_kind(second, source, word)?);
-            taken = 2;
-        }
-        if let Some(extra) = values.get(taken) {
-            return self.expected_at(extra.span, "a statement");
-        }
+        let (left, right, kind) = self.converted((span, conversion), values)?;
         let statement = Statement::Convert {
             slot,
             conversion,
@@ -576,6 +589,92 @@ impl<'input> Checker<'_, 'input> {
             right,
             offset: span.start,
         };
-        Ok((statement, conversion.result_kind(source)))
+        Ok((statement, kind))
+    }
+
+    // The values of a conversion and the kind it gives.
+    pub(super) fn converted(
+        &mut self,
+        (span, conversion): (Span, Conversion),
+        values: &[ast::Operand<'input>],
+    ) -> Result<(Operand, Option<Operand>, Kind), Diagnostic> {
+        let word = conversion.word();
+        let Some(first) = values.first() else {
+            return self.expected(span.end, "a value");
+        };
+        // to_optional_i32 of an i32 variable, which a literal does not need,
+        // as it is written 7_optional_i32.
+        if let Conversion::ToOptional(inner) = conversion {
+            let shown = self.text(first.span);
+            if let ast::Term::Literal(_) = first.term
+                && let Some(present) = super::value::present_literal(shown)
+            {
+                return Self::fail(
+                    first.span.start,
+                    format!("a literal needs no {word}, write {present}"),
+                );
+            }
+            let left = self.value_of_kind(first, inner, word)?;
+            if let Some(more) = values.get(1) {
+                return self.expected_at(more.span, "a statement");
+            }
+            return Ok((left, None, conversion.result_kind(inner)));
+        }
+        // to_i32 is how an aka_i32 becomes an i32.
+        let (left, source) = match self.aka_parameter(first) {
+            Some((operand, _)) if conversion == Conversion::ToI32 => (operand, Kind::I32),
+            Some(_) | None => self.value(first)?,
+        };
+        let rest = values.get(1..).unwrap_or_default();
+        let (right, kind) =
+            self.conversion_rest(conversion, source, (first.span.start, first.span.end), rest)?;
+        Ok((left, right, kind))
+    }
+
+    // Checks a conversion of a value of source, which starts at the first
+    // offset and ends at the second, and gives its other value, if it has
+    // one, of rest, and the kind it gives.
+    pub(super) fn conversion_rest(
+        &mut self,
+        conversion: Conversion,
+        source: Kind,
+        (at, after): (usize, usize),
+        rest: &[ast::Operand<'input>],
+    ) -> Result<(Option<Operand>, Kind), Diagnostic> {
+        let word = conversion.word();
+        if let Conversion::ToOptional(inner) = conversion {
+            if source != inner {
+                return Self::fail(
+                    at,
+                    format!("{word} needs {}, got {}", inner.name(), source.name()),
+                );
+            }
+            if let Some(more) = rest.first() {
+                return self.expected_at(more.span, "a statement");
+            }
+            return Ok((None, conversion.result_kind(inner)));
+        }
+        let accepts_integer = conversion.accepts_integer();
+        if !(source.is_real() || (accepts_integer && source.is_integer())) {
+            let needed = if accepts_integer {
+                "a number"
+            } else {
+                "f32 or f64"
+            };
+            return Self::fail(at, format!("{word} needs {needed}, got {}", source.name()));
+        }
+        let mut right = None;
+        let mut taken = 0;
+        if conversion.is_binary() {
+            let Some(second) = rest.first() else {
+                return self.expected(after, "a value");
+            };
+            right = Some(self.value_of_kind(second, source, word)?);
+            taken = 1;
+        }
+        if let Some(extra) = rest.get(taken) {
+            return self.expected_at(extra.span, "a statement");
+        }
+        Ok((right, conversion.result_kind(source)))
     }
 }

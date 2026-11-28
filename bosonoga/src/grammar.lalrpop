@@ -2,8 +2,8 @@ use lalrpop_util::ParseError;
 
 use crate::Diagnostic;
 use crate::ast::{
-    Arguments, Block, Call, Comparison, Condition, Draw, ExitStatus, File, Initial, Item, Located, Named,
-    Operand, Presence, Results, Rows, Section, Span, Statement, Taking, Term,
+    Arguments, Block, Call, Column, Comparison, Condition, Draw, ExitStatus, File, Initial, Item, Located, Named,
+    Operand, Presence, Results, Rows, Section, Span, Statement, Taken, Taking, Term, Then,
 };
 use crate::gfx::{Align, Horizontal, Vertical};
 use crate::lexer::Tok;
@@ -24,7 +24,10 @@ extern {
         "given_operation" => Tok::Given(<crate::io::Builtin>),
         "to_join" => Tok::Join,
         "as" => Tok::As,
-        "none" => Tok::Empty,
+        "pass" => Tok::Pass,
+        "then" => Tok::Then,
+        "for" => Tok::For,
+        "gfx_key_held" => Tok::KeyHeld,
         "return" => Tok::Return,
         "exit_success" => Tok::ExitSuccess,
         "exit_failure" => Tok::ExitFailure,
@@ -82,7 +85,6 @@ extern {
         "gfx_value" => Tok::GfxValue(<&'input str>),
         "une" => Tok::Une,
         "reserved" => Tok::Reserved(<&'input str>),
-        "indexed_type" => Tok::IndexedType(<&'input str>),
         "end" => Tok::End,
     }
 }
@@ -99,12 +101,13 @@ Item: Item<'input> = {
     <public:Public?> "aka_i32" <name:Named> "is" "from" <from:Operand> "to" <to:Operand> <except:Except?> =>
         Item::Aka { public, name, range: Some((from, to)), except: except.unwrap_or_default() },
     <public:Public?> "aka_i32" <name:Named> <except:Except> => Item::Aka { public, name, range: None, except },
-    <public:Public?> "const" <name:Named> "is" <value:Operand> => Item::Const { public, name, value },
+    <public:Public?> "const" <name:Named> "is" <initial:Initial> <then:Then*> =>
+        Item::Const { public, name, initial, then },
     <public:Public?> "def" <name:Named> <parameters:Named*> <globals:FromGlobal?> <results:Results>
         <block:Block> =>
         Item::Def { public, name, parameters, globals: globals.unwrap_or_default(), results, block },
-    <public:Public?> "val" <name:Named> "is" "array" <kinds:Indexed+> "di" <rows:Row+> "do" =>
-        Item::Array { public, name, kinds, rows },
+    <public:Public?> "val" <name:Named> "is" "array" <columns:Column+> "di" <rows:Row+> "do" =>
+        Item::Array { public, name, columns, rows },
     <start:@L> <section:"section"> <end:@R> <block:Block> <after:@R> =>
         Item::Section(Span { start, end }, section, block, after),
 };
@@ -117,14 +120,17 @@ Public: Span = <start:@L> "pub" <end:@R> => Span { start, end };
 // The values that an aka_i32 does not have.
 Except: Vec<Operand<'input>> = "except" <Operand+>;
 
-Results: (Span, Results) = {
-    <start:@L> "ret" <end:@R> <kinds:Indexed+> => (Span { start, end }, Results::Indexed(kinds)),
+Results: (Span, Results<'input>) = {
+    <start:@L> "ret" <end:@R> <values:Column+> => (Span { start, end }, Results::Named(values)),
     <start:@L> "ret_void" <end:@R> => (Span { start, end }, Results::Void),
 };
 
-Indexed: Span = {
-    <start:@L> "literal" <end:@R> => Span { start, end },
-    <start:@L> "indexed_type" <end:@R> => Span { start, end },
+// A value of a def or a column of an array, named with its type, as
+// count_i32. A literal, as the 0_i32 of a value that was numbered, is
+// refused with a hint.
+Column: Column<'input> = {
+    <start:@L> "literal" <end:@R> => Column::Literal(Span { start, end }),
+    <Named> => Column::Named(<>),
 };
 
 Row: (Span, Vec<Operand<'input>>) =
@@ -139,7 +145,7 @@ Block: Block<'input> =
     <opening:@L> "di" <statements:Located*> "do" =>? {
         if statements.is_empty() {
             Err(ParseError::User {
-                error: Diagnostic::new(opening, "empty block, write none for a block that does nothing"),
+                error: Diagnostic::new(opening, "empty block, write pass for a block that does nothing"),
             })
         } else {
             Ok(statements)
@@ -155,23 +161,24 @@ Statement: Statement<'input> = {
     "set" <name:Named> "to_join" <values:Operand+> => Statement::Join(name, values),
     <operation:Spanned<"given_operation">> <values:Operand+> "with" "ret"
         <results:GivenResult+> <block:Block> => Statement::Given { operation, values, results, block },
-    "set" <name:Named> <operation:Spanned<Operation>> <values:Operand+> =>
-        Statement::Set { name, operation, values },
-    "set" <name:Named> <conversion:Spanned<"conversion">> <values:Operand+> =>
-        Statement::SetConversion { name, conversion, values },
-    "set" <name:Named> <operation:Spanned<Operation>> <call:Call> => Statement::SetCall { name, operation, call },
-    "set" <name:Named> "at" <index:Operand> <operation:Spanned<Operation>> <values:Operand+> =>
-        Statement::SetAt { name, index, operation, values },
-    <declaration:Declaration> "is" <start:@L> "array" <end:@R> <kinds:Indexed+> <rows:Rows> =>
+    "set" <name:Named> <operation:Spanned<Operation>> <values:Operand+> <then:Then*> =>
+        Statement::Set { name, operation, values, then },
+    "set" <name:Named> <conversion:Spanned<"conversion">> <values:Operand+> <then:Then*> =>
+        Statement::SetConversion { name, conversion, values, then },
+    "set" <name:Named> <operation:Spanned<Operation>> <call:Call> <then:Then*> =>
+        Statement::SetCall { name, operation, call, then },
+    "set" <name:Named> "at" <index:Operand> <column:Named?> <operation:Spanned<Operation>> <values:Operand+> =>
+        Statement::SetAt { name, index, column, operation, values },
+    <declaration:Declaration> "is" <start:@L> "array" <end:@R> <columns:Column+> <rows:Rows> =>
         Statement::DeclareArray {
             name: declaration.0,
             mutable: declaration.1,
             array: Span { start, end },
-            kinds,
+            columns,
             rows,
         },
-    <declaration:Declaration> "is" <initial:Initial> =>
-        Statement::Declare { name: declaration.0, mutable: declaration.1, initial },
+    <declaration:Declaration> "is" <initial:Initial> <then:Then*> =>
+        Statement::Declare { name: declaration.0, mutable: declaration.1, initial, then },
     "if" <condition:Condition> <block:Block> <tail:Else> => {
         let (mut branches, otherwise) = tail;
         branches.insert(0, (condition, block));
@@ -179,6 +186,8 @@ Statement: Statement<'input> = {
     },
     <start:@L> "while" <end:@R> <condition:Condition> <block:Block> =>
         Statement::While(Span { start, end }, condition, block),
+    <start:@L> "for" <end:@R> <name:Named> "from" <from:Operand> "to" <to:Operand> <block:Block> =>
+        Statement::For { span: Span { start, end }, name, from, to, block },
     <start:@L> "gfx_await_next_frame" <end:@R> => Statement::AwaitNextFrame(Span { start, end }),
     <start:@L> "gfx_clear" <end:@R> <color:Operand> =>
         Statement::Draw { span: Span { start, end }, draw: Draw::Clear, align: None, values: vec![color] },
@@ -244,7 +253,7 @@ Statement: Statement<'input> = {
         },
     <start:@L> "gfx_mouse_capture" <end:@R> => Statement::MouseCapture(Span { start, end }, true),
     <start:@L> "gfx_mouse_release" <end:@R> => Statement::MouseCapture(Span { start, end }, false),
-    "none" => Statement::Empty,
+    "pass" => Statement::Pass,
     <start:@L> "return" <end:@R> <status:Status> => Statement::Return(Span { start, end }, status),
     <start:@L> "return" <end:@R> <values:Operand*> => Statement::ReturnValues(Span { start, end }, values),
 };
@@ -259,11 +268,20 @@ Taking: Taking<'input> =
     <start:@L> "with" <end:@R> "ret" <results:GivenResult+> <block:Block> =>
         Taking { with: Span { start, end }, results, block };
 
-GivenResult: (Span, Named<'input>) = <index:Indexed> "as" <name:Named> => (index, name);
+// A value that with ret takes, as count_i32, or count_i32 as total.
+GivenResult: Taken<'input> = <column:Column> <binding:("as" <Named>)?> => Taken { column, binding };
 
 Operation: Operation = {
     "to" => Operation::Copy,
     "operation" => <>,
+};
+
+// A step from the value so far: an operation, which needs values, or a
+// conversion, whose value so far is its first.
+Then: Then<'input> = {
+    "then" <operation:Spanned<"operation">> <values:Operand+> => Then::Operation(operation, values),
+    "then" <conversion:Spanned<"conversion">> <values:Operand*> => Then::Conversion(conversion, values),
+    "then" <start:@L> "to_join" <end:@R> <values:Operand+> => Then::Join(Span { start, end }, values),
 };
 
 Spanned<T>: (Span, T) = <start:@L> <value:T> <end:@R> => (Span { start, end }, value);
@@ -280,11 +298,11 @@ Initial: Initial<'input> = {
 };
 
 Call: Call<'input> = {
-    <name:Named> <start:@L> "of" <end:@R> <values:Operand+> "with" "ret" <taken:Indexed> =>
+    <name:Named> <start:@L> "of" <end:@R> <values:Operand+> "with" "ret" <taken:Column> =>
         Call { name, arguments: Arguments::Of(Span { start, end }, values), taken },
-    <name:Named> <start:@L> "at" <end:@R> <index:Operand> "with" "ret" <taken:Indexed> =>
+    <name:Named> <start:@L> "at" <end:@R> <index:Operand> "with" "ret" <taken:Column> =>
         Call { name, arguments: Arguments::At(Span { start, end }, index), taken },
-    <name:Named> "with" "ret" <taken:Indexed> => Call { name, arguments: Arguments::None, taken },
+    <name:Named> "with" "ret" <taken:Column> => Call { name, arguments: Arguments::None, taken },
 };
 
 Named: Named<'input> = <start:@L> <name:"name"> <end:@R> => (Span { start, end }, name);
@@ -346,6 +364,7 @@ Term: Term<'input> = {
     "name" => Term::Name(<>),
     "result" => Term::Result(<>),
     "gfx_value" => Term::GfxValue(<>),
+    "gfx_key_held" <key:Named> => Term::KeyHeld(key),
 };
 
 Status: ExitStatus = {

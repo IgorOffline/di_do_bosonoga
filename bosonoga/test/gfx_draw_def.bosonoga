@@ -1,0 +1,45 @@
+// gfx_draw_def.bosonoga
+
+// The window of regina.ini is 960 by 540, which is known before the
+// program runs.
+const middle_x is gfx_width then to_multiply 0d5_f32
+const bottom is gfx_height then to_subtract 20d0_f32
+
+// It draws in 2D, so it is called before or after the block of
+// gfx_camera_3d.
+def bar_fn y_f32 ret_void
+di
+  gfx_draw_rectangle 0d0_f32 y_f32 middle_x 10d0_f32 color_grid
+do
+
+// It draws in 3D, so it is called in the block of gfx_camera_3d.
+def box_fn x_f32 ret_void
+di
+  gfx_draw_cube x_f32 0d0_f32 0d0_f32 1d0_f32 1d0_f32 1d0_f32 color_cube
+do
+
+// It has a camera of its own, so it is called where 2D is drawn.
+def scene_fn ret_void
+di
+  gfx_camera_3d 0d0_f32 2d0_f32 5d0_f32 0d0_f32 0d0_f32 0d0_f32 0d0_f32 1d0_f32 0d0_f32 60d0_f32
+  di
+    for index from 0_i32 to 2_i32
+    di
+      val x is to_f32 index
+      call box_fn of x
+    do
+  do
+  call bar_fn of bottom
+do
+
+gfx_frame
+di
+  call bar_fn of 0d0_f32
+  call scene_fn
+do
+
+gfx_main
+di
+  gfx_await_next_frame
+  return exit_success
+do

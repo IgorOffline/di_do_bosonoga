@@ -1,17 +1,26 @@
-use super::{Callable, Checker, Parameter, kinds_named, names_shown, split_indexed};
+use super::{Callable, Checker, Columns, Parameter, names_shown};
 use crate::Diagnostic;
 use crate::ast::{self, Arguments, Named, Span};
 use crate::program::{self, AkaCheck, Callee, Operand, Slot, Statement};
 use crate::value::Kind;
 
-struct Target {
+struct Target<'input> {
     callable: Callable,
     parameters: Vec<Parameter>,
     results: Vec<Kind>,
+    // The names of the columns of an array, or of the values of a function.
+    columns: Vec<&'input str>,
     gives: &'static str,
 }
 
-impl Target {
+impl<'input> Target<'input> {
+    fn columns(&self) -> Columns<'input> {
+        Columns {
+            names: self.columns.clone(),
+            kinds: self.results.clone(),
+        }
+    }
+
     // How a call of the target is written, as in double_fn of ... or rows at 0_i32.
     fn example(&self, shown: &str) -> String {
         match self.callable {
@@ -21,24 +30,33 @@ impl Target {
         }
     }
 
+    fn first(&self) -> &str {
+        self.columns.first().copied().unwrap_or("count_i32")
+    }
+
     fn needs_call_message(&self, shown: &str) -> String {
+        let example = self.example(shown);
+        let first = self.first();
         format!(
-            "'{shown}' {} {}, which call ... with ret takes for its block, each named, as in call {} with ret 0_{} as value di ... do",
-            self.gives,
-            kinds_named(&self.results),
-            self.example(shown),
-            self.results.first().map_or("i32", |kind| kind.name())
+            "'{shown}' {}, which call ... with ret takes for its block, as in call {example} with ret {first} di ... do, or val takes one of, as in val value is {example} with ret {first}",
+            gives_shown(self.gives, &self.columns())
         )
     }
 
     fn needs_val_message(&self, shown: &str) -> String {
-        let kind = self.results.first().map_or("i32", |kind| kind.name());
         format!(
-            "'{shown}' {} {kind}, which val, var or set ... to takes, as in val value is {} with ret 0_{kind}",
-            self.gives,
-            self.example(shown)
+            "'{shown}' {}, which val, var or set ... to takes, as in val value is {} with ret {}",
+            gives_shown(self.gives, &self.columns()),
+            self.example(shown),
+            self.first()
         )
     }
+}
+
+// What gives the values, as in returns quotient_i32 remainder_i32, or has
+// the columns count_i32 marked_bool.
+fn gives_shown(gives: &str, columns: &Columns<'_>) -> String {
+    format!("{gives} {}", columns.shown())
 }
 
 // Where the arguments of a call end, or its name if it has none.
@@ -63,16 +81,17 @@ impl<'input> Checker<'_, 'input> {
         }
     }
 
-    fn call_target(&mut self, span: Span, name: &'input str) -> Result<Target, Diagnostic> {
+    fn call_target(&mut self, span: Span, name: &'input str) -> Result<Target<'input>, Diagnostic> {
         if let Some(index) = self.variable(name) {
             let variable = &mut self.variables[index];
-            if let Some((array, kinds)) = variable.array.clone() {
+            if let Some((array, columns)) = variable.array.clone() {
                 variable.declaration.used = true;
                 return Ok(Target {
                     callable: Callable::VarArray(array),
                     parameters: vec![Parameter::plain(Kind::I32)],
-                    results: kinds,
-                    gives: "has rows of",
+                    results: columns.kinds,
+                    columns: columns.names,
+                    gives: "has the columns",
                 });
             }
         }
@@ -83,11 +102,27 @@ impl<'input> Checker<'_, 'input> {
             return self.fail_unknown_variable(span, name);
         };
         self.use_function(index);
+        let (draws, input, called) = {
+            let function = &self.functions[index];
+            (function.draws, function.input, function.name)
+        };
+        if let Some(space) = draws {
+            self.need_frame(span.start, space, &super::draw::Need::Call(called))?;
+        }
+        if input {
+            self.need_input(
+                span.start,
+                format!(
+                    "'{called}' reads gfx_key_held, so it can only be called in gfx_frame, gfx_key_down or gfx_key_up, or in a def that they call"
+                ),
+            )?;
+        }
         let function = &self.functions[index];
         Ok(Target {
             callable: function.callable,
             parameters: function.parameters.clone(),
             results: function.results.clone(),
+            columns: function.columns.clone(),
             gives: function.gives(),
         })
     }
@@ -97,7 +132,7 @@ impl<'input> Checker<'_, 'input> {
         &mut self,
         name: Named<'input>,
         arguments: &Arguments<'input>,
-    ) -> Result<(program::Call, Target), Diagnostic> {
+    ) -> Result<(program::Call, Target<'input>), Diagnostic> {
         let target = self.call_target(name.0, name.1)?;
         let mut aka_checks = Vec::new();
         let (callee, values) = match target.callable {
@@ -115,20 +150,21 @@ impl<'input> Checker<'_, 'input> {
             arguments: values,
             aka_checks,
             offset: name.0.start,
+            column: 0,
         };
         Ok((call, target))
     }
 
+    // A call that gives one value, which with ret names: one column of an
+    // array, or one value of a function.
     pub(super) fn call(
         &mut self,
         call: &ast::Call<'input>,
     ) -> Result<(program::Call, Kind, &'static str), Diagnostic> {
         let (span, _) = call.name;
         let shown = self.text(span);
-        let (checked, target) = self.callee(call.name, &call.arguments)?;
-        let results = &target.results;
-        let gives = target.gives;
-        if results.is_empty() {
+        let (mut checked, target) = self.callee(call.name, &call.arguments)?;
+        if target.results.is_empty() {
             return Self::fail(
                 span.start,
                 format!(
@@ -137,22 +173,27 @@ impl<'input> Checker<'_, 'input> {
                 ),
             );
         }
-        if results.len() > 1 {
-            return Self::fail(span.start, target.needs_call_message(shown));
-        }
-        let result = results[0];
-        let text = self.text(call.taken);
-        if split_indexed(text) != Some((0, result)) {
+        let columns = target.columns();
+        let gives = gives_shown(target.gives, &columns);
+        let ast::Column::Named((taken, column)) = call.taken else {
+            let text = self.text(call.taken.span());
             return Self::fail(
-                call.taken.start,
+                call.taken.span().start,
                 format!(
-                    "'{shown}' {gives} {}, so its call ends with ret 0_{}, not '{text}'",
-                    result.name(),
-                    result.name()
+                    "'{shown}' {gives}, which with ret names, as in {} with ret {}, not '{text}'",
+                    target.example(shown),
+                    target.first()
                 ),
             );
-        }
-        Ok((checked, result, gives))
+        };
+        let Some(position) = columns.position(column) else {
+            return Self::fail(
+                taken.start,
+                format!("'{shown}' {gives}, so it has no {column}"),
+            );
+        };
+        checked.column = position;
+        Ok((checked, columns.kinds[position], "gives"))
     }
 
     // A call statement, of a function of no values, or one that takes the
@@ -195,7 +236,7 @@ impl<'input> Checker<'_, 'input> {
         let slots = self.take_results(
             &format!("'{shown}'"),
             target.gives,
-            &target.results,
+            &target.columns(),
             &taking.results,
         )?;
         let block = self.block(&taking.block)?;
@@ -204,50 +245,63 @@ impl<'input> Checker<'_, 'input> {
         Ok(Statement::Invoke(program::Invoke { call, slots, block }))
     }
 
-    // Declares the values that with ret takes, each once by its index and
-    // type, by increasing index, and gives their (index, slot) pairs.
+    // Declares the values that with ret takes, of a function, a given
+    // operation or an array row, each once, in any order, as a val of its own
+    // name or of the name after as, and gives their (index, slot) pairs.
     pub(super) fn take_results(
         &mut self,
         shown: &str,
         gives: &str,
-        kinds: &[Kind],
-        results: &[(Span, Named<'input>)],
+        columns: &Columns<'input>,
+        results: &[ast::Taken<'input>],
     ) -> Result<Vec<(usize, Slot)>, Diagnostic> {
         let mut slots: Vec<(usize, Slot)> = Vec::new();
-        let mut previous: Option<(usize, Kind)> = None;
-        for (result, name) in results {
-            let text = self.text(*result);
-            let mut matched = None;
-            if let Some((index, kind)) = split_indexed(text)
-                && kinds.get(index) == Some(&kind)
-            {
-                matched = Some((index, kind));
-            }
-            let Some((index, kind)) = matched else {
+        for taken in results {
+            let ast::Column::Named((span, column)) = taken.column else {
+                let at = taken.column.span();
                 return Self::fail(
-                    result.start,
+                    at.start,
                     format!(
-                        "{shown} {gives} {}, so it has no {text}",
-                        kinds_named(kinds)
+                        "{shown} {}, which with ret names, as in with ret {}, not '{}'",
+                        gives_shown(gives, columns),
+                        columns.first(),
+                        self.text(at)
                     ),
                 );
             };
-            if let Some((before, before_kind)) = previous
-                && index <= before
-            {
+            let Some(position) = columns.position(column) else {
                 return Self::fail(
-                    result.start,
+                    span.start,
                     format!(
-                        "the values are taken once each, by increasing index, so {text} cannot follow {before}_{}",
-                        before_kind.name()
+                        "{shown} {}, so it has no {column}",
+                        gives_shown(gives, columns)
+                    ),
+                );
+            };
+            if slots.iter().any(|(before, _)| *before == position) {
+                return Self::fail(span.start, format!("'{column}' is already taken"));
+            }
+            let binding = taken.binding.unwrap_or((span, column));
+            if let Err(diagnostic) = self.new_name(binding) {
+                if taken.binding.is_some() {
+                    return Err(diagnostic);
+                }
+                let kind = columns.kinds[position];
+                let base = column
+                    .strip_suffix(&format!("_{}", kind.name()))
+                    .unwrap_or("value");
+                return Self::fail(
+                    span.start,
+                    format!(
+                        "{}, so take it as another name, as in {column} as {}",
+                        diagnostic.message,
+                        super::aka::copy_name(base)
                     ),
                 );
             }
-            previous = Some((index, kind));
-            self.new_name(*name)?;
             let slot = self.allocate();
-            self.declare(*name, kind, slot, false);
-            slots.push((index, slot));
+            self.declare(binding, columns.kinds[position], slot, false);
+            slots.push((position, slot));
         }
         Ok(slots)
     }

@@ -115,15 +115,66 @@ impl<'input> Checker<'_, 'input> {
             Term::Result(_) => Self::fail(
                 at,
                 format!(
-                    "{text} is not a value, a call names the values that it takes, as in call ... with ret 0_i32 as count"
+                    "{text} is not a value, a call names the values that it takes, as in call ... with ret count_i32"
                 ),
             ),
             Term::GfxValue(word) => self.gfx_value(at, word),
+            Term::KeyHeld(key) => self.key_held(at, *key),
             Term::Name(name) => self.named_value(operand.span, name),
         }
     }
 
+    // gfx_key_held key_forward, which a def can read too, and then only
+    // gfx_frame, gfx_key_down and gfx_key_up call it.
+    fn key_held(
+        &mut self,
+        at: usize,
+        (span, name): ast::Named<'input>,
+    ) -> Result<(Operand, Kind), Diagnostic> {
+        self.need_input(
+            at,
+            "gfx_key_held can only be in gfx_frame, gfx_key_down or gfx_key_up, or in a def that they call".to_owned(),
+        )?;
+        let key = ast::Operand {
+            span,
+            term: Term::Name(name),
+        };
+        let checked = self.value_of_kind(&key, Kind::InputKey, "gfx_key_held")?;
+        Ok((Operand::KeyHeld(Box::new(checked)), Kind::Bool))
+    }
+
+    // Where gfx_key_held is read: in gfx_frame, gfx_key_down or gfx_key_up,
+    // or in a def, which they then call.
+    pub(super) fn need_input(&mut self, at: usize, message: String) -> Result<(), Diagnostic> {
+        if let Some(index) = self.function {
+            if let Some(function) = self.functions.get_mut(index) {
+                function.input = true;
+            }
+            return Ok(());
+        }
+        if self.in_mouse_section() {
+            return Ok(());
+        }
+        Self::fail(at, message)
+    }
+
     fn gfx_value(&mut self, at: usize, word: &str) -> Result<(Operand, Kind), Diagnostic> {
+        // The window is not resized, so these are known before the program runs.
+        if word == "gfx_width" || word == "gfx_height" {
+            let (pixels, key) = if word == "gfx_width" {
+                (self.settings.gfx_width, "width")
+            } else {
+                (self.settings.gfx_height, "height")
+            };
+            if pixels == 0 {
+                return Self::fail(
+                    at,
+                    format!("{word} is the {key} in the group gfx of regina.ini, which has none"),
+                );
+            }
+            let value = Value::real(Kind::F32, f64::from(pixels)).unwrap_or(Value::F32(0.0));
+            return Ok((Operand::Literal(value), Kind::F32));
+        }
         let in_function = self.function.is_some();
         if word == "gfx_key" {
             if let Some(slot) = self.program.key_slot

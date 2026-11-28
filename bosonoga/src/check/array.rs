@@ -1,7 +1,7 @@
-use super::{ARRAY_VALUES_MAX, Checker, values_shown};
+use super::{ARRAY_VALUES_MAX, Checker, Columns, values_shown};
 use crate::Diagnostic;
 use crate::ast::{self, Named, Rows, Span, Term};
-use crate::program::{Operand, Slot, Statement, VarArray};
+use crate::program::{self, Callee, Operand, Slot, Statement, VarArray};
 use crate::value::{Kind, Operation, Value};
 
 fn zero_value(kind: Kind) -> Option<Value> {
@@ -99,7 +99,7 @@ impl<'input> Checker<'_, 'input> {
         }
         match self.value_of_kind(value, kind, context)? {
             Operand::Literal(literal) => Ok(literal),
-            Operand::Slot(_) => Err(not_literal),
+            Operand::Slot(_) | Operand::KeyHeld(_) => Err(not_literal),
         }
     }
 
@@ -108,7 +108,7 @@ impl<'input> Checker<'_, 'input> {
         (span, name): Named<'input>,
         mutable: bool,
         array: Span,
-        kind_spans: &[Span],
+        column_list: &[ast::Column<'input>],
         rows: &Rows<'input>,
     ) -> Result<Statement, Diagnostic> {
         if !mutable {
@@ -118,7 +118,8 @@ impl<'input> Checker<'_, 'input> {
             );
         }
         self.new_name((span, name))?;
-        let kinds = self.array_kinds(kind_spans)?;
+        let columns = self.named_values(column_list, super::item::Values::Array)?;
+        let kinds = columns.kinds.clone();
         let mut values = Vec::new();
         let repeat;
         match rows {
@@ -145,23 +146,23 @@ impl<'input> Checker<'_, 'input> {
                 }
             }
         }
-        let columns = kinds.len();
-        let row_count = match values.len().checked_div(columns) {
+        let width = kinds.len();
+        let row_count = match values.len().checked_div(width) {
             Some(per_repeat) => per_repeat * repeat,
             None => 0,
         };
         let slot = Slot::new(self.slot_count, self.in_global());
-        self.slot_count += row_count * columns;
+        self.slot_count += row_count * width;
         let index = self.program.var_arrays.len();
         self.program.var_arrays.push(VarArray {
             name: self.text(span).to_owned(),
             slot,
-            columns,
+            columns: width,
             rows: row_count,
         });
         self.declare((span, name), Kind::I32, slot, true);
         if let Some(variable) = self.variables.last_mut() {
-            variable.array = Some((index, kinds));
+            variable.array = Some((index, columns));
         }
         Ok(Statement::ArrayInit {
             slot,
@@ -193,13 +194,17 @@ impl<'input> Checker<'_, 'input> {
         Ok(row_count)
     }
 
+    // set ... at, of a whole row, whose values are in the order of its
+    // columns, or of one column, which is named, as in
+    // set grid at 2_i32 count_i32 to_add 1_i32.
     pub(super) fn set_at(
         &mut self,
         (span, name): Named<'input>,
         index: &ast::Operand<'input>,
+        column: Option<Named<'input>>,
         (operation_span, operation): (Span, Operation),
         values: &[ast::Operand<'input>],
-    ) -> Result<Statement, Diagnostic> {
+    ) -> Result<Vec<Statement>, Diagnostic> {
         let mut found = None;
         if let Some(at) = self.variable(name) {
             let variable = &mut self.variables[at];
@@ -208,7 +213,7 @@ impl<'input> Checker<'_, 'input> {
             }
             found.clone_from(&variable.array);
         }
-        let Some((array, kinds)) = found else {
+        let Some((array, columns)) = found else {
             self.target((span, name))?;
             return self.expected(
                 span.end,
@@ -218,17 +223,29 @@ impl<'input> Checker<'_, 'input> {
         let shown = self.text(span);
         let index_operand =
             self.value_of_kind(index, Kind::I32, &format!("the index of '{shown}'"))?;
+        if let Some(named) = column {
+            let write = (array, index_operand, span.start);
+            return self.set_column(
+                shown,
+                &columns,
+                write,
+                named,
+                (operation_span, operation),
+                values,
+            );
+        }
         if operation != Operation::Copy {
             return self.expected_at(operation_span, "to");
         }
-        let types = values_shown(&kinds);
+        let kinds = &columns.kinds;
+        let types = values_shown(kinds);
         let context = format!("a row of '{shown}'");
         let mut operands = Vec::new();
-        for (column, kind) in kinds.iter().enumerate() {
-            let Some(value) = values.get(column) else {
+        for (position, kind) in kinds.iter().enumerate() {
+            let Some(value) = values.get(position) else {
                 return Self::fail(
                     span.start,
-                    format!("'{shown}' has rows of {types}, but this row has {column}"),
+                    format!("'{shown}' has rows of {types}, but this row has {position}"),
                 );
             };
             operands.push(self.value_of_kind(value, *kind, &context)?);
@@ -239,11 +256,61 @@ impl<'input> Checker<'_, 'input> {
                 format!("'{shown}' has rows of {types}, but this row has more"),
             );
         }
-        Ok(Statement::ArrayWrite {
+        Ok(vec![Statement::ArrayWrite {
             array,
             index: index_operand,
+            first: 0,
             values: operands,
             offset: span.start,
-        })
+        }])
+    }
+
+    // One column of a row: set ... to writes it, and an operation reads it
+    // into a slot of its own, works on it there, and writes it back.
+    fn set_column(
+        &mut self,
+        shown: &str,
+        columns: &Columns<'input>,
+        (array, index, offset): (usize, Operand, usize),
+        (column_span, column): Named<'input>,
+        operation: (Span, Operation),
+        values: &[ast::Operand<'input>],
+    ) -> Result<Vec<Statement>, Diagnostic> {
+        let Some(position) = columns.position(column) else {
+            return Self::fail(
+                column_span.start,
+                format!(
+                    "'{shown}' has the columns {}, so it has no {column}",
+                    columns.shown()
+                ),
+            );
+        };
+        let kind = columns.kinds[position];
+        let slot = self.allocate();
+        let mut statements = Vec::new();
+        if operation.1 != Operation::Copy {
+            statements.push(Statement::Call {
+                slot,
+                call: program::Call {
+                    callee: Callee::VarArray(array),
+                    arguments: vec![index.clone()],
+                    aka_checks: Vec::new(),
+                    offset,
+                    column: position,
+                },
+            });
+        }
+        // The operation starts from the column, which a val of the same name,
+        // taken from another row, can still be added to.
+        let first = self.set_first((column_span, ""), (slot, kind), operation, values)?;
+        statements.push(first);
+        statements.push(Statement::ArrayWrite {
+            array,
+            index,
+            first: position,
+            values: vec![Operand::Slot(slot)],
+            offset,
+        });
+        Ok(statements)
     }
 }

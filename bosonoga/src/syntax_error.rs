@@ -78,22 +78,23 @@ fn wanted(expected: &[String], before: &[Tok<'_>]) -> String {
         return "a comparison".to_owned();
     }
     let literal = has(expected, "literal");
-    let indexed_type = has(expected, "indexed_type");
-    // After with ret 0_bool as found, which another taken value or the block follows.
-    if has(expected, "di")
-        && indexed_type
-        && let [.., Tok::As, Tok::Name(_)] = before
-    {
-        return "another value to take, like 1_i32 as count, or di".to_owned();
+    // After ret or with ret, which a value named with its type follows.
+    if let Some(Tok::Ret) = before.last() {
+        return "a value named with its type, like count_i32".to_owned();
     }
-    if has(expected, "di") && !literal && !indexed_type {
+    // After ret found_bool or with ret found_bool, which another value or the
+    // block follows.
+    if has(expected, "di")
+        && has(expected, "name")
+        && let [.., Tok::Ret | Tok::As | Tok::Name(_), Tok::Name(_)] = before
+    {
+        return "another value named with its type, like count_i32, or di".to_owned();
+    }
+    if has(expected, "di") && !literal {
         return "di".to_owned();
     }
-    if literal && !indexed_type {
+    if literal {
         return "a value".to_owned();
-    }
-    if indexed_type {
-        return "a type with its index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bool".to_owned();
     }
     listed(expected)
 }

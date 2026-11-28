@@ -17,7 +17,10 @@ pub enum Tok<'input> {
     To,
     Except,
     As,
-    Empty,
+    Pass,
+    Then,
+    For,
+    KeyHeld,
     Return,
     ExitSuccess,
     ExitFailure,
@@ -71,7 +74,6 @@ pub enum Tok<'input> {
     GfxValue(&'input str),
     Une,
     Reserved(&'input str),
-    IndexedType(&'input str),
     End,
 }
 
@@ -81,6 +83,7 @@ pub type Spanned<'input> = Result<(usize, Tok<'input>, usize), Diagnostic>;
 pub(crate) const UNE_PREFIX: &str = "une_";
 
 const RESERVED: &[&str] = &[
+    "none",
     "unset",
     "new",
     "io_raw_import",
@@ -93,7 +96,8 @@ const RESERVED: &[&str] = &[
     "optional",
 ];
 
-const INDEXED_TYPES: &[&str] = &[
+// The types that have no number literal.
+const WORD_TYPES: &[&str] = &[
     "flags",
     "color",
     "str",
@@ -220,19 +224,20 @@ impl<'input> Lexer<'input> {
         let Some(name) = suffix.strip_prefix('_') else {
             return Err(suffix_error(self.base + start));
         };
-        // 7_optional_i32 is a present optional, and 0_optional_str an index.
+        // 7_optional_i32 is a present optional, but 0_optional_str and
+        // 0_str are neither numbers nor, as values are named, an index.
         let (plain, optional) = match name.strip_prefix("optional_") {
             Some(inner) => (inner, true),
             None => (name, false),
         };
-        if INDEXED_TYPES.contains(&name) || (optional && !is_number_name(plain)) {
-            if has_fraction || number.starts_with('-') {
-                return Err(Diagnostic::new(
-                    self.base + start,
-                    "an index is digits and a type, like 1_str",
-                ));
-            }
-            return Ok(Tok::IndexedType(&self.source[start..self.cursor]));
+        if WORD_TYPES.contains(&name) || (optional && !is_number_name(plain)) {
+            return Err(Diagnostic::new(
+                self.base + start,
+                format!(
+                    "'{}' is not a {name}, and a value of a def, a column of an array or a value that with ret takes is named with its type, as in value_{name}",
+                    &self.source[start..self.cursor]
+                ),
+            ));
         }
         let kind = match plain {
             "i32" => Kind::I32,
@@ -307,7 +312,7 @@ impl<'input> Lexer<'input> {
 
 // Whether a name is that of a type, which the name of an aka_i32 is not.
 pub(crate) fn is_type_name(name: &str) -> bool {
-    Kind::named(name).is_some() || INDEXED_TYPES.contains(&name)
+    Kind::named(name).is_some() || WORD_TYPES.contains(&name)
 }
 
 fn is_number_name(name: &str) -> bool {
@@ -410,7 +415,10 @@ fn word(text: &str) -> Tok<'_> {
         "do" => Tok::Do,
         "info" => Tok::Info,
         "call" => Tok::Call,
-        "none" => Tok::Empty,
+        "pass" => Tok::Pass,
+        "then" => Tok::Then,
+        "for" => Tok::For,
+        "gfx_key_held" => Tok::KeyHeld,
         "return" => Tok::Return,
         "exit_success" => Tok::ExitSuccess,
         "exit_failure" => Tok::ExitFailure,
@@ -458,7 +466,9 @@ fn word(text: &str) -> Tok<'_> {
         "true_optional_bool" => Tok::Literal(Value::present(Value::Bool(true))),
         "false_optional_bool" => Tok::Literal(Value::present(Value::Bool(false))),
         "gfx_delta_time" | "gfx_heap_bytes" | "gfx_key" | "gfx_mouse_move_x"
-        | "gfx_mouse_move_y" | "gfx_mouse_captured" => Tok::GfxValue(text),
+        | "gfx_mouse_move_y" | "gfx_mouse_captured" | "gfx_width" | "gfx_height" => {
+            Tok::GfxValue(text)
+        }
         _ if is_numbered(text, "shift_") => Tok::Shift(text),
         _ if is_result_name(text) => Tok::Result(text),
         // Only aka_i32 is a keyword so far, and the others are kept for later.

@@ -1,0 +1,88 @@
+// then.bosonoga
+
+// A constant is computed from literals, earlier constants and settings,
+// before the program runs.
+const slot_count is 9_i32
+const slot_cubes is 256_i32
+const cube_rows is slot_count then to_multiply slot_cubes
+const half_rows is to_f32 cube_rows then to_divide 2d0_f32
+const negative_half is half_rows then to_multiply -1d0_f32
+const rows_label is "rows "_str then to_join cube_rows
+const double_step is setting_step then to_multiply 2_i32
+
+def scaled_fn x_f32 ret scaled_f32
+di
+  val scaled is x_f32 then to_multiply 2d0_f32 then to_add 1d0_f32
+  return scaled
+do
+
+main
+di
+  var ok is true_bool
+  // Each step starts from the value so far, left to right.
+  var target is 3d0_f32 then to_multiply 4d0_f32 then to_add 1d0_f32
+  set target to_subtract 1d0_f32 then to_divide 2d0_f32
+  // A conversion takes the value so far as its first value.
+  val whole is to_f32 7_i32 then to_divide 2d0_f32 then math_to_round then to_i32
+  val clamped is 12_i32 then math_to_max 0_i32 then math_to_min 10_i32
+  // A set can change kind on the way, as long as it ends with the kind of
+  // its variable.
+  var shown is none_i32
+  set shown to_f32 whole then to_multiply 1d5_f32 then to_i32 then to_optional_i32
+  // So can set ... to, which starts from a value of any kind.
+  var big is none_i64
+  set big to whole then to_multiply 3_i32 then to_i64 then to_optional_i64
+  if some big as twelve
+  di
+    if twelve not_eq 12_i64
+    di
+      set ok to false_bool
+    do
+  do
+  else
+  di
+    set ok to false_bool
+  do
+  val name is "C"_str then to_join 1_i32
+  val doubled is scaled_fn of 2d0_f32 with ret scaled_f32 then to_add 1d0_f32
+  var total is 0_i32
+  for index from 0_i32 to 4_i32
+  di
+    set total to_add index
+  do
+  // From is inclusive and to is exclusive, so this runs no time.
+  for une_never from 5_i32 to 5_i32
+  di
+    set ok to false_bool
+  do
+  // To is read once, before the first time.
+  var limit is 3_i64
+  var count is 0_i64
+  for step from 0_i64 to limit
+  di
+    set count to_add step
+    set limit to_add 1_i64
+  do
+  if target not_eq_6 6d0_f32 or half_rows not_eq_6 1152d0_f32 or negative_half not_eq_6 -1152d0_f32 or doubled not_eq_6 6d0_f32
+  di
+    set ok to false_bool
+  do
+  if some shown as six
+  di
+    if six not_eq 6_i32
+    di
+      set ok to false_bool
+    do
+  do
+  else
+  di
+    set ok to false_bool
+  do
+  info rows_label " "_str whole " "_str clamped " "_str name " "_str total " "_str count " "_str double_step
+  if ok and whole eq 4_i32 and clamped eq 10_i32 and total eq 6_i32 and count eq 3_i64
+  di
+    pass
+    return exit_success
+  do
+  return exit_failure
+do

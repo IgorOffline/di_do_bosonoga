@@ -68,6 +68,8 @@ pub enum Term<'input> {
     Name(&'input str),
     Result(&'input str),
     GfxValue(&'input str),
+    // gfx_key_held key_forward, whether a key is down.
+    KeyHeld(Named<'input>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -77,6 +79,32 @@ pub struct Operand<'input> {
 }
 
 pub type Named<'input> = (Span, &'input str);
+
+// A column of an array or a value of a def or a given operation, which is
+// named with its type, as in count_i32, or, by mistake, a literal, as the
+// 0_i32 of a value that was numbered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Column<'input> {
+    Named(Named<'input>),
+    Literal(Span),
+}
+
+impl Column<'_> {
+    #[must_use]
+    pub fn span(&self) -> Span {
+        match self {
+            Column::Named((span, _)) | Column::Literal(span) => *span,
+        }
+    }
+}
+
+// A value that with ret takes, as a val of its own name or of the name after
+// as.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Taken<'input> {
+    pub column: Column<'input>,
+    pub binding: Option<Named<'input>>,
+}
 
 // The some of a comparison, as in some count, or some count as number,
 // which names the value of the optional for the block of an if.
@@ -116,15 +144,15 @@ pub enum Arguments<'input> {
 pub struct Call<'input> {
     pub name: Named<'input>,
     pub arguments: Arguments<'input>,
-    pub taken: Span,
+    pub taken: Column<'input>,
 }
 
 // The values of a call statement, taken for its block, as in
-// with ret 0_bool as found 1_i32 as number di ... do.
+// with ret count_i32 marked_bool as seen di ... do.
 #[derive(Debug, PartialEq)]
 pub struct Taking<'input> {
     pub with: Span,
-    pub results: Vec<(Span, Named<'input>)>,
+    pub results: Vec<Taken<'input>>,
     pub block: Block<'input>,
 }
 
@@ -136,6 +164,15 @@ pub enum Initial<'input> {
     },
     Conversion((Span, Conversion), Vec<Operand<'input>>),
     Call(Call<'input>),
+}
+
+// A step of then, which starts from the value so far, as in
+// var x is 1_i32 then to_add 2_i32 then to_f32.
+#[derive(Debug, PartialEq)]
+pub enum Then<'input> {
+    Operation((Span, Operation), Vec<Operand<'input>>),
+    Conversion((Span, Conversion), Vec<Operand<'input>>),
+    Join(Span, Vec<Operand<'input>>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -177,39 +214,45 @@ pub enum Statement<'input> {
     Given {
         operation: (Span, crate::io::Builtin),
         values: Vec<Operand<'input>>,
-        results: Vec<(Span, Named<'input>)>,
+        results: Vec<Taken<'input>>,
         block: Block<'input>,
     },
     Set {
         name: Named<'input>,
         operation: (Span, Operation),
         values: Vec<Operand<'input>>,
+        then: Vec<Then<'input>>,
     },
     SetConversion {
         name: Named<'input>,
         conversion: (Span, Conversion),
         values: Vec<Operand<'input>>,
+        then: Vec<Then<'input>>,
     },
     SetCall {
         name: Named<'input>,
         operation: (Span, Operation),
         call: Call<'input>,
+        then: Vec<Then<'input>>,
     },
     Declare {
         name: Named<'input>,
         mutable: bool,
         initial: Initial<'input>,
+        then: Vec<Then<'input>>,
     },
     DeclareArray {
         name: Named<'input>,
         mutable: bool,
         array: Span,
-        kinds: Vec<Span>,
+        columns: Vec<Column<'input>>,
         rows: Rows<'input>,
     },
+    // A row, or one column of it when it is named.
     SetAt {
         name: Named<'input>,
         index: Operand<'input>,
+        column: Option<Named<'input>>,
         operation: (Span, Operation),
         values: Vec<Operand<'input>>,
     },
@@ -218,6 +261,14 @@ pub enum Statement<'input> {
         otherwise: Option<Block<'input>>,
     },
     While(Span, Condition<'input>, Block<'input>),
+    // for name from first to end di ... do, from inclusive and to exclusive.
+    For {
+        span: Span,
+        name: Named<'input>,
+        from: Operand<'input>,
+        to: Operand<'input>,
+        block: Block<'input>,
+    },
     AwaitNextFrame(Span),
     Draw {
         span: Span,
@@ -232,7 +283,7 @@ pub enum Statement<'input> {
     },
     // gfx_mouse_capture when true, and gfx_mouse_release when false.
     MouseCapture(Span, bool),
-    Empty,
+    Pass,
     Return(Span, ExitStatus),
     ReturnValues(Span, Vec<Operand<'input>>),
 }
@@ -244,9 +295,9 @@ pub enum Rows<'input> {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Results {
+pub enum Results<'input> {
     Void,
-    Indexed(Vec<Span>),
+    Named(Vec<Column<'input>>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -260,23 +311,26 @@ pub enum Item<'input> {
         range: Option<(Operand<'input>, Operand<'input>)>,
         except: Vec<Operand<'input>>,
     },
+    // Known before the program runs, so it is computed from literals,
+    // earlier constants and settings.
     Const {
         public: Option<Span>,
         name: Named<'input>,
-        value: Operand<'input>,
+        initial: Initial<'input>,
+        then: Vec<Then<'input>>,
     },
     Def {
         public: Option<Span>,
         name: Named<'input>,
         parameters: Vec<Named<'input>>,
         globals: Vec<Named<'input>>,
-        results: (Span, Results),
+        results: (Span, Results<'input>),
         block: Block<'input>,
     },
     Array {
         public: Option<Span>,
         name: Named<'input>,
-        kinds: Vec<Span>,
+        columns: Vec<Column<'input>>,
         rows: Vec<(Span, Vec<Operand<'input>>)>,
     },
     Section(Span, Section, Block<'input>, usize),

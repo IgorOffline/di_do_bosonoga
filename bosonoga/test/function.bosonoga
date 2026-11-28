@@ -2,7 +2,7 @@
 
 const board_radius is 4_i32
 
-def in_bounds_fn q_i32 r_i32 ret 0_bool
+def in_bounds_fn q_i32 r_i32 ret inside_bool
 di
   var s is 0_i32
   set s to_subtract q_i32 r_i32
@@ -18,7 +18,7 @@ di
   return false_bool
 do
 
-def factorial_fn n_i64 ret 0_i64
+def factorial_fn n_i64 ret factorial_i64
 di
   if n_i64 le 1_i64
   di
@@ -26,7 +26,7 @@ di
   do
   var smaller is n_i64
   set smaller to_subtract 1_i64
-  val rest is factorial_fn of smaller with ret 0_i64
+  val rest is factorial_fn of smaller with ret factorial_i64
   var product is n_i64
   set product to_multiply rest
   return product
@@ -34,9 +34,9 @@ do
 
 main
 di
-  val inside is in_bounds_fn of 2_i32 -3_i32 with ret 0_bool
-  val outside is in_bounds_fn of 3_i32 2_i32 with ret 0_bool
-  val twenty is factorial_fn of 20_i64 with ret 0_i64
+  val inside is in_bounds_fn of 2_i32 -3_i32 with ret inside_bool
+  val outside is in_bounds_fn of 3_i32 2_i32 with ret inside_bool
+  val twenty is factorial_fn of 20_i64 with ret factorial_i64
   if inside and not outside and twenty eq 2432902008176640000_i64
   di
     return exit_success
