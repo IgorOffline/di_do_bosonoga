@@ -9,7 +9,7 @@ use crate::ast::{self, Item, Named, Results, Section, Span};
 use crate::program::{self, Array, Operand};
 use crate::value::Kind;
 
-const OPTIONAL_TYPES: &str = "opeto_ and i32, i64, u32, u64, f32, f64, bu, str or color, as in 0_opeto_i32 or count_opeto_i32";
+const OPTIONAL_TYPES: &str = "optional_ and i32, i64, u32, u64, f32, f64, bool, str or color, as in 0_optional_i32 or count_optional_i32";
 
 fn parameter_kind(name: &str) -> Option<Kind> {
     let bytes = name.as_bytes();
@@ -20,8 +20,8 @@ fn parameter_kind(name: &str) -> Option<Kind> {
         let Some(suffix) = name.get(start..) else {
             continue;
         };
-        // count_opeto_flags is not a flags parameter, but a mistake.
-        if suffix.starts_with("opeto_") {
+        // count_optional_flags is not a flags parameter, but a mistake.
+        if suffix.starts_with("optional_") {
             return Kind::named(suffix);
         }
         if let Some(kind) = Kind::named(suffix) {
@@ -141,15 +141,15 @@ impl<'input> Checker<'_, 'input> {
         if section == Section::Global
             && (has_main || has_gfx || self.seen.contains(&Section::Global))
         {
-            return Self::fail(span.start, "bosonoga_golobal must be the first section");
+            return Self::fail(span.start, "global must be the first section");
         }
         if has_main {
-            return self.expected_at(span, "aka_i32, kona, def, val or end of file");
+            return self.expected_at(span, "aka_i32, const, def, val or end of file");
         }
         if section == Section::Main && has_gfx {
             return self.expected_at(
                 span,
-                "aka_i32, kona, def, val, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main",
+                "aka_i32, const, def, val, gfx_init, gfx_frame, gfx_cleanup, gfx_key_down, gfx_key_up or gfx_main",
             );
         }
         let is_main = section == Section::Main || section == Section::GfxMain;
@@ -204,12 +204,12 @@ impl<'input> Checker<'_, 'input> {
         for span in spans {
             let text = self.text(*span);
             let Some((index, kind)) = split_indexed(text) else {
-                if text.contains("_opeto_") {
+                if text.contains("_optional_") {
                     return self.expected_at(*span, OPTIONAL_TYPES);
                 }
                 return self.expected_at(
                     *span,
-                    "a type with its index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bu, or opeto_ and one of these but flags",
+                    "a type with its index, like 0_i32, of i32, i64, u32, u64, f32, f64, flags, color, str or bool, or optional_ and one of these but flags",
                 );
             };
             if kinds.len() == FUNCTION_VALUES_MAX {
@@ -245,21 +245,21 @@ impl<'input> Checker<'_, 'input> {
         }
         let shown = self.text(span);
         if !is_function_name(name) {
-            if name == "_fen" {
+            if name == "_fn" {
                 return Self::fail(
                     span.start,
-                    "the name of a function has more before _fen, as in double_fen",
+                    "the name of a function has more before _fn, as in double_fn",
                 );
             }
             let mut base = shown;
-            if let Some(rest) = shown.strip_prefix("fen_")
+            if let Some(rest) = shown.strip_prefix("fn_")
                 && !rest.is_empty()
             {
                 base = rest;
             }
             return Self::fail(
                 span.start,
-                format!("the name of a function ends with _fen, as in {base}_fen"),
+                format!("the name of a function ends with _fn, as in {base}_fn"),
             );
         }
         if let Some(index) = self.function_any(name) {
@@ -304,7 +304,7 @@ impl<'input> Checker<'_, 'input> {
         checked
     }
 
-    // Declares a variable of bosonoga_golobal that vit ferom_golobal lists, in
+    // Declares a variable of global that with from_global lists, in
     // its first frame, which the function reads and sets.
     fn capture(
         &mut self,
@@ -313,18 +313,18 @@ impl<'input> Checker<'_, 'input> {
     ) -> Result<(), Diagnostic> {
         let shown = self.text(span);
         if self.is_reserved(name) {
-            return self.expected_at(span, "a variable of bosonoga_golobal");
+            return self.expected_at(span, "a variable of global");
         }
         if let Some(index) = self.variable_any(name) {
             if self.variables[index].origin == Origin::Captured {
                 return Self::fail(
                     span.start,
-                    format!("'{shown}' is already in vit ferom_golobal"),
+                    format!("'{shown}' is already in with from_global"),
                 );
             }
             return Self::fail(
                 span.start,
-                format!("'{shown}' is a parameter, so it is not also in vit ferom_golobal"),
+                format!("'{shown}' is a parameter, so it is not also in with from_global"),
             );
         }
         let mut found = None;
@@ -340,11 +340,11 @@ impl<'input> Checker<'_, 'input> {
             let before = if self.seen.contains(&Section::Global) {
                 ""
             } else {
-                ", and vit ferom_golobal needs bosonoga_golobal before the function"
+                ", and with from_global needs global before the function"
             };
             return Self::fail(
                 span.start,
-                format!("'{shown}' is not a variable of bosonoga_golobal{before}"),
+                format!("'{shown}' is not a variable of global{before}"),
             );
         };
         let variable = Variable {
@@ -381,7 +381,7 @@ impl<'input> Checker<'_, 'input> {
                 found = aka.map(|_| Kind::I32);
             }
             let Some(kind) = found else {
-                if parameter.1.contains("_opeto_") {
+                if parameter.1.contains("_optional_") {
                     return self.expected_at(parameter.0, OPTIONAL_TYPES);
                 }
                 return self.expected_at(

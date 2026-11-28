@@ -54,7 +54,7 @@ impl<'input> Checker<'_, 'input> {
                 return Self::fail(
                     from.span.start,
                     format!(
-                        "ferom {first}_i32 tu {end}_i32 has no values, as ferom is inclusive and tu is exclusive"
+                        "from {first}_i32 to {end}_i32 has no values, as from is inclusive and to is exclusive"
                     ),
                 );
             }
@@ -69,7 +69,7 @@ impl<'input> Checker<'_, 'input> {
                 return Self::fail(
                     operand.span.start,
                     format!(
-                        "{value}_i32 is not in ferom {from}_i32 tu {to}_i32, so it needs no except"
+                        "{value}_i32 is not in from {from}_i32 to {to}_i32, so it needs no except"
                     ),
                 );
             }
@@ -103,7 +103,7 @@ impl<'input> Checker<'_, 'input> {
         if is_type_name(base) {
             return Self::fail(span.start, format!("'{base}' is already a type"));
         }
-        if base.contains('_') || base == "fen" {
+        if base.contains('_') || base == "fn" {
             return Self::fail(
                 span.start,
                 format!(
@@ -164,7 +164,7 @@ impl<'input> Checker<'_, 'input> {
             return Self::fail(
                 operand.span.start,
                 format!(
-                    "except is for values inside the range, and this one is at its edge, so write ferom {first}_i32 tu {end}_i32"
+                    "except is for values inside the range, and this one is at its edge, so write from {first}_i32 to {end}_i32"
                 ),
             );
         }
@@ -198,7 +198,7 @@ impl<'input> Checker<'_, 'input> {
         let Some((index, base, suffix)) = self.aka_suffix(name) else {
             return Ok(None);
         };
-        if base.ends_with("_opeto") || base == "opeto" {
+        if base.ends_with("_optional") || base == "optional" {
             return Self::fail(
                 span.start,
                 format!("'{suffix}' is an aka_i32, which cannot be optional"),
@@ -274,7 +274,7 @@ impl<'input> Checker<'_, 'input> {
         Self::fail(
             span.start,
             format!(
-                "'{shown}' is {}, an aka_i32, which is converted before its other uses, as in val {base} is tu_i32 {shown}",
+                "'{shown}' is {}, an aka_i32, which is converted before its other uses, as in val {base} is to_i32 {shown}",
                 self.aka_name(aka)
             ),
         )

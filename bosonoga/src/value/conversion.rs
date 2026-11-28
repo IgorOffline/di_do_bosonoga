@@ -30,37 +30,37 @@ pub enum Conversion {
     Log1p,
     Expm1,
     Hypot,
-    // A present optional of a value of the kind, as tu_opeto_i32 of i32.
+    // A present optional of a value of the kind, as to_optional_i32 of i32.
     ToOptional(Kind),
 }
 
 const CONVERSIONS: [(&str, Conversion); 26] = [
-    ("tu_i32", Conversion::ToI32),
-    ("tu_i64", Conversion::ToI64),
-    ("tu_u32", Conversion::ToU32),
-    ("tu_u64", Conversion::ToU64),
-    ("tu_f32", Conversion::ToF32),
-    ("tu_f64", Conversion::ToF64),
-    ("math_tu_abs", Conversion::Abs),
-    ("math_tu_min", Conversion::Min),
-    ("math_tu_max", Conversion::Max),
-    ("math_tu_sin", Conversion::Sin),
-    ("math_tu_cos", Conversion::Cos),
-    ("math_tu_atan2", Conversion::Atan2),
-    ("math_tu_sqrt", Conversion::Sqrt),
-    ("math_tu_pow", Conversion::Pow),
-    ("math_tu_floor", Conversion::Floor),
-    ("math_tu_ceil", Conversion::Ceil),
-    ("math_tu_round", Conversion::Round),
-    ("math_tu_log", Conversion::Log),
-    ("math_tu_log10", Conversion::Log10),
-    ("math_tu_exp", Conversion::Exp),
-    ("math_tu_asin", Conversion::Asin),
-    ("math_tu_acos", Conversion::Acos),
-    ("math_tu_tan", Conversion::Tan),
-    ("math_tu_log1p", Conversion::Log1p),
-    ("math_tu_expm1", Conversion::Expm1),
-    ("math_tu_hypot", Conversion::Hypot),
+    ("to_i32", Conversion::ToI32),
+    ("to_i64", Conversion::ToI64),
+    ("to_u32", Conversion::ToU32),
+    ("to_u64", Conversion::ToU64),
+    ("to_f32", Conversion::ToF32),
+    ("to_f64", Conversion::ToF64),
+    ("math_to_abs", Conversion::Abs),
+    ("math_to_min", Conversion::Min),
+    ("math_to_max", Conversion::Max),
+    ("math_to_sin", Conversion::Sin),
+    ("math_to_cos", Conversion::Cos),
+    ("math_to_atan2", Conversion::Atan2),
+    ("math_to_sqrt", Conversion::Sqrt),
+    ("math_to_pow", Conversion::Pow),
+    ("math_to_floor", Conversion::Floor),
+    ("math_to_ceil", Conversion::Ceil),
+    ("math_to_round", Conversion::Round),
+    ("math_to_log", Conversion::Log),
+    ("math_to_log10", Conversion::Log10),
+    ("math_to_exp", Conversion::Exp),
+    ("math_to_asin", Conversion::Asin),
+    ("math_to_acos", Conversion::Acos),
+    ("math_to_tan", Conversion::Tan),
+    ("math_to_log1p", Conversion::Log1p),
+    ("math_to_expm1", Conversion::Expm1),
+    ("math_to_hypot", Conversion::Hypot),
 ];
 
 impl Conversion {
@@ -71,7 +71,7 @@ impl Conversion {
                 return Some(conversion);
             }
         }
-        if let Some(Kind::Optional(inner)) = word.strip_prefix("tu_").and_then(Kind::named) {
+        if let Some(Kind::Optional(inner)) = word.strip_prefix("to_").and_then(Kind::named) {
             return Some(Conversion::ToOptional(*inner));
         }
         None
@@ -81,17 +81,17 @@ impl Conversion {
     pub fn word(self) -> &'static str {
         if let Conversion::ToOptional(inner) = self {
             return match inner {
-                Kind::I32 => "tu_opeto_i32",
-                Kind::I64 => "tu_opeto_i64",
-                Kind::U32 => "tu_opeto_u32",
-                Kind::U64 => "tu_opeto_u64",
-                Kind::F32 => "tu_opeto_f32",
-                Kind::F64 => "tu_opeto_f64",
-                Kind::Color => "tu_opeto_color",
-                Kind::Str => "tu_opeto_str",
-                Kind::Bool => "tu_opeto_bu",
+                Kind::I32 => "to_optional_i32",
+                Kind::I64 => "to_optional_i64",
+                Kind::U32 => "to_optional_u32",
+                Kind::U64 => "to_optional_u64",
+                Kind::F32 => "to_optional_f32",
+                Kind::F64 => "to_optional_f64",
+                Kind::Color => "to_optional_color",
+                Kind::Str => "to_optional_str",
+                Kind::Bool => "to_optional_bool",
                 Kind::Flags | Kind::InputKey | Kind::Font | Kind::Icon | Kind::Optional(_) => {
-                    "tu_opeto"
+                    "to_optional"
                 }
             };
         }
@@ -198,19 +198,19 @@ impl Conversion {
 
     fn domain_error(self, a: f64, b: f64) -> Option<&'static str> {
         if self == Self::Asin && !(-1.0..=1.0).contains(&a) {
-            Some("math_tu_asin needs a value from -1 to 1")
+            Some("math_to_asin needs a value from -1 to 1")
         } else if self == Self::Acos && !(-1.0..=1.0).contains(&a) {
-            Some("math_tu_acos needs a value from -1 to 1")
+            Some("math_to_acos needs a value from -1 to 1")
         } else if self == Self::Sqrt && a < 0.0 {
-            Some("math_tu_sqrt of a negative number")
+            Some("math_to_sqrt of a negative number")
         } else if self == Self::Pow && a < 0.0 && !is_zero(b.fract()) {
-            Some("math_tu_pow of a negative number to a fractional power")
+            Some("math_to_pow of a negative number to a fractional power")
         } else if self == Self::Pow && is_zero(a) && b < 0.0 {
-            Some("math_tu_pow of zero to a negative power is division by zero")
+            Some("math_to_pow of zero to a negative power is division by zero")
         } else if (self == Self::Log || self == Self::Log10) && a <= 0.0 {
             Some("logarithms need a positive value")
         } else if self == Self::Log1p && a <= -1.0 {
-            Some("math_tu_log1p needs a value greater than -1")
+            Some("math_to_log1p needs a value greater than -1")
         } else {
             None
         }

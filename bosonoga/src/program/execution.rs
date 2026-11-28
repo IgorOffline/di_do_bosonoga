@@ -155,7 +155,7 @@ impl<'a> Execution<'a> {
 
     fn run_window(&mut self) -> Result<Option<ExitStatus>, Diagnostic> {
         let program = self.program;
-        self.section("bosonoga_golobal", &program.sections.global)?;
+        self.section("global", &program.sections.global)?;
         self.section("gfx_init", &program.sections.init)?;
         if let Flow::Closed = self.next_frame()? {
             return Ok(None);
@@ -166,12 +166,12 @@ impl<'a> Execution<'a> {
     fn run_main(&mut self) -> Result<Option<ExitStatus>, Diagnostic> {
         let program = self.program;
         let Some((statements, end)) = &program.sections.main else {
-            return Err(Diagnostic::new(0, "a program needs a bosonoga_main block"));
+            return Err(Diagnostic::new(0, "a program needs a main block"));
         };
         self.running = if program.is_gfx {
             "gfx_main"
         } else {
-            "bosonoga_main"
+            "main"
         };
         self.steps = 0;
         let flow = self.block(statements);

@@ -167,8 +167,8 @@ impl Settings {
         if file.has_group("mouse") {
             settings.mouse = parse_mouse(&file)?;
         }
-        for key in file.keys("golobal") {
-            let text = file.text("golobal", key)?;
+        for key in file.keys("global") {
+            let text = file.text("global", key)?;
             let value = parse_global(key, &text)?;
             settings.globals.push((key.to_owned(), value));
         }
@@ -285,7 +285,7 @@ fn parse_mouse(file: &KeyFile<'_>) -> Result<Mouse, String> {
             },
             "invert_north" | "invert_west" => {
                 let Some(Value::Bool(invert)) = one_literal(text) else {
-                    return Err(format!("{key} must be tara_bu or fales_bu"));
+                    return Err(format!("{key} must be true_bool or false_bool"));
                 };
                 if key == "invert_north" {
                     mouse.invert_north = invert;

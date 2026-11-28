@@ -26,7 +26,7 @@ pub enum Kind {
     Font,
     Icon,
     // A value that may be absent, as Rust's Option, of a kind that
-    // Kind::optional allows, as in opeto_i32.
+    // Kind::optional allows, as in optional_i32.
     Optional(&'static Kind),
 }
 
@@ -59,7 +59,7 @@ impl Kind {
             Kind::Flags => "flags",
             Kind::Color => "color",
             Kind::Str => "str",
-            Kind::Bool => "bu",
+            Kind::Bool => "bool",
             Kind::InputKey => "input_key",
             Kind::Font => "font",
             Kind::Icon => "icon",
@@ -69,20 +69,22 @@ impl Kind {
 
     fn optional_name(self) -> &'static str {
         match self {
-            Kind::I32 => "opeto_i32",
-            Kind::I64 => "opeto_i64",
-            Kind::U32 => "opeto_u32",
-            Kind::U64 => "opeto_u64",
-            Kind::F32 => "opeto_f32",
-            Kind::F64 => "opeto_f64",
-            Kind::Color => "opeto_color",
-            Kind::Str => "opeto_str",
-            Kind::Bool => "opeto_bu",
-            Kind::Flags | Kind::InputKey | Kind::Font | Kind::Icon | Kind::Optional(_) => "opeto",
+            Kind::I32 => "optional_i32",
+            Kind::I64 => "optional_i64",
+            Kind::U32 => "optional_u32",
+            Kind::U64 => "optional_u64",
+            Kind::F32 => "optional_f32",
+            Kind::F64 => "optional_f64",
+            Kind::Color => "optional_color",
+            Kind::Str => "optional_str",
+            Kind::Bool => "optional_bool",
+            Kind::Flags | Kind::InputKey | Kind::Font | Kind::Icon | Kind::Optional(_) => {
+                "optional"
+            }
         }
     }
 
-    // The optional kind of a kind, as opeto_i32 of i32. A number, bool,
+    // The optional kind of a kind, as optional_i32 of i32. A number, bool,
     // str or color can be optional, but an optional or a handle cannot.
     #[must_use]
     pub fn optional(self) -> Option<Kind> {
@@ -110,7 +112,7 @@ impl Kind {
 
     #[must_use]
     pub fn named(name: &str) -> Option<Kind> {
-        if let Some(inner) = name.strip_prefix("opeto_") {
+        if let Some(inner) = name.strip_prefix("optional_") {
             return Kind::named_plain(inner)?.optional();
         }
         Kind::named_plain(name)
@@ -162,7 +164,7 @@ pub enum Value {
         index: usize,
         text: String,
     },
-    // An optional of the kind inner, absent as nihil_i32 or present, as 7_opeto_i32.
+    // An optional of the kind inner, absent as none_i32 or present, as 7_optional_i32.
     Optional {
         inner: Kind,
         value: Option<Box<Value>>,
@@ -193,7 +195,7 @@ impl Value {
         }
     }
 
-    // A present optional of a value, as an i32 given where opeto_i32 is.
+    // A present optional of a value, as an i32 given where optional_i32 is.
     #[must_use]
     pub fn present(value: Value) -> Value {
         Value::Optional {
@@ -387,13 +389,13 @@ impl Display for Value {
                 }
                 Ok(())
             }
-            Value::Bool(v) => f.write_str(if *v { "tara" } else { "fales" }),
+            Value::Bool(v) => f.write_str(if *v { "true" } else { "false" }),
             Value::Str(v) | Value::Font { text: v, .. } | Value::Icon { text: v, .. } => {
                 f.write_str(v)
             }
             Value::InputKey(v) => f.write_str(crate::key::name(*v).unwrap_or_default()),
             Value::Optional { value: Some(v), .. } => write!(f, "{v}"),
-            Value::Optional { value: None, .. } => f.write_str("nihil"),
+            Value::Optional { value: None, .. } => f.write_str("none"),
         }
     }
 }

@@ -87,8 +87,8 @@ impl Lega {
         vec![text]
     }
 
-    // The prefix and the longest suffix of a name, as _opeto_i32 and not
-    // _i32 of count_opeto_i32. A name without them is always lega.
+    // The prefix and the longest suffix of a name, as _optional_i32 and not
+    // _i32 of count_optional_i32. A name without them is always lega.
     fn affixes<'a>(&'a self, name: &str) -> Vec<&'a str> {
         let mut prefix = "";
         let mut suffix = "";

@@ -14,22 +14,22 @@ lega _f64
 lega _flags
 lega _color
 lega _str
-lega _bu
+lega _bool
 lega _input_key
 lega _font
 lega _icon
-lega _opeto_i32
-lega _opeto_i64
-lega _opeto_u32
-lega _opeto_u64
-lega _opeto_f32
-lega _opeto_f64
-lega _opeto_color
-lega _opeto_str
-lega _opeto_bu
+lega _optional_i32
+lega _optional_i64
+lega _optional_u32
+lega _optional_u64
+lega _optional_f32
+lega _optional_f64
+lega _optional_color
+lega _optional_str
+lega _optional_bool
 
 // suffix of functions
-lega _fen
+lega _fn
 
 // prefix of flags, shift_0 to shift_31
 lega shift_
@@ -41,30 +41,30 @@ lega une_
 lega color_
 lega dir_
 lega font_
-lega golobal_
+lega global_
 lega icon_
 lega key_
 
 // values
 lega exit_failure
 lega exit_success
-lega fales_bu
-lega fales_opeto_bu
-lega nihil_bu
-lega nihil_color
-lega nihil_f32
-lega nihil_f64
-lega nihil_i32
-lega nihil_i64
-lega nihil_str
-lega nihil_u32
-lega nihil_u64
-lega tara_bu
-lega tara_opeto_bu
+lega false_bool
+lega false_optional_bool
+lega none_bool
+lega none_color
+lega none_f32
+lega none_f64
+lega none_i32
+lega none_i64
+lega none_str
+lega none_u32
+lega none_u64
+lega true_bool
+lega true_optional_bool
 
 // sections
-lega bosonoga_golobal
-lega bosonoga_main
+lega global
+lega main
 lega gfx_cleanup
 lega gfx_frame
 lega gfx_init
@@ -78,11 +78,11 @@ lega do
 
 // items
 lega aka_i32
-lega kona
+lega const
 lega def
 lega except
-lega ferom
-lega ferom_golobal
+lega from
+lega from_global
 lega mod
 lega pub
 lega ret
@@ -97,16 +97,16 @@ lega else
 lega if
 lega info
 lega is
-lega nihil
+lega none
 lega of
 lega return
-lega roa
+lega row
 lega set
 lega val
 lega var
 lega while
-lega vit
-lega vit_len_kol
+lega with
+lega with_len_col
 
 // conditions
 lega and
@@ -127,52 +127,52 @@ lega some
 
 // operations
 lega shift_or
-lega tu
-lega tu_add
-lega tu_divide
-lega tu_join
-lega tu_mod
-lega tu_multiply
-lega tu_subtract
+lega to
+lega to_add
+lega to_divide
+lega to_join
+lega to_mod
+lega to_multiply
+lega to_subtract
 
 // conversions
-lega tu_f32
-lega tu_f64
-lega tu_i32
-lega tu_i64
-lega tu_opeto_bu
-lega tu_opeto_color
-lega tu_opeto_f32
-lega tu_opeto_f64
-lega tu_opeto_i32
-lega tu_opeto_i64
-lega tu_opeto_str
-lega tu_opeto_u32
-lega tu_opeto_u64
-lega tu_u32
-lega tu_u64
+lega to_f32
+lega to_f64
+lega to_i32
+lega to_i64
+lega to_optional_bool
+lega to_optional_color
+lega to_optional_f32
+lega to_optional_f64
+lega to_optional_i32
+lega to_optional_i64
+lega to_optional_str
+lega to_optional_u32
+lega to_optional_u64
+lega to_u32
+lega to_u64
 
 // math
-lega math_tu_abs
-lega math_tu_acos
-lega math_tu_asin
-lega math_tu_atan2
-lega math_tu_ceil
-lega math_tu_cos
-lega math_tu_exp
-lega math_tu_expm1
-lega math_tu_floor
-lega math_tu_hypot
-lega math_tu_log
-lega math_tu_log10
-lega math_tu_log1p
-lega math_tu_max
-lega math_tu_min
-lega math_tu_pow
-lega math_tu_round
-lega math_tu_sin
-lega math_tu_sqrt
-lega math_tu_tan
+lega math_to_abs
+lega math_to_acos
+lega math_to_asin
+lega math_to_atan2
+lega math_to_ceil
+lega math_to_cos
+lega math_to_exp
+lega math_to_expm1
+lega math_to_floor
+lega math_to_hypot
+lega math_to_log
+lega math_to_log10
+lega math_to_log1p
+lega math_to_max
+lega math_to_min
+lega math_to_pow
+lega math_to_round
+lega math_to_sin
+lega math_to_sqrt
+lega math_to_tan
 
 // io, str and xml
 lega io_latest
@@ -228,11 +228,11 @@ lega gfx_align_y_top
 // lega continue
 // lega expect
 // lega io_raw_import
-// lega len_kol
-// lega len_roa
-// lega neo
-// lega opeto
+// lega len_col
+// lega len_row
+// lega new
+// lega optional
 // lega ret_
 // lega sleep_ms
-// lega tu_
-// lega uneset
+// lega to_
+// lega unset

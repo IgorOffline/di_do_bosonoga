@@ -22,9 +22,9 @@ extern {
         "info" => Tok::Info,
         "call" => Tok::Call,
         "given_operation" => Tok::Given(<crate::io::Builtin>),
-        "tu_join" => Tok::Join,
+        "to_join" => Tok::Join,
         "as" => Tok::As,
-        "nihil" => Tok::Nihil,
+        "none" => Tok::Empty,
         "return" => Tok::Return,
         "exit_success" => Tok::ExitSuccess,
         "exit_failure" => Tok::ExitFailure,
@@ -32,24 +32,24 @@ extern {
         "val" => Tok::Val,
         "is" => Tok::Is,
         "set" => Tok::Set,
-        "tu" => Tok::To,
+        "to" => Tok::To,
         "operation" => Tok::Operation(<Operation>),
         "conversion" => Tok::Conversion(<Conversion>),
         "aka_i32" => Tok::Aka,
-        "ferom" => Tok::From,
+        "from" => Tok::From,
         "except" => Tok::Except,
-        "kona" => Tok::Const,
+        "const" => Tok::Const,
         "pub" => Tok::Pub,
         "mod" => Tok::Mod,
         "def" => Tok::Def,
-        "ferom_golobal" => Tok::FromGlobal,
+        "from_global" => Tok::FromGlobal,
         "ret" => Tok::Ret,
         "ret_void" => Tok::RetVoid,
         "of" => Tok::Of,
-        "vit" => Tok::With,
+        "with" => Tok::With,
         "at" => Tok::At,
         "array" => Tok::Array,
-        "roa" => Tok::Row,
+        "row" => Tok::Row,
         "while" => Tok::While,
         "gfx_await_next_frame" => Tok::AwaitNextFrame,
         "gfx_clear" => Tok::GfxClear,
@@ -66,7 +66,7 @@ extern {
         "gfx_mouse_release" => Tok::GfxMouseRelease,
         "gfx_align_x" => Tok::AlignX(<Horizontal>),
         "gfx_align_y" => Tok::AlignY(<Vertical>),
-        "vit_len_kol" => Tok::WithLenCol,
+        "with_len_col" => Tok::WithLenCol,
         "if" => Tok::If,
         "else" => Tok::Else,
         "and" => Tok::And,
@@ -96,10 +96,10 @@ Item: Item<'input> = {
             error: Diagnostic::new(start, "expected a file name, as in mod \"lorem.bosonoga\"_str"),
         }),
     },
-    <public:Public?> "aka_i32" <name:Named> "is" "ferom" <from:Operand> "tu" <to:Operand> <except:Except?> =>
+    <public:Public?> "aka_i32" <name:Named> "is" "from" <from:Operand> "to" <to:Operand> <except:Except?> =>
         Item::Aka { public, name, range: Some((from, to)), except: except.unwrap_or_default() },
     <public:Public?> "aka_i32" <name:Named> <except:Except> => Item::Aka { public, name, range: None, except },
-    <public:Public?> "kona" <name:Named> "is" <value:Operand> => Item::Const { public, name, value },
+    <public:Public?> "const" <name:Named> "is" <value:Operand> => Item::Const { public, name, value },
     <public:Public?> "def" <name:Named> <parameters:Named*> <globals:FromGlobal?> <results:Results>
         <block:Block> =>
         Item::Def { public, name, parameters, globals: globals.unwrap_or_default(), results, block },
@@ -109,8 +109,8 @@ Item: Item<'input> = {
         Item::Section(Span { start, end }, section, block, after),
 };
 
-// The variables of bosonoga_golobal that a def reads or sets.
-FromGlobal: Vec<Named<'input>> = "vit" "ferom_golobal" <Named+>;
+// The variables of global that a def reads or sets.
+FromGlobal: Vec<Named<'input>> = "with" "from_global" <Named+>;
 
 Public: Span = <start:@L> "pub" <end:@R> => Span { start, end };
 
@@ -128,18 +128,18 @@ Indexed: Span = {
 };
 
 Row: (Span, Vec<Operand<'input>>) =
-    <start:@L> "roa" <end:@R> <values:Operand+> => (Span { start, end }, values);
+    <start:@L> "row" <end:@R> <values:Operand+> => (Span { start, end }, values);
 
 Rows: Rows<'input> = {
     "di" <rows:Row+> "do" => Rows::Literal(rows),
-    <start:@L> "vit_len_kol" <end:@R> <count:Operand> => Rows::Zeroed(Span { start, end }, count),
+    <start:@L> "with_len_col" <end:@R> <count:Operand> => Rows::Zeroed(Span { start, end }, count),
 };
 
 Block: Block<'input> =
     <opening:@L> "di" <statements:Located*> "do" =>? {
         if statements.is_empty() {
             Err(ParseError::User {
-                error: Diagnostic::new(opening, "empty block, write nihil for a block that does nothing"),
+                error: Diagnostic::new(opening, "empty block, write none for a block that does nothing"),
             })
         } else {
             Ok(statements)
@@ -152,8 +152,8 @@ Statement: Statement<'input> = {
     "info" <values:Operand+> => Statement::Info(values),
     <start:@L> "call" <end:@R> <name:Named> <arguments:CallArguments> <taking:Taking?> =>
         Statement::Call { span: Span { start, end }, name, arguments, taking },
-    "set" <name:Named> "tu_join" <values:Operand+> => Statement::Join(name, values),
-    <operation:Spanned<"given_operation">> <values:Operand+> "vit" "ret"
+    "set" <name:Named> "to_join" <values:Operand+> => Statement::Join(name, values),
+    <operation:Spanned<"given_operation">> <values:Operand+> "with" "ret"
         <results:GivenResult+> <block:Block> => Statement::Given { operation, values, results, block },
     "set" <name:Named> <operation:Spanned<Operation>> <values:Operand+> =>
         Statement::Set { name, operation, values },
@@ -244,7 +244,7 @@ Statement: Statement<'input> = {
         },
     <start:@L> "gfx_mouse_capture" <end:@R> => Statement::MouseCapture(Span { start, end }, true),
     <start:@L> "gfx_mouse_release" <end:@R> => Statement::MouseCapture(Span { start, end }, false),
-    "nihil" => Statement::Nihil,
+    "none" => Statement::Empty,
     <start:@L> "return" <end:@R> <status:Status> => Statement::Return(Span { start, end }, status),
     <start:@L> "return" <end:@R> <values:Operand*> => Statement::ReturnValues(Span { start, end }, values),
 };
@@ -256,13 +256,13 @@ CallArguments: Arguments<'input> = {
 };
 
 Taking: Taking<'input> =
-    <start:@L> "vit" <end:@R> "ret" <results:GivenResult+> <block:Block> =>
+    <start:@L> "with" <end:@R> "ret" <results:GivenResult+> <block:Block> =>
         Taking { with: Span { start, end }, results, block };
 
 GivenResult: (Span, Named<'input>) = <index:Indexed> "as" <name:Named> => (index, name);
 
 Operation: Operation = {
-    "tu" => Operation::Copy,
+    "to" => Operation::Copy,
     "operation" => <>,
 };
 
@@ -280,11 +280,11 @@ Initial: Initial<'input> = {
 };
 
 Call: Call<'input> = {
-    <name:Named> <start:@L> "of" <end:@R> <values:Operand+> "vit" "ret" <taken:Indexed> =>
+    <name:Named> <start:@L> "of" <end:@R> <values:Operand+> "with" "ret" <taken:Indexed> =>
         Call { name, arguments: Arguments::Of(Span { start, end }, values), taken },
-    <name:Named> <start:@L> "at" <end:@R> <index:Operand> "vit" "ret" <taken:Indexed> =>
+    <name:Named> <start:@L> "at" <end:@R> <index:Operand> "with" "ret" <taken:Indexed> =>
         Call { name, arguments: Arguments::At(Span { start, end }, index), taken },
-    <name:Named> "vit" "ret" <taken:Indexed> => Call { name, arguments: Arguments::None, taken },
+    <name:Named> "with" "ret" <taken:Indexed> => Call { name, arguments: Arguments::None, taken },
 };
 
 Named: Named<'input> = <start:@L> <name:"name"> <end:@R> => (Span { start, end }, name);

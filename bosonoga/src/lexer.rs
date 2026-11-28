@@ -17,7 +17,7 @@ pub enum Tok<'input> {
     To,
     Except,
     As,
-    Nihil,
+    Empty,
     Return,
     ExitSuccess,
     ExitFailure,
@@ -81,23 +81,23 @@ pub type Spanned<'input> = Result<(usize, Tok<'input>, usize), Diagnostic>;
 pub(crate) const UNE_PREFIX: &str = "une_";
 
 const RESERVED: &[&str] = &[
-    "uneset",
-    "neo",
+    "unset",
+    "new",
     "io_raw_import",
     "sleep_ms",
     "break",
     "continue",
-    "len_kol",
-    "len_roa",
+    "len_col",
+    "len_row",
     "expect",
-    "opeto",
+    "optional",
 ];
 
 const INDEXED_TYPES: &[&str] = &[
     "flags",
     "color",
     "str",
-    "bu",
+    "bool",
     "input_key",
     "font",
     "icon",
@@ -220,8 +220,8 @@ impl<'input> Lexer<'input> {
         let Some(name) = suffix.strip_prefix('_') else {
             return Err(suffix_error(self.base + start));
         };
-        // 7_opeto_i32 is a present optional, and 0_opeto_str an index.
-        let (plain, optional) = match name.strip_prefix("opeto_") {
+        // 7_optional_i32 is a present optional, and 0_optional_str an index.
+        let (plain, optional) = match name.strip_prefix("optional_") {
             Some(inner) => (inner, true),
             None => (name, false),
         };
@@ -296,10 +296,10 @@ impl<'input> Lexer<'input> {
         let value = Value::Str(text.to_owned());
         match self.consume_word() {
             "_str" => Ok(Tok::Literal(value)),
-            "_opeto_str" => Ok(Tok::Literal(Value::present(value))),
+            "_optional_str" => Ok(Tok::Literal(Value::present(value))),
             _ => Err(Diagnostic::new(
                 self.base + start,
-                "a string must have the suffix _str, as in \"text\"_str, or _opeto_str",
+                "a string must have the suffix _str, as in \"text\"_str, or _optional_str",
             )),
         }
     }
@@ -317,7 +317,7 @@ fn is_number_name(name: &str) -> bool {
 fn suffix_error(start: usize) -> Diagnostic {
     Diagnostic::new(
         start,
-        "number must have the suffix _i32, _i64, _u32, _u64, _f32 or _f64, or _opeto_ and one of these, as in 7_opeto_i32",
+        "number must have the suffix _i32, _i64, _u32, _u64, _f32 or _f64, or _optional_ and one of these, as in 7_optional_i32",
     )
 }
 
@@ -351,16 +351,16 @@ fn is_result_name(text: &str) -> bool {
     }
 }
 
-// An absent optional, as nihil_i32 of opeto_i32. The word nihil says
+// An absent optional, as none_i32 of optional_i32. The word none says
 // optional, so its suffix is the type of the value that is absent.
-fn nihil_literal(text: &str, start: usize) -> Result<Option<Value>, Diagnostic> {
-    let Some(name) = text.strip_prefix("nihil_") else {
+fn none_literal(text: &str, start: usize) -> Result<Option<Value>, Diagnostic> {
+    let Some(name) = text.strip_prefix("none_") else {
         return Ok(None);
     };
-    if let Some(inner) = name.strip_prefix("opeto_") {
+    if let Some(inner) = name.strip_prefix("optional_") {
         return Err(Diagnostic::new(
             start,
-            format!("nihil is always optional, so it is written nihil_{inner}, not {text}"),
+            format!("none is always optional, so it is written none_{inner}, not {text}"),
         ));
     }
     match Kind::named(name).and_then(Kind::optional) {
@@ -370,7 +370,7 @@ fn nihil_literal(text: &str, start: usize) -> Result<Option<Value>, Diagnostic> 
         })),
         Some(_) | None => Err(Diagnostic::new(
             start,
-            "nihil is followed by the type that is absent, i32, i64, u32, u64, f32, f64, bu, str or color, as in nihil_i32",
+            "none is followed by the type that is absent, i32, i64, u32, u64, f32, f64, bool, str or color, as in none_i32",
         )),
     }
 }
@@ -401,32 +401,32 @@ fn word(text: &str) -> Tok<'_> {
         return Tok::AlignY(vertical);
     }
     match text {
-        "tu_join" => Tok::Join,
+        "to_join" => Tok::Join,
         "aka_i32" => Tok::Aka,
-        "ferom" => Tok::From,
+        "from" => Tok::From,
         "except" => Tok::Except,
         "as" => Tok::As,
         "di" => Tok::Di,
         "do" => Tok::Do,
         "info" => Tok::Info,
         "call" => Tok::Call,
-        "nihil" => Tok::Nihil,
+        "none" => Tok::Empty,
         "return" => Tok::Return,
         "exit_success" => Tok::ExitSuccess,
         "exit_failure" => Tok::ExitFailure,
         "set" => Tok::Set,
-        "kona" => Tok::Const,
+        "const" => Tok::Const,
         "pub" => Tok::Pub,
         "mod" => Tok::Mod,
         "def" => Tok::Def,
-        "ferom_golobal" => Tok::FromGlobal,
+        "from_global" => Tok::FromGlobal,
         "ret" => Tok::Ret,
         "ret_void" => Tok::RetVoid,
         "of" => Tok::Of,
-        "vit" => Tok::With,
+        "with" => Tok::With,
         "at" => Tok::At,
         "array" => Tok::Array,
-        "roa" => Tok::Row,
+        "row" => Tok::Row,
         "while" => Tok::While,
         "gfx_await_next_frame" => Tok::AwaitNextFrame,
         "gfx_clear" => Tok::GfxClear,
@@ -441,7 +441,7 @@ fn word(text: &str) -> Tok<'_> {
         "gfx_draw_grid" => Tok::GfxDrawGrid,
         "gfx_mouse_capture" => Tok::GfxMouseCapture,
         "gfx_mouse_release" => Tok::GfxMouseRelease,
-        "vit_len_kol" => Tok::WithLenCol,
+        "with_len_col" => Tok::WithLenCol,
         "var" => Tok::Var,
         "val" => Tok::Val,
         "is" => Tok::Is,
@@ -453,17 +453,17 @@ fn word(text: &str) -> Tok<'_> {
         "some" => Tok::Some,
         "une" | UNE_PREFIX => Tok::Une,
         "shift_or" => Tok::ShiftOr,
-        "tara_bu" => Tok::Literal(Value::Bool(true)),
-        "fales_bu" => Tok::Literal(Value::Bool(false)),
-        "tara_opeto_bu" => Tok::Literal(Value::present(Value::Bool(true))),
-        "fales_opeto_bu" => Tok::Literal(Value::present(Value::Bool(false))),
+        "true_bool" => Tok::Literal(Value::Bool(true)),
+        "false_bool" => Tok::Literal(Value::Bool(false)),
+        "true_optional_bool" => Tok::Literal(Value::present(Value::Bool(true))),
+        "false_optional_bool" => Tok::Literal(Value::present(Value::Bool(false))),
         "gfx_delta_time" | "gfx_heap_bytes" | "gfx_key" | "gfx_mouse_move_x"
         | "gfx_mouse_move_y" | "gfx_mouse_captured" => Tok::GfxValue(text),
         _ if is_numbered(text, "shift_") => Tok::Shift(text),
         _ if is_result_name(text) => Tok::Result(text),
         // Only aka_i32 is a keyword so far, and the others are kept for later.
         _ if text == "aka" || text.starts_with("aka_") => Tok::Reserved(text),
-        _ if is_numbered(text, "tu_") || RESERVED.contains(&text) => Tok::Reserved(text),
+        _ if is_numbered(text, "to_") || RESERVED.contains(&text) => Tok::Reserved(text),
         _ => Tok::Name(text),
     }
 }
@@ -486,8 +486,8 @@ impl<'input> Iterator for Lexer<'input> {
             Some(_) if self.at_number() => self.lex_number(start),
             Some(b) if b.is_ascii_alphabetic() || b == b'_' => {
                 let text = self.consume_word();
-                match nihil_literal(text, self.base + start) {
-                    Ok(Some(nihil)) => Ok(Tok::Literal(nihil)),
+                match none_literal(text, self.base + start) {
+                    Ok(Some(absent)) => Ok(Tok::Literal(absent)),
                     Ok(None) => Ok(word(text)),
                     Err(diagnostic) => Err(diagnostic),
                 }

@@ -1,42 +1,42 @@
 // function.bosonoga
 
-kona board_radius is 4_i32
+const board_radius is 4_i32
 
-def in_bounds_fen q_i32 r_i32 ret 0_bu
+def in_bounds_fn q_i32 r_i32 ret 0_bool
 di
   var s is 0_i32
-  set s tu_subtract q_i32 r_i32
-  var steps is math_tu_abs q_i32
-  var r_steps is math_tu_abs r_i32
-  var s_steps is math_tu_abs s
-  set steps math_tu_max steps r_steps
-  set steps math_tu_max steps s_steps
+  set s to_subtract q_i32 r_i32
+  var steps is math_to_abs q_i32
+  var r_steps is math_to_abs r_i32
+  var s_steps is math_to_abs s
+  set steps math_to_max steps r_steps
+  set steps math_to_max steps s_steps
   if steps le board_radius
   di
-    return tara_bu
+    return true_bool
   do
-  return fales_bu
+  return false_bool
 do
 
-def factorial_fen n_i64 ret 0_i64
+def factorial_fn n_i64 ret 0_i64
 di
   if n_i64 le 1_i64
   di
     return 1_i64
   do
   var smaller is n_i64
-  set smaller tu_subtract 1_i64
-  val rest is factorial_fen of smaller vit ret 0_i64
+  set smaller to_subtract 1_i64
+  val rest is factorial_fn of smaller with ret 0_i64
   var product is n_i64
-  set product tu_multiply rest
+  set product to_multiply rest
   return product
 do
 
-bosonoga_main
+main
 di
-  val inside is in_bounds_fen of 2_i32 -3_i32 vit ret 0_bu
-  val outside is in_bounds_fen of 3_i32 2_i32 vit ret 0_bu
-  val twenty is factorial_fen of 20_i64 vit ret 0_i64
+  val inside is in_bounds_fn of 2_i32 -3_i32 with ret 0_bool
+  val outside is in_bounds_fn of 3_i32 2_i32 with ret 0_bool
+  val twenty is factorial_fn of 20_i64 with ret 0_i64
   if inside and not outside and twenty eq 2432902008176640000_i64
   di
     return exit_success
